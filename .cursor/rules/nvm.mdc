@@ -1,0 +1,9 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# Use lts version of node and npm
+
+- run `nvm use --lts` 
