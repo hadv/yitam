@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
 import './ChatBox.css';
 
 interface Message {
@@ -30,7 +31,15 @@ const ChatBox: React.FC<ChatBoxProps> = ({ messages }) => {
             className={`message ${message.isBot ? 'bot' : 'user'}`}
           >
             <div className="message-content">
-              <span className="message-text">{message.text}</span>
+              {message.isBot ? (
+                <div className="message-text">
+                  <ReactMarkdown>
+                    {message.text}
+                  </ReactMarkdown>
+                </div>
+              ) : (
+                <span className="message-text">{message.text}</span>
+              )}
             </div>
           </div>
         ))
