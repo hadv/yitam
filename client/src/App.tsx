@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { config } from './config';
 import ChatBox from './components/ChatBox';
 import MessageInput from './components/MessageInput';
 import './App.css';
@@ -18,12 +19,7 @@ function App() {
 
   useEffect(() => {
     // Initialize socket connection
-    const newSocket = io('http://localhost:5001', {
-      withCredentials: true,
-      transports: ['polling', 'websocket'],
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000
-    });
+    const newSocket = io(config.server.url, config.server.socketOptions);
     
     newSocket.on('connect', () => {
       setIsConnected(true);

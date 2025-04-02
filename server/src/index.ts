@@ -5,32 +5,24 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import Anthropic from '@anthropic-ai/sdk';
 import { MCPClient } from './MCPClient';
+import { config } from './config';
 
 // Load environment variables
 dotenv.config();
 
 // Initialize Express app
 const app: Express = express();
-app.use(cors({
-  origin: "http://localhost:3000",
-  methods: ["GET", "POST"],
-  credentials: true
-}));
+app.use(cors(config.server.cors));
 app.use(express.json());
 
-const PORT = process.env.PORT || 5001;
+const PORT = config.server.port;
 
 // Create HTTP server
 const server = createServer(app);
 
 // Initialize Socket.IO
 const io = new Server(server, {
-  cors: {
-    origin: "http://localhost:3000",
-    methods: ["GET", "POST"],
-    credentials: true,
-    allowedHeaders: ["my-custom-header"]
-  },
+  cors: config.server.cors,
   allowEIO3: true,
   transports: ['polling', 'websocket']
 });
@@ -82,8 +74,8 @@ io.on('connection', (socket: Socket) => {
       } else {
         // Fallback to direct Claude API
         const response = await anthropic.messages.create({
-          model: 'claude-3-7-sonnet-20250219',
-          max_tokens: 1000,
+          model: config.model.name,
+          max_tokens: config.model.maxTokens,
           messages: [
             { role: 'user', content: message }
           ],
