@@ -12,26 +12,17 @@ dotenv.config();
 
 // Initialize Express app
 const app: Express = express();
-app.use(cors({
-  origin: "http://localhost:3000",
-  methods: ["GET", "POST"],
-  credentials: true
-}));
+app.use(cors(config.server.cors));
 app.use(express.json());
 
-const PORT = process.env.PORT || 5001;
+const PORT = config.server.port;
 
 // Create HTTP server
 const server = createServer(app);
 
 // Initialize Socket.IO
 const io = new Server(server, {
-  cors: {
-    origin: "http://localhost:3000",
-    methods: ["GET", "POST"],
-    credentials: true,
-    allowedHeaders: ["my-custom-header"]
-  },
+  cors: config.server.cors,
   allowEIO3: true,
   transports: ['polling', 'websocket']
 });

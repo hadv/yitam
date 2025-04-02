@@ -8,5 +8,14 @@ export const config = {
     name: process.env.ANTHROPIC_MODEL || 'claude-3-7-sonnet-20250219',
     maxTokens: parseInt(process.env.MODEL_MAX_TOKENS || '1000'),
   },
-  // Add other configuration categories here as needed
+  server: {
+    port: parseInt(process.env.PORT || '5001'),
+    clientUrl: process.env.CLIENT_URL || 'http://localhost:3000',
+    cors: {
+      origin: process.env.CLIENT_URL || 'http://localhost:3000',
+      methods: ['GET', 'POST'],
+      credentials: true,
+      allowedHeaders: ['my-custom-header']
+    }
+  }
 }; 
