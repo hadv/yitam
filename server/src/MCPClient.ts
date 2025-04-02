@@ -5,6 +5,7 @@ import {
 } from "@anthropic-ai/sdk/resources/messages/messages.mjs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { config } from './config';
 
 export class MCPClient {
   private mcp: Client;
@@ -23,18 +24,28 @@ export class MCPClient {
     try {
       const isJs = serverScriptPath.endsWith(".js");
       const isPy = serverScriptPath.endsWith(".py");
-      if (!isJs && !isPy) {
-        throw new Error("Server script must be a .js or .py file");
+      const isSh = serverScriptPath.endsWith(".sh");
+      if (!isJs && !isPy && !isSh) {
+        throw new Error("Server script must be a .js, .py, or .sh file");
       }
-      const command = isPy
-        ? process.platform === "win32"
-          ? "python"
-          : "python3"
-        : process.execPath;
+
+      let command: string;
+      let scriptArgs: string[] = [serverScriptPath];
+
+      if (isSh) {
+        if (process.platform === "win32") {
+          throw new Error("Shell scripts are not supported on Windows");
+        }
+        command = process.env.SHELL || "/bin/bash";
+      } else if (isPy) {
+        command = process.platform === "win32" ? "python" : "python3";
+      } else {
+        command = process.execPath;
+      }
       
       this.transport = new StdioClientTransport({
         command,
-        args: [serverScriptPath],
+        args: scriptArgs,
       });
       this.mcp.connect(this.transport);
       
@@ -67,8 +78,8 @@ export class MCPClient {
 
     try {
       const response = await this.anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 1000,
+        model: config.model.name,
+        max_tokens: config.model.maxTokens,
         messages,
         tools: this.tools.length > 0 ? this.tools : undefined,
       });
@@ -110,8 +121,8 @@ export class MCPClient {
           });
 
           const followUpResponse = await this.anthropic.messages.create({
-            model: "claude-3-5-sonnet-20241022",
-            max_tokens: 1000,
+            model: config.model.name,
+            max_tokens: config.model.maxTokens,
             messages,
           });
 

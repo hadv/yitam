@@ -5,6 +5,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import Anthropic from '@anthropic-ai/sdk';
 import { MCPClient } from './MCPClient';
+import { config } from './config';
 
 // Load environment variables
 dotenv.config();
@@ -82,8 +83,8 @@ io.on('connection', (socket: Socket) => {
       } else {
         // Fallback to direct Claude API
         const response = await anthropic.messages.create({
-          model: 'claude-3-7-sonnet-20250219',
-          max_tokens: 1000,
+          model: config.model.name,
+          max_tokens: config.model.maxTokens,
           messages: [
             { role: 'user', content: message }
           ],
