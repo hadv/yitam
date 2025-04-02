@@ -41,6 +41,25 @@ A modern chat bot application built with TypeScript that uses Claude AI API to p
    - Web interface: http://localhost
    - API endpoint: http://localhost/api
 
+### Domain Configuration
+
+When deploying with a custom domain (e.g., yitam.org), follow these important steps:
+
+1. SSL Certificates:
+   - Create an `ssl` directory at the root of your project
+   - Place your SSL certificates in the directory:
+     - `ssl/yitam.org.crt` - Your SSL certificate
+     - `ssl/yitam.org.key` - Your private key
+   - Add the `ssl` directory to your `.gitignore` to avoid committing sensitive files
+
+2. DNS Configuration:
+   - Configure your domain's DNS records to point to your server's IP address
+   - Both `www.yitam.org` and `yitam.org` are supported in the configuration
+
+3. Access the application:
+   - Web interface: https://yitam.org
+   - API endpoint: https://yitam.org/api
+
 The application is configured to automatically restart in case of crashes or system reboots.
 
 To check container status:
