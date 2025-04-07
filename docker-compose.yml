@@ -7,6 +7,8 @@ services:
       dockerfile: Dockerfile
     environment:
       - NODE_ENV=production
+      - PORT=3000
+      - CLIENT_URL=https://yitam.org
     ports:
       - "3000:3000"
     volumes:
@@ -17,6 +19,8 @@ services:
     build:
       context: ./client
       dockerfile: Dockerfile
+    environment:
+      - VITE_SERVER_URL=https://yitam.org
     ports:
       - "80:80"
       - "443:443"
