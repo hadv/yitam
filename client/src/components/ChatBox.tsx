@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import ReactMarkdown from 'react-markdown';
 import './ChatBox.css';
+import ToolCallParser from './ToolCallParser';
 
 interface Message {
   id: string;
@@ -33,9 +33,7 @@ const ChatBox: React.FC<ChatBoxProps> = ({ messages }) => {
             <div className="message-content">
               {message.isBot ? (
                 <div className="message-text">
-                  <ReactMarkdown>
-                    {message.text}
-                  </ReactMarkdown>
+                  <ToolCallParser text={message.text} />
                 </div>
               ) : (
                 <span className="message-text">{message.text}</span>
