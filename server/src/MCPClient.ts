@@ -27,18 +27,15 @@ export class MCPClient {
       const isJs = serverScriptPath.endsWith(".js");
       const isPy = serverScriptPath.endsWith(".py");
       const isSh = serverScriptPath.endsWith(".sh");
-      const isTs = serverScriptPath.endsWith(".ts");
-      if (!isJs && !isPy && !isSh && !isTs) {
-        throw new Error("Server script must be a .js, .py, .sh, or .ts file");
+      if (!isJs && !isPy && !isSh) {
+        throw new Error("Server script must be a .js, .py, or .sh file");
       }
 
       // Get the MCP server directory
       const mcpServerDir = path.dirname(serverScriptPath);
       const mcpRootDir = serverScriptPath.includes('/dist/') 
         ? serverScriptPath.substring(0, serverScriptPath.indexOf('/dist/'))
-        : serverScriptPath.includes('/src/') 
-          ? serverScriptPath.substring(0, serverScriptPath.indexOf('/src/'))
-          : path.dirname(mcpServerDir);
+        : path.dirname(mcpServerDir);
       
       // Try to load MCP server's .env file
       const envPath = path.join(mcpRootDir, '.env');
@@ -89,13 +86,6 @@ export class MCPClient {
       } else if (isPy) {
         command = process.platform === "win32" ? "python" : "python3";
         scriptArgs = [serverScriptPath];
-      } else if (isTs) {
-        command = process.execPath;
-        scriptArgs = [
-          require.resolve("ts-node/dist/bin.js"),
-          "-r", "dotenv/config",
-          serverScriptPath
-        ];
       } else {
         command = process.execPath;
         scriptArgs = ["-r", "dotenv/config", serverScriptPath];
