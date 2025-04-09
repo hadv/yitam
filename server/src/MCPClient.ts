@@ -191,7 +191,7 @@ export class MCPClient {
           // Format tool call as a collapsible component
           finalText.push(
             `<tool-call data-expanded="false" data-tool="${toolName}">
-  <tool-header>${toolName} - Click to expand/collapse</tool-header>
+  <tool-header>Called MCP Tool: ${toolName}</tool-header>
   <tool-content>
     <tool-args>${JSON.stringify(toolArgs, null, 2)}</tool-args>
     <tool-result>${resultContent}</tool-result>
