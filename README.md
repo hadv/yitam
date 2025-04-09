@@ -41,6 +41,12 @@ A modern chat bot application built with TypeScript that uses Claude AI API to p
    - Web interface: http://localhost
    - API endpoint: http://localhost/api
 
+The application uses the `unless-stopped` restart policy, which means containers will automatically restart:
+- On failure/crash
+- When Docker daemon restarts
+- After system reboots
+But will respect manual stop commands, making maintenance easier.
+
 ### Domain Configuration
 
 When deploying with a custom domain (e.g., yitam.org), follow these important steps:
