@@ -165,7 +165,6 @@ export class MCPClient {
       const toolResults: any[] = [];
 
       for (const content of response.content) {
-        console.log("Content:", content);
         if (content.type === "text") {
           finalText.push(content.text);
         } else if (content.type === "tool_use") {
