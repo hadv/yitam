@@ -165,6 +165,7 @@ export class MCPClient {
       const toolResults: any[] = [];
 
       for (const content of response.content) {
+        console.log("Content:", content);
         if (content.type === "text") {
           finalText.push(content.text);
         } else if (content.type === "tool_use") {
@@ -183,10 +184,29 @@ export class MCPClient {
           });
           toolResults.push(result);
           
-          // Format result content to ensure it's a string
-          const resultContent = typeof result.content === 'object' 
-            ? JSON.stringify(result.content, null, 2)
-            : String(result.content);
+          // Format result content to ensure it's a string and extract content from metadata if necessary
+          let resultContent: string;
+          let processedContent: any = result.content;
+          
+          if (typeof result.content === 'object' && result.content !== null) {
+            // Handle case where result contains a JSON string with results array
+            const jsonContent = result.content as any;
+            if (jsonContent.results && Array.isArray(jsonContent.results)) {
+              // Process each result to ensure content is displayed
+              jsonContent.results = jsonContent.results.map((item: any) => {
+                // If text is empty but metadata.content exists, copy content to text
+                if (item && item.text === "" && item.metadata && item.metadata.content) {
+                  item.text = item.metadata.content;
+                }
+                return item;
+              });
+              processedContent = jsonContent;
+            }
+            resultContent = JSON.stringify(processedContent, null, 2);
+          } else {
+            resultContent = String(result.content);
+            processedContent = result.content;
+          }
           
           // Format tool call as a collapsible component
           finalText.push(
@@ -210,7 +230,7 @@ export class MCPClient {
               {
                 type: "tool_result",
                 tool_use_id: content.id,
-                content: result.content as string,
+                content: typeof processedContent === 'object' ? JSON.stringify(processedContent) : String(processedContent),
               },
             ],
           });
