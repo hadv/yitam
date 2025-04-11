@@ -183,15 +183,10 @@ export class MCPClient {
           });
           toolResults.push(result);
           
-          // Format result content to ensure it's a string
-          let resultContent: string;
-          
-          if (typeof result.content === 'object' && result.content !== null) {
-            // Convert object to JSON string for display
-            resultContent = JSON.stringify(result.content, null, 2);
-          } else {
-            resultContent = String(result.content);
-          }
+          // Convert result content to string
+          const resultContent = typeof result.content === 'object' 
+            ? JSON.stringify(result.content, null, 2)
+            : String(result.content);
           
           // Format tool call as a collapsible component
           finalText.push(
