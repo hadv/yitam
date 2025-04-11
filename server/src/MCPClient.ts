@@ -185,11 +185,10 @@ export class MCPClient {
           
           // Format result content to ensure it's a string
           let resultContent: string;
-          let processedContent: any = result.content;
           
           if (typeof result.content === 'object' && result.content !== null) {
             // Convert object to JSON string for display
-            resultContent = JSON.stringify(processedContent, null, 2);
+            resultContent = JSON.stringify(result.content, null, 2);
           } else {
             resultContent = String(result.content);
           }
@@ -216,7 +215,7 @@ export class MCPClient {
               {
                 type: "tool_result",
                 tool_use_id: content.id,
-                content: typeof processedContent === 'object' ? JSON.stringify(processedContent) : String(processedContent),
+                content: resultContent,
               },
             ],
           });
