@@ -191,14 +191,7 @@ export class MCPClient {
             // Handle case where result contains a JSON string with results array
             const jsonContent = result.content as any;
             if (jsonContent.results && Array.isArray(jsonContent.results)) {
-              // Process each result to ensure content is displayed
-              jsonContent.results = jsonContent.results.map((item: any) => {
-                // If text is empty but metadata.content exists, copy content to text
-                if (item && item.text === "" && item.metadata && item.metadata.content) {
-                  item.text = item.metadata.content;
-                }
-                return item;
-              });
+              // No need to process items since content is already in item.text
               processedContent = jsonContent;
             }
             resultContent = JSON.stringify(processedContent, null, 2);
