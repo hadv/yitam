@@ -183,7 +183,7 @@ export class MCPClient {
           });
           toolResults.push(result);
           
-          // Format result content to ensure it's a string
+          // Convert result content to string
           const resultContent = typeof result.content === 'object' 
             ? JSON.stringify(result.content, null, 2)
             : String(result.content);
@@ -210,7 +210,7 @@ export class MCPClient {
               {
                 type: "tool_result",
                 tool_use_id: content.id,
-                content: result.content as string,
+                content: resultContent,
               },
             ],
           });
