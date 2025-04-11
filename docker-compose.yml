@@ -9,10 +9,13 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - CLIENT_URL=https://yitam.org
+      - MCP_SERVER_PATH=/app/mcp/core/server/yitam-tools.js
     ports:
       - "3000:3000"
     volumes:
       - ./server/.env:/app/.env:ro
+      - ../yitam-mcp/dist:/app/mcp:ro
+      - ../yitam-mcp/.env:/app/mcp/.env:ro
     restart: unless-stopped
 
   client:
