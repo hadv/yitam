@@ -183,7 +183,7 @@ export class MCPClient {
           });
           toolResults.push(result);
           
-          // Format result content to ensure it's a string and extract content from metadata if necessary
+          // Format result content to ensure it's a string
           let resultContent: string;
           let processedContent: any = result.content;
           
