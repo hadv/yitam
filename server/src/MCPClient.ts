@@ -188,16 +188,10 @@ export class MCPClient {
           let processedContent: any = result.content;
           
           if (typeof result.content === 'object' && result.content !== null) {
-            // Handle case where result contains a JSON string with results array
-            const jsonContent = result.content as any;
-            if (jsonContent.results && Array.isArray(jsonContent.results)) {
-              // No need to process items since content is already in item.text
-              processedContent = jsonContent;
-            }
+            // Convert object to JSON string for display
             resultContent = JSON.stringify(processedContent, null, 2);
           } else {
             resultContent = String(result.content);
-            processedContent = result.content;
           }
           
           // Format tool call as a collapsible component
