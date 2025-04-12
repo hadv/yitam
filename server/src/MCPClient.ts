@@ -133,26 +133,7 @@ export class MCPClient {
     ];
 
     try {
-      // First, extract a concise search query from the user's message
-      const extractionResponse = await this.anthropic.messages.create({
-        model: config.model.name,
-        max_tokens: 150,
-        system: "Extract the core search intent from the user's message. Return only the essential keywords or a concise search query that would be effective for vector search, without any commentary or explanation. Focus on domain-specific terminology or key concepts.",
-        messages: [{
-          role: "user",
-          content: query
-        }]
-      });
-
-      let searchQuery = query;
-      if (extractionResponse.content[0]?.type === "text") {
-        const extractedText = extractionResponse.content[0].text.trim();
-        if (extractedText && extractedText.length > 0 && extractedText.length < query.length) {
-          searchQuery = extractedText;
-          console.log(`Original query: "${query}"`);
-          console.log(`Extracted search query: "${searchQuery}"`);
-        }
-      }
+      const searchQuery = await this._determineSearchQuery(query);
 
       const response = await this.anthropic.messages.create({
         model: config.model.name,
@@ -168,40 +149,13 @@ export class MCPClient {
         if (content.type === "text") {
           finalText.push(content.text);
         } else if (content.type === "tool_use") {
-          const toolName = content.name;
-          const toolArgs = content.input as { [x: string]: unknown } | undefined;
-          const toolId = content.id;
-
-          // Replace the query in tool arguments with the extracted search query
-          if (toolArgs && typeof toolArgs.query === 'string') {
-            toolArgs.query = searchQuery;
-          }
-
-          const result = await this.mcp.callTool({
-            name: toolName,
-            arguments: toolArgs,
-          });
-          toolResults.push(result);
-          
-          // Convert result content to string
-          const resultContent = typeof result.content === 'object' 
-            ? JSON.stringify(result.content, null, 2)
-            : String(result.content);
-          
-          // Format tool call as a collapsible component
-          finalText.push(
-            `<tool-call data-expanded="false" data-tool="${toolName}">
-  <tool-header>Called MCP Tool: ${toolName}</tool-header>
-  <tool-content>
-    <tool-args>${JSON.stringify(toolArgs, null, 2)}</tool-args>
-    <tool-result>${resultContent}</tool-result>
-  </tool-content>
-</tool-call>`
-          );
+          const { toolResult, formattedToolCall } = await this._handleToolUse(content, searchQuery);
+          toolResults.push(toolResult);
+          finalText.push(formattedToolCall);
 
           messages.push({
             role: "assistant",
-            content: [{ type: "tool_use", id: toolId, name: toolName, input: toolArgs }],
+            content: [{ type: "tool_use", id: content.id, name: content.name, input: content.input }],
           });
 
           messages.push({
@@ -210,7 +164,9 @@ export class MCPClient {
               {
                 type: "tool_result",
                 tool_use_id: content.id,
-                content: resultContent,
+                content: typeof toolResult.content === 'object' 
+                  ? JSON.stringify(toolResult.content, null, 2)
+                  : String(toolResult.content),
               },
             ],
           });
@@ -244,5 +200,61 @@ export class MCPClient {
 
   isConnected(): boolean {
     return this.transport !== null && this.tools.length > 0;
+  }
+
+  private async _handleToolUse(
+    content: { name: string; input: any; id: string },
+    searchQuery: string
+  ): Promise<{ toolResult: any; formattedToolCall: string }> {
+    const toolName = content.name;
+    const toolArgs = content.input as { [x: string]: unknown } | undefined;
+
+    // Replace the query in tool arguments with the extracted search query
+    if (toolArgs && typeof toolArgs.query === 'string') {
+      toolArgs.query = searchQuery;
+    }
+
+    const toolResult = await this.mcp.callTool({
+      name: toolName,
+      arguments: toolArgs,
+    });
+    
+    // Convert result content to string
+    const resultContent = typeof toolResult.content === 'object' 
+      ? JSON.stringify(toolResult.content, null, 2)
+      : String(toolResult.content);
+    
+    // Format tool call as a collapsible component
+    const formattedToolCall = `<tool-call data-expanded="false" data-tool="${toolName}">
+  <tool-header>Called MCP Tool: ${toolName}</tool-header>
+  <tool-content>
+    <tool-args>${JSON.stringify(toolArgs, null, 2)}</tool-args>
+    <tool-result>${resultContent}</tool-result>
+  </tool-content>
+</tool-call>`;
+
+    return { toolResult, formattedToolCall };
+  }
+
+  private async _determineSearchQuery(query: string): Promise<string> {
+    const extractionResponse = await this.anthropic.messages.create({
+      model: config.model.name,
+      max_tokens: 150,
+      system: "Extract the core search intent from the user's message. Return only the essential keywords or a concise search query that would be effective for vector search, without any commentary or explanation. Focus on domain-specific terminology or key concepts.",
+      messages: [{
+        role: "user",
+        content: query
+      }]
+    });
+
+    if (extractionResponse.content[0]?.type === "text") {
+      const extractedText = extractionResponse.content[0].text.trim();
+      if (extractedText && extractedText.length > 0 && extractedText.length < query.length) {
+        console.log(`Original query: "${query}"`);
+        console.log(`Extracted search query: "${extractedText}"`);
+        return extractedText;
+      }
+    }
+    return query;
   }
 } 
