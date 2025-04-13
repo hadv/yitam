@@ -81,15 +81,18 @@ function App() {
           <h1>Hỏi đáp về y học cổ truyền</h1>
           <p className="app-tagline">Kết nối tri thức y học cổ truyền với công nghệ hiện đại</p>
         </div>
-        <div className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
-          {isConnected ? 'Sẵn sàng' : 'Ngoại tuyến'}
-        </div>
       </header>
       
       <main className="chat-container">
         <ChatBox messages={messages} />
         <MessageInput onSendMessage={sendMessage} disabled={!isConnected} />
       </main>
+      
+      <footer className="app-footer">
+        <div className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
+          {isConnected ? 'Sẵn sàng' : 'Ngoại tuyến'}
+        </div>
+      </footer>
     </div>
   );
 }
