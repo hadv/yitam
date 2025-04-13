@@ -74,7 +74,13 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Yitam - Hỏi đáp về y học cổ truyền</h1>
+        <div className="logo-container">
+          <img src="/img/yitam-logo.png" alt="Yitam Logo" className="app-logo" />
+        </div>
+        <div className="header-content">
+          <h1>Hỏi đáp về y học cổ truyền</h1>
+          <p className="app-tagline">Kết nối tri thức y học cổ truyền với công nghệ hiện đại</p>
+        </div>
         <div className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
           {isConnected ? 'Sẵn sàng' : 'Ngoại tuyến'}
         </div>

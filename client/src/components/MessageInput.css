@@ -39,11 +39,12 @@
 }
 
 .send-button:hover:not(:disabled) {
-  background-color: #6b24b2;
+  background-color: var(--secondary-color);
 }
 
 .send-button:disabled {
   background-color: var(--light-gray);
-  color: #9ca3af;
+  color: var(--text-color);
+  opacity: 0.5;
   cursor: not-allowed;
 } 
