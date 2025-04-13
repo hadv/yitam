@@ -1,6 +1,15 @@
 version: '3.8'
 
 services:
+  yitam-mcp:
+    build:
+      context: ../yitam-mcp
+      dockerfile: Dockerfile
+    volumes:
+      - yitam-mcp-dist:/app/dist
+    environment:
+      - NODE_ENV=production
+
   server:
     build:
       context: ./server
@@ -14,8 +23,10 @@ services:
       - "3000:3000"
     volumes:
       - ./server/.env:/app/.env:ro
-      - ../yitam-mcp/dist:/app/mcp:ro
+      - yitam-mcp-dist:/app/mcp:ro
       - ../yitam-mcp/.env:/app/mcp/.env:ro
+    depends_on:
+      - yitam-mcp
     restart: unless-stopped
 
   client:
@@ -31,4 +42,7 @@ services:
       - ./ssl:/etc/nginx/ssl:ro
     depends_on:
       - server
-    restart: unless-stopped 
+    restart: unless-stopped
+
+volumes:
+  yitam-mcp-dist: 
