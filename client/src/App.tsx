@@ -29,7 +29,7 @@ function App() {
       setMessages([
         {
           id: 'welcome',
-          text: 'Hello! I\'m Claude, an AI assistant. How can I help you today?',
+          text: 'Xin chào! Yitam đang lắng nghe!',
           isBot: true
         }
       ]);
@@ -74,9 +74,9 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Claude Chat Bot</h1>
+        <h1>Yitam - Hỏi đáp về y học cổ truyền</h1>
         <div className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
-          {isConnected ? 'Connected' : 'Disconnected'}
+          {isConnected ? 'Sẵn sàng' : 'Ngoại tuyến'}
         </div>
       </header>
       

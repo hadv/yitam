@@ -23,7 +23,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, disabled }) 
         type="text"
         value={message}
         onChange={(e) => setMessage(e.target.value)}
-        placeholder="Type your message here..."
+        placeholder="Có thắc mắc gì thì bạn đừng ngại hỏi Yitam nhé!"
         disabled={disabled}
         className="message-input"
       />
@@ -32,7 +32,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, disabled }) 
         disabled={disabled || !message.trim()} 
         className="send-button"
       >
-        Send
+        Gửi
       </button>
     </form>
   );
