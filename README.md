@@ -1,18 +1,20 @@
-# TypeScript Claude Chat Bot
+# TypeScript Claude Chat Bot with MCP Integration
 
-A modern chat bot application built with TypeScript that uses Claude AI API to power conversations.
+A modern chat bot application built with TypeScript that uses Claude AI API to power conversations, with Model Context Protocol (MCP) integration for enhanced AI capabilities.
 
 ## Components
 
 - **Server**: Node.js Express server that connects to Claude AI API using the Anthropic SDK
 - **Client**: React-based web application that provides a chat interface
+- **MCP Integration**: Model Context Protocol integration for enhanced AI tool capabilities
 
 ## Prerequisites
 
-- Node.js (LTS version) - for local development
-- npm or yarn - for local development
+- Node.js (LTS version) - recommended to use `nvm use --lts`
+- npm - for package management
 - Docker and Docker Compose - for production deployment
 - Anthropic API key
+- MCP integration setup
 
 ## Setup
 
@@ -26,6 +28,7 @@ A modern chat bot application built with TypeScript that uses Claude AI API to p
 3. Configure environment variables:
    - Copy `server/.env.example` to `server/.env`
    - Add your Anthropic API key to `server/.env`
+   - Configure MCP-related environment variables
 
 ### Docker Production Deployment
 
@@ -33,6 +36,7 @@ A modern chat bot application built with TypeScript that uses Claude AI API to p
 2. Configure environment variables:
    - Copy `server/.env.example` to `server/.env`
    - Add your Anthropic API key to `server/.env`
+   - Configure MCP-related environment variables
 3. Build and run with Docker Compose:
    ```bash
    docker-compose up --build -d
@@ -57,6 +61,7 @@ When deploying with a custom domain (e.g., yitam.org), follow these important st
      - `ssl/yitam.org.crt` - Your SSL certificate
      - `ssl/yitam.org.key` - Your private key
    - Add the `ssl` directory to your `.gitignore` to avoid committing sensitive files
+   - Use the provided `get-ssl-cert.sh` script to automatically obtain and configure SSL certificates with Let's Encrypt
 
 2. DNS Configuration:
    - Configure your domain's DNS records to point to your server's IP address
@@ -120,7 +125,7 @@ cd server && npm start
 
 ## Server API
 
-The server uses Socket.IO for real-time communication with the client.
+The server uses Socket.IO for real-time communication with the client, and integrates with the Model Context Protocol for enhanced AI tool capabilities.
 
 ## Technology Stack
 
@@ -129,14 +134,17 @@ The server uses Socket.IO for real-time communication with the client.
   - Express
   - Socket.IO
   - Anthropic SDK (Claude AI)
+  - Model Context Protocol (MCP) SDK
 
 - **Client**:
   - TypeScript
-  - React
+  - React 19
   - Socket.IO Client
-  - Vite
+  - React Markdown
+  - Vite 6
 
 - **Production Environment**:
   - Docker
   - Docker Compose
-  - Nginx (serving client and reverse proxy) 
+  - Nginx (serving client and reverse proxy)
+  - Let's Encrypt SSL certificate automation
