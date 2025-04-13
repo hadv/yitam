@@ -92,6 +92,10 @@ function App() {
         <div className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
           {isConnected ? 'Sẵn sàng' : 'Ngoại tuyến'}
         </div>
+        <a href="https://github.com/sponsors/hadv" target="_blank" rel="noopener noreferrer" className="sponsor-link">
+          <span className="sponsor-icon">♥</span>
+          <span className="sponsor-text">Hỗ trợ dự án</span>
+        </a>
       </footer>
     </div>
   );

@@ -127,6 +127,14 @@ cd server && npm start
 
 The server uses Socket.IO for real-time communication with the client, and integrates with the Model Context Protocol for enhanced AI tool capabilities.
 
+## Support the Project
+
+If you find this project useful, please consider supporting its development:
+
+[![Sponsor](https://img.shields.io/badge/Sponsor-GitHub-ea4aaa.svg)](https://github.com/sponsors/hadv)
+
+Your support helps maintain and improve the project!
+
 ## Technology Stack
 
 - **Server**:

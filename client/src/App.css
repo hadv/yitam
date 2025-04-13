@@ -99,7 +99,7 @@
 
 .app-footer {
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
   align-items: center;
   padding: 5px;
   border-top: 1px solid var(--light-gray);
@@ -107,6 +107,34 @@
   border-radius: 4px;
   box-shadow: 0 -1px 1px rgba(0, 0, 0, 0.05);
   min-height: 30px;
+}
+
+.sponsor-link {
+  text-decoration: none;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  padding: 1px 3px;
+  border-radius: 4px;
+  font-size: 0.6rem;
+  background-color: rgba(120, 161, 97, 0.1);
+  color: var(--secondary-color);
+  font-weight: 500;
+}
+
+.sponsor-icon {
+  margin-right: 4px;
+  color: #BC4749;
+  font-size: 0.65rem;
+}
+
+.sponsor-text {
+  line-height: 1;
+}
+
+.sponsor-link:hover {
+  transform: scale(1.05);
+  background-color: rgba(120, 161, 97, 0.2);
 }
 
 @media (max-width: 768px) {
@@ -166,5 +194,18 @@
   .app-footer {
     padding: 3px;
     min-height: 25px;
+  }
+  
+  .sponsor-link {
+    padding: 1px 3px;
+    font-size: 0.6rem;
+  }
+  
+  .sponsor-icon {
+    font-size: 0.65rem;
+  }
+  
+  .sponsor-link img {
+    height: 16px;
   }
 } 
