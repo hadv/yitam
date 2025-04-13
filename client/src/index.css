@@ -1,11 +1,15 @@
 :root {
-  --primary-color: #7928CA;
-  --secondary-color: #FF0080;
-  --background-color: #f9fafb;
-  --text-color: #1f2937;
-  --light-gray: #e5e7eb;
-  --bot-message-bg: #f3f4f6;
-  --user-message-bg: #ebf5ff;
+  --primary-color: #5D4A38; /* Brown from logo */
+  --secondary-color: #78A161; /* Green from logo, slightly adjusted for better contrast */
+  --accent-color: #F5EFE0; /* Cream/beige from logo */
+  --highlight-color: #D4C9A8; /* Lighter accent for highlights */
+  --background-color: #FDFBF6; /* Very light cream background */
+  --text-color: #3A2E22; /* Darker brown for text */
+  --light-gray: #E6DFD1; /* Cream-tinted gray */
+  --bot-message-bg: #F2EEE5; /* Light cream for bot messages */
+  --user-message-bg: #5D4A38; /* Brown for user messages */
+  --tool-header-bg: #E9E2D0; /* Cream for tool headers */
+  --tool-border: #D4C9A8; /* Cream border */
   --border-radius: 8px;
 }
 

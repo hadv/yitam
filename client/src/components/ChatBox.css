@@ -15,7 +15,8 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #9ca3af;
+  color: var(--text-color);
+  opacity: 0.6;
   font-size: 1.1rem;
 }
 
@@ -41,7 +42,7 @@
 }
 
 .message.user .message-content {
-  background-color: var(--primary-color);
+  background-color: var(--user-message-bg);
   color: white;
   border-radius: var(--border-radius) var(--border-radius) 0 var(--border-radius);
 }
@@ -79,14 +80,14 @@
 }
 
 .message-text code {
-  background-color: rgba(0, 0, 0, 0.1);
+  background-color: rgba(93, 74, 56, 0.1);
   padding: 0.2em 0.4em;
   border-radius: 3px;
   font-family: monospace;
 }
 
 .message-text pre {
-  background-color: rgba(0, 0, 0, 0.1);
+  background-color: rgba(93, 74, 56, 0.1);
   padding: 1em;
   border-radius: var(--border-radius);
   overflow-x: auto;
@@ -114,45 +115,48 @@
   margin: 10px 0;
   border-radius: 8px;
   overflow: hidden;
-  border: 1px solid #e1e4e8;
-  background-color: #f6f8fa;
+  border: 1px solid var(--tool-border);
+  background-color: var(--accent-color);
 }
 
 .tool-call-header {
   display: flex;
   align-items: center;
   padding: 10px 15px;
-  background-color: #eaeef2;
+  background-color: var(--tool-header-bg);
   cursor: pointer;
   font-weight: 500;
   transition: background-color 0.2s ease;
 }
 
 .tool-call-header:hover {
-  background-color: #dfe3e8;
+  background-color: var(--highlight-color);
 }
 
 .tool-icon {
   margin-right: 8px;
   font-size: 18px;
+  color: var(--primary-color);
 }
 
 .tool-name {
   flex-grow: 1;
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
   font-size: 14px;
+  color: var(--text-color);
 }
 
 .tool-toggle {
   font-size: 12px;
-  color: #555;
+  color: var(--text-color);
+  opacity: 0.7;
 }
 
 .tool-call-content {
   padding: 10px 15px;
   font-size: 14px;
-  background-color: #fff;
-  border-top: 1px solid #e1e4e8;
+  background-color: white;
+  border-top: 1px solid var(--tool-border);
 }
 
 .tool-call-section {
@@ -166,13 +170,14 @@
 .tool-section-header {
   font-weight: 600;
   margin-bottom: 5px;
-  color: #555;
+  color: var(--text-color);
+  opacity: 0.8;
   font-size: 12px;
   text-transform: uppercase;
 }
 
 .tool-args {
-  background-color: #f1f2f3;
+  background-color: var(--bot-message-bg);
   padding: 10px;
   border-radius: 4px;
   overflow-x: auto;
@@ -184,10 +189,10 @@
 }
 
 .tool-result {
-  background-color: #f8f9fa;
+  background-color: var(--accent-color);
   padding: 10px;
   border-radius: 4px;
-  border-left: 4px solid #5b9bd5;
+  border-left: 4px solid var(--secondary-color);
 }
 
 .tool-result p {

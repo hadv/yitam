@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  max-width: 800px;
+  max-width: 1000px;
   margin: 0 auto;
   padding: 20px;
   width: 100%;
@@ -12,37 +12,118 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-bottom: 20px;
   border-bottom: 1px solid var(--light-gray);
-  margin-bottom: 20px;
+  margin-bottom: 6px;
+  background-color: var(--accent-color);
+  border-radius: 4px;
+  padding: 1px 8px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.logo-container {
+  flex: 0 0 auto;
+  margin-right: 6px;
+  display: flex;
+  align-items: center;
+}
+
+.app-logo {
+  height: auto;
+  width: 280px;
+  max-width: 100%;
+  margin: -30px 0; /* Further increased negative margin */
+}
+
+.header-content {
+  flex: 1 1 auto;
+  margin: -8px 0;
 }
 
 .app-header h1 {
   font-size: 1.8rem;
   color: var(--primary-color);
   font-weight: 600;
+  margin: 0;
+  line-height: 0.9;
+}
+
+.app-tagline {
+  font-size: 0.9rem;
+  color: var(--primary-color);
+  opacity: 0.8;
+  margin: 0;
+  line-height: 0.9;
 }
 
 .connection-status {
-  padding: 6px 12px;
-  border-radius: 12px;
-  font-size: 0.8rem;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 0.65rem;
   font-weight: 500;
+  margin-left: 5px;
+  flex: 0 0 auto;
 }
 
 .connection-status.connected {
-  background-color: #dcfce7;
-  color: #166534;
+  background-color: rgba(120, 161, 97, 0.2);
+  color: var(--secondary-color);
 }
 
 .connection-status.disconnected {
-  background-color: #fee2e2;
-  color: #b91c1c;
+  background-color: rgba(188, 71, 73, 0.2);
+  color: #BC4749;
 }
 
 .chat-container {
   display: flex;
   flex-direction: column;
   flex-grow: 1;
-  height: calc(100vh - 100px);
+  height: calc(100vh - 65px);
+}
+
+@media (max-width: 768px) {
+  .app-header {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 5px 6px;
+    min-height: 90px; /* Ensure minimum height for content */
+  }
+  
+  .logo-container {
+    margin-right: 0;
+    margin-bottom: 1px;
+  }
+  
+  .app-logo {
+    width: 180px;
+    margin: -15px 0; /* Less negative margin to show more */
+  }
+  
+  .header-content {
+    margin: 0;
+    padding: 5px 0;
+  }
+  
+  .app-header h1 {
+    font-size: 1.3rem;
+    line-height: 1.1;
+    margin-bottom: 2px;
+  }
+  
+  .app-tagline {
+    font-size: 0.75rem;
+    line-height: 1.1;
+    display: block; /* Ensure block display */
+    white-space: normal; /* Allow wrapping */
+    max-width: 100%; /* Ensure it doesn't overflow */
+  }
+  
+  .connection-status {
+    margin-left: 0;
+    margin-top: 2px;
+    font-size: 0.6rem;
+    padding: 1px 4px;
+  }
 } 
