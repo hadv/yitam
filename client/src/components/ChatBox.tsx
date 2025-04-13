@@ -23,7 +23,7 @@ const ChatBox: React.FC<ChatBoxProps> = ({ messages }) => {
   return (
     <div className="chat-box">
       {messages.length === 0 ? (
-        <div className="empty-chat">Start a conversation with Claude!</div>
+        <div className="empty-chat">Xin chào! Yitam đang lắng nghe!</div>
       ) : (
         messages.map((message) => (
           <div 
