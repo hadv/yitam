@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
   --primary-color: #5D4A38; /* Brown from logo */
   --secondary-color: #78A161; /* Green from logo, slightly adjusted for better contrast */
