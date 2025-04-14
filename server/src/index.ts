@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import Anthropic from '@anthropic-ai/sdk';
 import { MCPClient } from './MCPClient';
 import { config } from './config';
+import { sampleQuestions } from './data/sampleQuestions';
 
 // Load environment variables
 dotenv.config();
@@ -59,6 +60,17 @@ if (process.env.MCP_SERVER_PATH && process.env.MCP_SERVER_PATH.trim() !== '') {
 // Socket.IO connection handler
 io.on('connection', (socket: Socket) => {
   console.log('A user connected:', socket.id);
+
+  // Send sample questions when requested
+  socket.on('get-sample-questions', (limit: number = 6) => {
+    console.log(`Sample questions requested with limit: ${limit}`);
+    
+    // Randomly select items from the sampleQuestions array
+    const shuffled = [...sampleQuestions].sort(() => 0.5 - Math.random());
+    const selectedQuestions = shuffled.slice(0, Math.min(limit, sampleQuestions.length));
+    
+    socket.emit('sample-questions', selectedQuestions);
+  });
 
   // Handle chat messages
   socket.on('chat-message', async (message: string) => {
