@@ -10,6 +10,7 @@ interface Message {
   id: string;
   text: string;
   isBot: boolean;
+  isStreaming?: boolean;
 }
 
 function App() {
@@ -40,11 +41,42 @@ function App() {
       console.log('Disconnected from server');
     });
 
+    // Handle old-style responses (for backward compatibility)
     newSocket.on('bot-response', (response: { text: string, id: string }) => {
       setMessages(prev => [
         ...prev,
         { id: response.id, text: response.text, isBot: true }
       ]);
+    });
+
+    // Handle the start of a streaming response
+    newSocket.on('bot-response-start', (response: { id: string }) => {
+      setMessages(prev => [
+        ...prev,
+        { id: response.id, text: '', isBot: true, isStreaming: true }
+      ]);
+    });
+
+    // Handle streaming chunks
+    newSocket.on('bot-response-chunk', (response: { text: string, id: string }) => {
+      setMessages(prev => 
+        prev.map(msg => 
+          msg.id === response.id 
+            ? { ...msg, text: msg.text + response.text }
+            : msg
+        )
+      );
+    });
+
+    // Handle end of streaming response
+    newSocket.on('bot-response-end', (response: { id: string }) => {
+      setMessages(prev => 
+        prev.map(msg => 
+          msg.id === response.id 
+            ? { ...msg, isStreaming: false }
+            : msg
+        )
+      );
     });
 
     setSocket(newSocket);
