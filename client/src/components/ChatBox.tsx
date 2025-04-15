@@ -6,6 +6,7 @@ interface Message {
   id: string;
   text: string;
   isBot: boolean;
+  isStreaming?: boolean;
 }
 
 interface ChatBoxProps {
@@ -34,6 +35,13 @@ const ChatBox: React.FC<ChatBoxProps> = ({ messages }) => {
               {message.isBot ? (
                 <div className="message-text">
                   <ToolCallParser text={message.text} />
+                  {message.isStreaming && (
+                    <span className="typing-indicator">
+                      <span className="dot"></span>
+                      <span className="dot"></span>
+                      <span className="dot"></span>
+                    </span>
+                  )}
                 </div>
               ) : (
                 <span className="message-text">{message.text}</span>

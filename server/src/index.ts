@@ -77,15 +77,24 @@ io.on('connection', (socket: Socket) => {
     try {
       console.log('Received message:', message);
       
-      let responseText = '';
+      // Generate a unique message ID for this response
+      const messageId = Date.now().toString();
+      
+      // Let the client know we're starting a response
+      socket.emit('bot-response-start', { id: messageId });
       
       // Check if MCP client is connected and use it if available
       if (mcpClient && mcpConnected) {
-        // Process message using MCP client
-        responseText = await mcpClient.processQuery(message);
+        // Process message using MCP client with streaming callback
+        await mcpClient.processQueryWithStreaming(message, (chunk) => {
+          socket.emit('bot-response-chunk', {
+            id: messageId,
+            text: chunk
+          });
+        });
       } else {
-        // Fallback to direct Claude API
-        const response = await anthropic.messages.create({
+        // Fallback to direct Claude API with streaming
+        const stream = await anthropic.messages.stream({
           model: config.model.name,
           max_tokens: config.model.maxTokens,
           messages: [
@@ -93,22 +102,42 @@ io.on('connection', (socket: Socket) => {
           ],
         });
 
-        // Extract text content from response
-        responseText = response.content[0].type === 'text' 
-          ? response.content[0].text 
-          : 'Received a non-text response';
+        for await (const chunk of stream) {
+          if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+            // Send each text chunk to the client
+            socket.emit('bot-response-chunk', {
+              id: messageId,
+              text: chunk.delta.text
+            });
+          }
+        }
       }
 
-      // Send response back to client
-      socket.emit('bot-response', {
-        text: responseText,
-        id: Date.now().toString(),
-      });
-    } catch (error) {
+      // Signal that the response is complete
+      socket.emit('bot-response-end', { id: messageId });
+    } catch (error: any) {
       console.error('Error processing message:', error);
+      
+      // Generate a unique message ID for the error response
+      const errorId = Date.now().toString();
+      
+      let errorMessage = 'Sorry, I encountered an error processing your request.';
+      
+      // Check for specific Claude API errors
+      if (error?.status === 529 || (error?.error?.type === "overloaded_error")) {
+        errorMessage = "Claude API is currently experiencing high traffic. Please try again in a few moments.";
+      } else if (error?.status === 400) {
+        errorMessage = "Sorry, there was an error processing your request. The input may be too long or contain unsupported content.";
+      } else if (error?.status === 401) {
+        errorMessage = "Authentication error. Please check your API key configuration.";
+      } else if (error?.status === 429) {
+        errorMessage = "Rate limit exceeded. Please try again later.";
+      }
+      
+      // Send error response directly (not streaming)
       socket.emit('bot-response', {
-        text: 'Sorry, I encountered an error processing your request.',
-        id: Date.now().toString(),
+        text: errorMessage,
+        id: errorId,
       });
     }
   });

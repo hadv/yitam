@@ -5,6 +5,7 @@ interface Message {
   id: string;
   text: string;
   isBot: boolean;
+  isStreaming?: boolean;
 }
 
 interface ChatBoxProps {
@@ -46,6 +47,13 @@ const TailwindChatBox: React.FC<ChatBoxProps> = ({ messages }) => {
               {message.isBot ? (
                 <div className="prose prose-sm max-w-none prose-headings:my-2 prose-headings:font-semibold prose-p:my-2 prose-ul:my-2 prose-ul:pl-6 prose-ol:my-2 prose-ol:pl-6 prose-li:my-1 prose-code:bg-[rgba(93,74,56,0.1)] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono prose-pre:bg-[rgba(93,74,56,0.1)] prose-pre:p-4 prose-pre:rounded-lg prose-pre:my-2 prose-pre:overflow-x-auto prose-pre:code:bg-transparent prose-pre:code:p-0">
                   <TailwindToolCallParser text={message.text} />
+                  {message.isStreaming && (
+                    <span className="inline-flex items-center ml-1.5">
+                      <span className="typing-dot"></span>
+                      <span className="typing-dot"></span>
+                      <span className="typing-dot"></span>
+                    </span>
+                  )}
                 </div>
               ) : (
                 <span>{message.text}</span>
@@ -66,6 +74,39 @@ const TailwindChatBox: React.FC<ChatBoxProps> = ({ messages }) => {
           to {
             opacity: 1;
             transform: translateY(0);
+          }
+        }
+        
+        .typing-dot {
+          display: inline-block;
+          width: 6px;
+          height: 6px;
+          margin: 0 2px;
+          background-color: #777;
+          border-radius: 50%;
+          animation: typing-animation 1.4s infinite ease-in-out both;
+        }
+        
+        .typing-dot:nth-child(1) {
+          animation-delay: 0s;
+        }
+        
+        .typing-dot:nth-child(2) {
+          animation-delay: 0.2s;
+        }
+        
+        .typing-dot:nth-child(3) {
+          animation-delay: 0.4s;
+        }
+        
+        @keyframes typing-animation {
+          0%, 80%, 100% { 
+            transform: scale(0.6);
+            opacity: 0.6;
+          }
+          40% { 
+            transform: scale(1);
+            opacity: 1;
           }
         }
         `}
