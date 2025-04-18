@@ -39,7 +39,7 @@ let mcpConnected = false;
 
 // Only try to connect to MCP if path is provided and not empty
 if (process.env.MCP_SERVER_PATH && process.env.MCP_SERVER_PATH.trim() !== '') {
-  mcpClient = new MCPClient(process.env.ANTHROPIC_API_KEY || '');
+  mcpClient = new MCPClient();
   mcpClient.connectToServer(process.env.MCP_SERVER_PATH)
     .then(connected => {
       mcpConnected = connected;
@@ -95,7 +95,7 @@ io.on('connection', (socket: Socket) => {
       } else {
         // Fallback to direct Claude API with streaming
         const stream = await anthropic.messages.stream({
-          model: config.model.name,
+          model: config.anthropic.modelName,
           max_tokens: config.model.maxTokens,
           messages: [
             { role: 'user', content: message }
