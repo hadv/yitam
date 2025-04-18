@@ -6,7 +6,7 @@ dotenv.config();
 export const config = {
   model: {
     name: process.env.ANTHROPIC_MODEL || 'claude-3-7-sonnet-20250219',
-    maxTokens: parseInt(process.env.MODEL_MAX_TOKENS || '1000'),
+    maxTokens: parseInt(process.env.MODEL_MAX_TOKENS || '10000'),
   },
   server: {
     port: parseInt(process.env.PORT || '5001'),
