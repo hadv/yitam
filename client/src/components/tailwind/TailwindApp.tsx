@@ -56,7 +56,12 @@ function TailwindApp() {
     newSocket.on('bot-response-start', (response: { id: string }) => {
       setMessages(prev => [
         ...prev,
-        { id: response.id, text: '', isBot: true, isStreaming: true }
+        { 
+          id: `bot-${response.id}`, 
+          text: '', 
+          isBot: true, 
+          isStreaming: true 
+        }
       ]);
     });
 
@@ -64,7 +69,7 @@ function TailwindApp() {
     newSocket.on('bot-response-chunk', (response: { text: string, id: string }) => {
       setMessages(prev => 
         prev.map(msg => 
-          msg.id === response.id 
+          msg.id === `bot-${response.id}` 
             ? { ...msg, text: msg.text + response.text }
             : msg
         )
@@ -75,7 +80,7 @@ function TailwindApp() {
     newSocket.on('bot-response-end', (response: { id: string }) => {
       setMessages(prev => 
         prev.map(msg => 
-          msg.id === response.id 
+          msg.id === `bot-${response.id}` 
             ? { ...msg, isStreaming: false }
             : msg
         )
@@ -95,7 +100,7 @@ function TailwindApp() {
     
     // Add user message to state
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: `user-${Date.now().toString()}`,
       text,
       isBot: false
     };

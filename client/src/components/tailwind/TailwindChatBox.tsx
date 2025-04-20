@@ -59,6 +59,9 @@ const TailwindChatBox: React.FC<ChatBoxProps> = ({ messages }) => {
                 <span>{message.text}</span>
               )}
             </div>
+            <div className="text-xs text-gray-500 ml-2 mt-1">
+              {message.isBot ? 'Yitam' : 'Bạn'}
+            </div>
           </div>
         ))
       )}

@@ -62,7 +62,11 @@ const TailwindSampleQuestions: React.FC<SampleQuestionsProps> = ({
         {displayQuestions.map((item, index) => (
           <button
             key={index}
-            onClick={() => onQuestionClick(item.question)}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onQuestionClick(item.question);
+            }}
             className="p-4 bg-white border border-[#E6DFD1] rounded-lg shadow-sm hover:shadow-md transition-all hover:scale-[1.02] text-left"
           >
             <h3 className="text-[#78A161] font-medium mb-2">{item.title}</h3>
