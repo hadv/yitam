@@ -276,8 +276,8 @@ export class MCPClient {
           const followUpResponse = await this.anthropic.messages.create({
             model: config.model.name,
             max_tokens: config.model.maxTokens,
-            system: "You must explicitly reference and incorporate the information from the tool results in your response. Summarize key findings and provide a coherent answer based on the tool outputs. Don't just acknowledge that tools were used - actually use the information they provided. If tool results are large, focus on the most relevant and important information.",
-            messages: [...this.conversationHistory], // Use complete history for follow-up
+            system: "You must explicitly reference and incorporate the information from the tool results in your response. Summarize key findings and provide a coherent answer based on the tool outputs. Don't just acknowledge that tools were used - actually use the information they provided. Ensure your response is complete - never stop mid-sentence. If tool results are large, focus on the most relevant and important information. When appropriate, generate relevant examples, samples, or exemplars to illustrate concepts and make your response more helpful. These self-generated examples should directly relate to the user's original query and demonstrate practical applications of the information.",
+            messages: [...this.conversationHistory], // Use the complete history
           });
 
           if (followUpResponse.content && followUpResponse.content.length > 0) {
@@ -438,7 +438,7 @@ export class MCPClient {
                     const followUpStream = await this.anthropic.messages.stream({
                       model: config.model.name,
                       max_tokens: config.model.maxTokens,
-                      system: "You must explicitly reference and incorporate the information from the tool results in your response. Summarize key findings and provide a coherent answer based on the tool outputs. Don't just acknowledge that tools were used - actually use the information they provided. Ensure your response is complete - never stop mid-sentence. If tool results are large, focus on the most relevant and important information.",
+                      system: "You must explicitly reference and incorporate the information from the tool results in your response. Summarize key findings and provide a coherent answer based on the tool outputs. Don't just acknowledge that tools were used - actually use the information they provided. Ensure your response is complete - never stop mid-sentence. If tool results are large, focus on the most relevant and important information. When appropriate, generate relevant examples, samples, or exemplars to illustrate concepts and make your response more helpful. These self-generated examples should directly relate to the user's original query and demonstrate practical applications of the information.",
                       messages: [...this.conversationHistory], // Use the complete history
                     });
                     
