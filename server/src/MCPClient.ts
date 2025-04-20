@@ -17,6 +17,13 @@ export class MCPClient {
   private toolSchemas: Map<string, any> = new Map();
   private conversationHistory: MessageParam[] = [];
   private chatId: string = '';
+  
+  // System messages for consistent prompting
+  private readonly FOLLOW_UP_SYSTEM_MESSAGE = "You must explicitly reference and incorporate the information from the tool results in your response. Summarize key findings and provide a coherent answer based on the tool outputs. Don't just acknowledge that tools were used - actually use the information they provided. Ensure your response is complete - never stop mid-sentence. If tool results are large, focus on the most relevant and important information. When appropriate, generate relevant examples, samples, or exemplars to illustrate concepts and make your response more helpful. These self-generated examples should directly relate to the user's original query and demonstrate practical applications of the information.";
+  
+  private readonly INITIAL_SYSTEM_MESSAGE = "You have access to various tools through the Model Context Protocol. Follow each tool's schema and provide all required parameters. For search-related tools, use reasonable limits where appropriate.";
+  
+  private readonly SEARCH_EXTRACTION_SYSTEM_MESSAGE = "Extract the core search intent from the user's message. Return only the essential keywords or a concise search query that would be effective for vector search, without any commentary or explanation. Focus on domain-specific terminology or key concepts.";
 
   // HTML escape functions for consistent use throughout the class
   private safeEscapeHtml(str: string): string {
@@ -276,8 +283,8 @@ export class MCPClient {
           const followUpResponse = await this.anthropic.messages.create({
             model: config.model.name,
             max_tokens: config.model.maxTokens,
-            system: "You must explicitly reference and incorporate the information from the tool results in your response. Summarize key findings and provide a coherent answer based on the tool outputs. Don't just acknowledge that tools were used - actually use the information they provided. If tool results are large, focus on the most relevant and important information.",
-            messages: [...this.conversationHistory], // Use complete history for follow-up
+            system: this.FOLLOW_UP_SYSTEM_MESSAGE,
+            messages: [...this.conversationHistory], // Use the complete history
           });
 
           if (followUpResponse.content && followUpResponse.content.length > 0) {
@@ -438,7 +445,7 @@ export class MCPClient {
                     const followUpStream = await this.anthropic.messages.stream({
                       model: config.model.name,
                       max_tokens: config.model.maxTokens,
-                      system: "You must explicitly reference and incorporate the information from the tool results in your response. Summarize key findings and provide a coherent answer based on the tool outputs. Don't just acknowledge that tools were used - actually use the information they provided. Ensure your response is complete - never stop mid-sentence. If tool results are large, focus on the most relevant and important information.",
+                      system: this.FOLLOW_UP_SYSTEM_MESSAGE,
                       messages: [...this.conversationHistory], // Use the complete history
                     });
                     
@@ -735,7 +742,7 @@ export class MCPClient {
     const extractionResponse = await this.anthropic.messages.create({
       model: config.model.name,
       max_tokens: 150,
-      system: "Extract the core search intent from the user's message. Return only the essential keywords or a concise search query that would be effective for vector search, without any commentary or explanation. Focus on domain-specific terminology or key concepts.",
+      system: this.SEARCH_EXTRACTION_SYSTEM_MESSAGE,
       messages: [{
         role: "user",
         content: query
@@ -755,7 +762,7 @@ export class MCPClient {
 
   // Helper method to build appropriate system message
   private buildSystemMessage(): string {
-    return "You have access to various tools through the Model Context Protocol. Follow each tool's schema and provide all required parameters. For search-related tools, use reasonable limits where appropriate.";
+    return this.INITIAL_SYSTEM_MESSAGE;
   }
 
   // Get the current chat ID
