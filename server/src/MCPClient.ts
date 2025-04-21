@@ -1,8 +1,8 @@
 import { Tool as AnthropicTool } from "@anthropic-ai/sdk/resources/messages/messages.mjs";
-import { Conversation } from './services/ConversationService';
-import { MCPServer } from './services/MCPServerService';
-import { Query } from './services/QueryService';
-import { Tool } from './services/ToolService';
+import { Conversation } from './services/Conversation';
+import { MCPServer } from './services/MCPServer';
+import { Query } from './services/Query';
+import { Tool } from './services/Tool';
 
 export class MCPClient {
   private conversation: Conversation;

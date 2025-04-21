@@ -1,9 +1,9 @@
 import { Anthropic } from "@anthropic-ai/sdk";
 import { config } from '../config';
 import { SystemPrompts } from '../constants/SystemPrompts';
-import { Conversation } from './ConversationService';
-import { MCPServer } from './MCPServerService';
-import { Tool } from './ToolService';
+import { Conversation } from './Conversation';
+import { MCPServer } from './MCPServer';
+import { Tool } from './Tool';
 
 export class Query {
   private anthropic: Anthropic;
