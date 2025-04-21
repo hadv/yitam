@@ -1,8 +1,8 @@
-import { Tool } from "@anthropic-ai/sdk/resources/messages/messages.mjs";
+import { Tool as AnthropicTool } from "@anthropic-ai/sdk/resources/messages/messages.mjs";
 import { HTMLFormatter } from "../utils/HTMLFormatter";
 
-export class ToolService {
-  private tools: Tool[] = [];
+export class Tool {
+  private tools: AnthropicTool[] = [];
   private toolSchemas: Map<string, any> = new Map();
 
   constructor() {}
@@ -133,7 +133,7 @@ export class ToolService {
   /**
    * Returns the list of registered tools
    */
-  getTools(): Tool[] {
+  getTools(): AnthropicTool[] {
     return this.tools;
   }
 } 

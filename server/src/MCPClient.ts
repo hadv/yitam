@@ -1,38 +1,38 @@
-import { Tool } from "@anthropic-ai/sdk/resources/messages/messages.mjs";
-import { ConversationService } from './services/ConversationService';
-import { MCPServerService } from './services/MCPServerService';
-import { QueryService } from './services/QueryService';
-import { ToolService } from './services/ToolService';
+import { Tool as AnthropicTool } from "@anthropic-ai/sdk/resources/messages/messages.mjs";
+import { Conversation } from './services/ConversationService';
+import { MCPServer } from './services/MCPServerService';
+import { Query } from './services/QueryService';
+import { Tool } from './services/ToolService';
 
 export class MCPClient {
-  private conversationService: ConversationService;
-  private mcpService: MCPServerService;
-  private toolService: ToolService;
-  private queryService: QueryService;
+  private conversation: Conversation;
+  private mcpServer: MCPServer;
+  private tool: Tool;
+  private query: Query;
   
   constructor(apiKey: string) {
-    this.conversationService = new ConversationService();
-    this.mcpService = new MCPServerService();
-    this.toolService = new ToolService();
-    this.queryService = new QueryService(
+    this.conversation = new Conversation();
+    this.mcpServer = new MCPServer();
+    this.tool = new Tool();
+    this.query = new Query(
       apiKey,
-      this.conversationService,
-      this.mcpService,
-      this.toolService
+      this.conversation,
+      this.mcpServer,
+      this.tool
     );
   }
 
   async connectToServer(serverScriptPath: string): Promise<boolean> {
     try {
-      const { success, tools } = await this.mcpService.connectToServer(serverScriptPath);
+      const { success, tools } = await this.mcpServer.connectToServer(serverScriptPath);
       
       if (success && tools) {
         // Register tools with the tool service
-        this.toolService.registerTools(tools);
+        this.tool.registerTools(tools);
         
         console.log(
           "Connected to server with tools:",
-          this.toolService.getTools().map(({ name }) => name)
+          this.tool.getTools().map(({ name }) => name)
         );
         return true;
       }
@@ -45,38 +45,38 @@ export class MCPClient {
   }
 
   startNewChat(): string {
-    return this.conversationService.startNewChat();
+    return this.conversation.startNewChat();
   }
 
   addToExistingChat(chatId: string, message: any): boolean {
-    return this.conversationService.addToExistingChat(chatId, message);
+    return this.conversation.addToExistingChat(chatId, message);
   }
 
   async processQuery(query: string, chatId?: string): Promise<string> {
-    return this.queryService.processQuery(query, chatId);
+    return this.query.processQuery(query, chatId);
   }
 
   async processQueryWithStreaming(query: string, callback: (chunk: string) => void, chatId?: string): Promise<void> {
-    return this.queryService.processQueryWithStreaming(query, callback, chatId);
+    return this.query.processQueryWithStreaming(query, callback, chatId);
   }
 
-  getTools(): Tool[] {
-    return this.toolService.getTools();
+  getTools(): AnthropicTool[] {
+    return this.tool.getTools();
   }
 
   isConnected(): boolean {
-    return this.mcpService.isConnected();
+    return this.mcpServer.isConnected();
   }
   
   getCurrentChatId(): string {
-    return this.conversationService.getCurrentChatId();
+    return this.conversation.getCurrentChatId();
   }
   
   getConversationHistory(): any[] {
-    return this.conversationService.getConversationHistory();
+    return this.conversation.getConversationHistory();
   }
   
   clearConversationHistory(): void {
-    this.conversationService.clearConversationHistory();
+    this.conversation.clearConversationHistory();
   }
 } 

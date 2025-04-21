@@ -1,26 +1,26 @@
 import { Anthropic } from "@anthropic-ai/sdk";
 import { config } from '../config';
 import { SystemPrompts } from '../constants/SystemPrompts';
-import { ConversationService } from './ConversationService';
-import { MCPServerService } from './MCPServerService';
-import { ToolService } from './ToolService';
+import { Conversation } from './ConversationService';
+import { MCPServer } from './MCPServerService';
+import { Tool } from './ToolService';
 
-export class QueryService {
+export class Query {
   private anthropic: Anthropic;
-  private conversationService: ConversationService;
-  private mcpService: MCPServerService;
-  private toolService: ToolService;
+  private conversation: Conversation;
+  private mcpServer: MCPServer;
+  private tool: Tool;
   
   constructor(
     apiKey: string,
-    conversationService: ConversationService,
-    mcpService: MCPServerService,
-    toolService: ToolService
+    conversation: Conversation,
+    mcpServer: MCPServer,
+    tool: Tool
   ) {
     this.anthropic = new Anthropic({ apiKey });
-    this.conversationService = conversationService;
-    this.mcpService = mcpService;
-    this.toolService = toolService;
+    this.conversation = conversation;
+    this.mcpServer = mcpServer;
+    this.tool = tool;
   }
   
   /**
@@ -64,7 +64,7 @@ export class QueryService {
     }
     
     // Enrich the tool arguments with additional context
-    const enrichedArgs = this.toolService.enrichToolArguments(
+    const enrichedArgs = this.tool.enrichToolArguments(
       toolName,
       toolArgs,
       searchQuery
@@ -77,7 +77,7 @@ export class QueryService {
     console.log(`Calling tool: ${toolName} with args:`, JSON.stringify(enrichedArgs, null, 2));
 
     try {
-      const toolResult = await this.mcpService.callTool(toolName, enrichedArgs);
+      const toolResult = await this.mcpServer.callTool(toolName, enrichedArgs);
       
       // Convert result content to string
       let resultContent = typeof toolResult.content === 'object' 
@@ -93,7 +93,7 @@ export class QueryService {
       }
       
       // Format the tool call as HTML
-      const formattedToolCall = this.toolService.formatToolCall(
+      const formattedToolCall = this.tool.formatToolCall(
         toolName,
         enrichedArgs,
         resultContent,
@@ -107,7 +107,7 @@ export class QueryService {
       // Create a formatted error response
       const errorMessage = error instanceof Error ? error.message : String(error);
       
-      const formattedToolCall = this.toolService.formatToolCall(
+      const formattedToolCall = this.tool.formatToolCall(
         toolName,
         enrichedArgs,
         `Error: ${errorMessage}`,
@@ -127,23 +127,23 @@ export class QueryService {
    */
   async processQuery(query: string, chatId?: string): Promise<string> {
     // Check if this is part of an existing chat or a new one
-    if (chatId && chatId === this.conversationService.getCurrentChatId()) {
+    if (chatId && chatId === this.conversation.getCurrentChatId()) {
       console.log(`Adding to existing chat: ${chatId}`);
-      this.conversationService.addUserMessage(query);
+      this.conversation.addUserMessage(query);
     } else {
       // Start a new chat with this query
-      this.conversationService.startNewChat();
+      this.conversation.startNewChat();
       console.log(`Starting new chat with query: ${query.substring(0, 50)}...`);
-      this.conversationService.addUserMessage(query);
+      this.conversation.addUserMessage(query);
     }
     
     // Use the complete conversation history for context
-    const messages = this.conversationService.getConversationHistory();
+    const messages = this.conversation.getConversationHistory();
     console.log(`Using conversation history with ${messages.length} messages`);
 
     try {
       const searchQuery = await this._determineSearchQuery(query);
-      const tools = this.toolService.getTools();
+      const tools = this.tool.getTools();
 
       const response = await this.anthropic.messages.create({
         model: config.model.name,
@@ -160,28 +160,28 @@ export class QueryService {
         if (content.type === "text") {
           finalText.push(content.text);
           // Add assistant's response to conversation history
-          this.conversationService.addAssistantMessage(content.text);
+          this.conversation.addAssistantMessage(content.text);
         } else if (content.type === "tool_use") {
           const { toolResult, formattedToolCall } = await this._handleToolUse(content, searchQuery);
           toolResults.push(toolResult);
           finalText.push(formattedToolCall);
 
           // Add tool interactions to conversation history
-          this.conversationService.addToolUseMessage(content.id, content.name, content.input);
-          this.conversationService.addToolResultMessage(content.id, toolResult.content);
+          this.conversation.addToolUseMessage(content.id, content.name, content.input);
+          this.conversation.addToolResultMessage(content.id, toolResult.content);
 
           const followUpResponse = await this.anthropic.messages.create({
             model: config.model.name,
             max_tokens: config.model.maxTokens,
             system: SystemPrompts.FOLLOW_UP,
-            messages: this.conversationService.getConversationHistory(),
+            messages: this.conversation.getConversationHistory(),
           });
 
           if (followUpResponse.content && followUpResponse.content.length > 0) {
             if (followUpResponse.content[0].type === "text") {
               finalText.push(followUpResponse.content[0].text);
               // Add follow-up response to conversation history
-              this.conversationService.addAssistantMessage(followUpResponse.content[0].text);
+              this.conversation.addAssistantMessage(followUpResponse.content[0].text);
             }
           } else {
             console.log("Follow-up response has no content");
@@ -210,23 +210,23 @@ export class QueryService {
     };
     
     // Check if this is part of an existing chat or a new one
-    if (chatId && chatId === this.conversationService.getCurrentChatId()) {
+    if (chatId && chatId === this.conversation.getCurrentChatId()) {
       console.log(`Adding to existing chat (streaming): ${chatId}`);
-      this.conversationService.addUserMessage(query);
+      this.conversation.addUserMessage(query);
     } else {
       // Start a new chat with this query
-      this.conversationService.startNewChat();
+      this.conversation.startNewChat();
       console.log(`Starting new chat with query (streaming): ${query.substring(0, 50)}...`);
-      this.conversationService.addUserMessage(query);
+      this.conversation.addUserMessage(query);
     }
     
     // Use the complete conversation history for context
-    const messages = this.conversationService.getConversationHistory();
+    const messages = this.conversation.getConversationHistory();
     console.log(`Using conversation history with ${messages.length} messages (streaming)`);
 
     try {
       const searchQuery = await this._determineSearchQuery(query);
-      const tools = this.toolService.getTools();
+      const tools = this.tool.getTools();
 
       let stream: AsyncIterable<any>;
       try {
@@ -264,7 +264,7 @@ export class QueryService {
           } else if (chunk.type === 'message_stop') {
             // If we have collected text from the assistant, add it to history
             if (assistantResponse) {
-              this.conversationService.addAssistantMessage(assistantResponse);
+              this.conversation.addAssistantMessage(assistantResponse);
               console.log(`Added assistant text response to history (${assistantResponse.length} chars)`);
             }
             
@@ -278,8 +278,8 @@ export class QueryService {
                 callback(formattedToolCall);
                 
                 // Add tool interactions to conversation history
-                this.conversationService.addToolUseMessage(toolUse.id, toolUse.name, toolUse.input);
-                this.conversationService.addToolResultMessage(toolUse.id, toolResult.content);
+                this.conversation.addToolUseMessage(toolUse.id, toolUse.name, toolUse.input);
+                this.conversation.addToolResultMessage(toolUse.id, toolResult.content);
                 
                 console.log(`Added tool call and result to history for ${toolUse.name}`);
               } catch (toolError) {
@@ -312,7 +312,7 @@ export class QueryService {
                       model: config.model.name,
                       max_tokens: config.model.maxTokens,
                       system: SystemPrompts.FOLLOW_UP,
-                      messages: this.conversationService.getConversationHistory(),
+                      messages: this.conversation.getConversationHistory(),
                     });
                     
                     let hasReceivedContent = false;
@@ -409,7 +409,7 @@ export class QueryService {
                 
                 // If we have a successful response, add it to conversation history
                 if (bestResponseBuffer) {
-                  this.conversationService.addAssistantMessage(bestResponseBuffer);
+                  this.conversation.addAssistantMessage(bestResponseBuffer);
                   console.log(`Added follow-up response to history (${bestResponseBuffer.length} chars)`);
                 }
                 

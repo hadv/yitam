@@ -3,7 +3,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import * as fs from 'fs';
 import * as path from 'path';
 
-export class MCPServerService {
+export class MCPServer {
   private mcp: Client;
   private transport: StdioClientTransport | null = null;
   

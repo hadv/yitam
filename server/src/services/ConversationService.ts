@@ -1,6 +1,6 @@
 import { MessageParam, ContentBlockParam } from "@anthropic-ai/sdk/resources/messages/messages.mjs";
 
-export class ConversationService {
+export class Conversation {
   private conversationHistory: MessageParam[] = [];
   private chatId: string = '';
   
