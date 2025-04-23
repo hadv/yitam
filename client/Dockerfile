@@ -12,10 +12,27 @@ RUN npm run build
 
 FROM nginx:alpine
 
-COPY --from=build /app/dist /usr/share/nginx/html
+# Install required packages
+RUN apk add --no-cache logrotate
 
+# Copy Nginx configurations
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY conf.d/blacklist.conf /etc/nginx/conf.d/blacklist.conf
+COPY nginx-logrotate.conf /etc/logrotate.d/nginx
 
-EXPOSE 80 443
+# Create log directory and set permissions
+RUN mkdir -p /var/log/nginx && \
+    chown -R nginx:nginx /var/log/nginx && \
+    chmod -R 750 /var/log/nginx
 
-CMD ["nginx", "-g", "daemon off;"] 
+# Copy and set up log rotation script
+COPY setup-logrotate.sh /usr/local/bin/setup-logrotate.sh
+RUN chmod +x /usr/local/bin/setup-logrotate.sh && \
+    /usr/local/bin/setup-logrotate.sh
+
+# Create a script to start Nginx and logrotate
+COPY start.sh /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/start.sh
+
+# Use the start script as the entrypoint
+ENTRYPOINT ["/usr/local/bin/start.sh"] 
