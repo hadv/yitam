@@ -4,12 +4,18 @@ import { SystemPrompts } from '../constants/SystemPrompts';
 import { Conversation } from './Conversation';
 import { MCPServer } from './MCPServer';
 import { Tool } from './Tool';
+import { ModerationService } from './ModerationService';
 
 export class Query {
   private anthropic: Anthropic;
   private conversation: Conversation;
   private mcpServer: MCPServer;
   private tool: Tool;
+  private moderationService: ModerationService;
+  private readonly MAX_QUERY_LENGTH = 1000;
+  private readonly RATE_LIMIT_WINDOW = 60000; // 1 minute
+  private readonly MAX_REQUESTS_PER_WINDOW = 10;
+  private requestTimestamps: number[] = [];
   
   constructor(
     apiKey: string,
@@ -21,6 +27,58 @@ export class Query {
     this.conversation = conversation;
     this.mcpServer = mcpServer;
     this.tool = tool;
+    this.moderationService = new ModerationService(apiKey);
+  }
+  
+  /**
+   * Check if the query violates content guidelines
+   */
+  private async _checkContentSafety(content: string): Promise<{ isSafe: boolean; reason?: string }> {
+    try {
+      // Check length limits first
+      if (content.length > this.MAX_QUERY_LENGTH) {
+        return { isSafe: false, reason: "Query exceeds maximum length" };
+      }
+
+      // Use the moderation service for content analysis
+      const moderationResult = await this.moderationService.moderateContent(content);
+      
+      if (!moderationResult.isSafe) {
+        // Log the specific categories that were flagged
+        const flaggedCategories = Object.entries(moderationResult.categories)
+          .filter(([_, value]) => value)
+          .map(([key]) => key)
+          .join(', ');
+        
+        console.log(`Content moderation flagged categories: ${flaggedCategories}`);
+        return { 
+          isSafe: false, 
+          reason: moderationResult.reason || `Content contains prohibited material (${flaggedCategories})` 
+        };
+      }
+      
+      return { isSafe: true };
+    } catch (error) {
+      console.error("Error in content safety check:", error);
+      return { isSafe: false, reason: "Error during safety check" };
+    }
+  }
+
+  /**
+   * Check rate limiting
+   */
+  private _checkRateLimit(): { allowed: boolean; reason?: string } {
+    const now = Date.now();
+    this.requestTimestamps = this.requestTimestamps.filter(
+      timestamp => now - timestamp < this.RATE_LIMIT_WINDOW
+    );
+
+    if (this.requestTimestamps.length >= this.MAX_REQUESTS_PER_WINDOW) {
+      return { allowed: false, reason: "Rate limit exceeded" };
+    }
+
+    this.requestTimestamps.push(now);
+    return { allowed: true };
   }
   
   /**
@@ -63,6 +121,12 @@ export class Query {
       throw new Error(`No arguments provided for tool: ${toolName}`);
     }
     
+    // Validate tool name
+    const validTools = this.tool.getTools().map(t => t.name);
+    if (!validTools.includes(toolName)) {
+      throw new Error(`Invalid tool name: ${toolName}`);
+    }
+    
     // Enrich the tool arguments with additional context
     const enrichedArgs = this.tool.enrichToolArguments(
       toolName,
@@ -70,7 +134,7 @@ export class Query {
       searchQuery
     );
 
-    // Set maximum result size limits - increased for larger tool outputs
+    // Set maximum result size limits
     const maxResultLength = 1000000; // 1MB max for tool results
     
     // Log the tool call for debugging
@@ -78,6 +142,15 @@ export class Query {
 
     try {
       const toolResult = await this.mcpServer.callTool(toolName, enrichedArgs);
+      
+      // Validate tool result structure
+      if (!toolResult || typeof toolResult !== 'object') {
+        throw new Error(`Invalid tool result structure from ${toolName}`);
+      }
+
+      if (!('content' in toolResult)) {
+        throw new Error(`Tool result missing required 'content' field`);
+      }
       
       // Convert result content to string
       let resultContent = typeof toolResult.content === 'object' 
@@ -90,6 +163,12 @@ export class Query {
         console.warn(`Large tool result (${resultContent.length} chars) will be truncated`);
         resultContent = resultContent.substring(0, maxResultLength) + 
           "\n\n[Note: The complete result was too large to display in full. This is a truncated version.]";
+      }
+
+      // Check content safety of tool result
+      const safetyCheck = await this._checkContentSafety(resultContent);
+      if (!safetyCheck.isSafe) {
+        resultContent = `[Content safety check failed: ${safetyCheck.reason}]`;
       }
       
       // Format the tool call as HTML
@@ -126,6 +205,18 @@ export class Query {
    * Process a query without streaming
    */
   async processQuery(query: string, chatId?: string): Promise<string> {
+    // Check rate limiting
+    const rateLimitCheck = this._checkRateLimit();
+    if (!rateLimitCheck.allowed) {
+      return "Rate limit exceeded. Please try again later.";
+    }
+
+    // Check content safety
+    const safetyCheck = await this._checkContentSafety(query);
+    if (!safetyCheck.isSafe) {
+      return `I apologize, but I cannot process this request. ${safetyCheck.reason}`;
+    }
+
     // Check if this is part of an existing chat or a new one
     if (chatId && chatId === this.conversation.getCurrentChatId()) {
       console.log(`Adding to existing chat: ${chatId}`);
