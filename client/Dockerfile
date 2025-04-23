@@ -20,6 +20,9 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY conf.d/blacklist.conf /etc/nginx/conf.d/blacklist.conf
 COPY nginx-logrotate.conf /etc/logrotate.d/nginx
 
+# Copy the built frontend files
+COPY --from=build /app/dist /usr/share/nginx/html
+
 # Create log directory and set permissions
 RUN mkdir -p /var/log/nginx && \
     chown -R nginx:nginx /var/log/nginx && \
