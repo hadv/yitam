@@ -1,5 +1,9 @@
 FROM node:20-alpine as build
 
+# Add build arguments
+ARG VITE_SERVER_URL
+ENV VITE_SERVER_URL=${VITE_SERVER_URL}
+
 WORKDIR /app
 
 COPY package*.json ./

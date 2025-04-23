@@ -31,6 +31,8 @@ services:
     build:
       context: ./client
       dockerfile: Dockerfile
+      args:
+        - VITE_SERVER_URL=https://yitam.org
     ports:
       - "80:80"
       - "443:443"
