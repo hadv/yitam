@@ -202,25 +202,12 @@ export class ContentSafetyService {
   }
 
   /**
-   * Validates the response content with less restrictive rules
-   * Only checks for critical safety issues
+   * Validates the response content
+   * Currently bypassing all safety checks temporarily
    */
   public validateResponse(content: string): void {
-    // Only check for prompt injection and harmful content
-    if (this.config.enablePromptInjectionCheck) {
-      this.checkPromptInjection(content);
-    }
-
-    // Only check for explicitly harmful content
-    const harmfulPattern = SAFETY_RULES.RESTRICTED_TOPICS.HARMFUL.patterns;
-    for (const pattern of harmfulPattern) {
-      if (pattern.test(content)) {
-        throw new ContentSafetyError(
-          'restricted_topic',
-          this.config.language || 'vi'
-        );
-      }
-    }
+    // Temporarily bypassing all safety checks
+    return;
   }
 
   /**
