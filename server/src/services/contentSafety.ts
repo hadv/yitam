@@ -1,4 +1,5 @@
 import { ContentSafetyError } from '../utils/errors';
+import { Language } from '../types';
 
 // Define unified safety rules
 const SAFETY_RULES = {
@@ -112,41 +113,92 @@ const SAFETY_RULES = {
 
   // Prompt injection prevention
   PROMPT_INJECTION: {
+    TEMPLATE_LITERAL: {
+      name: 'Template Literal Injection',
+      patterns: [
+        /\$\{.*\}/i,
+        /\{\{.*\}\}/i,
+        /Ignore previous instructions/i,
+        /Disregard (all )?previous instructions/i,
+        /You (are|must) now (act as|be) (a different|an unrestricted) AI/i,
+        /Switch to system mode/i,
+        /Forget your (previous )?training/i,
+        /system:\s*override/i
+      ],
+      message: {
+        en: 'Potential template literal injection detected',
+        vi: 'Phát hiện mã độc template literal tiềm ẩn'
+      }
+    },
+    ENVIRONMENT: {
+      name: 'Environment Variable Injection',
+      patterns: [
+        /process\.env\./i,
+        /\$[A-Z_]+/i
+      ],
+      message: {
+        en: 'Potential environment variable injection detected',
+        vi: 'Phát hiện mã độc biến môi trường tiềm ẩn'
+      }
+    },
     SYSTEM_PROMPT: {
       name: 'system_prompt_leak',
       patterns: [
-        /system:\s*prompt/i,
-        /you\s+are\s+a[n]?\s+AI/i,
-        /you\s+are\s+claude/i,
-        /ignore\s+(?:previous|above).*instructions/i,
-        /disregard.*(?:previous|above).*instructions/i,
-        /forget.*(?:previous|above).*instructions/i,
+        /system prompt/i,
+        /system instructions/i,
+        /system message/i,
+        /assistant instructions/i,
+        /assistant guidelines/i,
+        /assistant rules/i,
+        /assistant role/i,
+        /assistant behavior/i,
+        /assistant configuration/i,
+        /assistant settings/i,
+        /Ignore previous instructions/i,
+        /Disregard (all )?previous instructions/i,
+        /You (are|must) now (act as|be) (a different|an unrestricted) AI/i,
+        /Switch to system mode/i,
+        /Forget your (previous )?training/i,
+        /system:\s*override/i
       ],
+      message: {
+        en: 'Potential system prompt leak detected',
+        vi: 'Phát hiện rò rỉ system prompt tiềm ẩn'
+      }
     },
-    ROLE_PLAYING: {
-      name: 'role_playing',
+    FUNCTION_LEAK: {
+      name: 'function_leak',
       patterns: [
-        /as\s+(?:a|an)\s+system/i,
-        /you\s+(?:are|will|must)\s+(?:now|to)\s+act\s+as/i,
-        /switch\s+to\s+(?:role|mode)/i,
+        /available functions/i,
+        /function description/i,
+        /function parameters/i,
+        /function schema/i,
+        /function list/i,
+        /tool description/i,
+        /tool parameters/i,
+        /tool schema/i,
+        /tool list/i,
       ],
+      message: {
+        en: 'Potential function information leak detected',
+        vi: 'Phát hiện rò rỉ thông tin function tiềm ẩn'
+      }
     },
-    DELIMITERS: {
-      name: 'delimiter_injection',
+    CONVERSATION_LEAK: {
+      name: 'conversation_leak',
       patterns: [
-        /<(?:system|assistant|user|human)>/i,
-        /```(?:system|assistant|user|human)/i,
-        /\[(?:system|assistant|user|human)\]/i,
+        /conversation history/i,
+        /chat history/i,
+        /message history/i,
+        /previous messages/i,
+        /earlier messages/i,
+        /past messages/i,
       ],
-    },
-    COMMANDS: {
-      name: 'command_injection',
-      patterns: [
-        /\$\{.*?\}/g,  // Template literal injection
-        /\{\{.*?\}\}/g, // Handlebars-style injection
-        /%[a-zA-Z][a-zA-Z0-9_]*%/g, // Environment variable style
-      ],
-    },
+      message: {
+        en: 'Potential conversation history leak detected',
+        vi: 'Phát hiện rò rỉ lịch sử hội thoại tiềm ẩn'
+      }
+    }
   },
 
   // Suspicious Unicode ranges
@@ -205,10 +257,21 @@ export class ContentSafetyService {
    * Validates the response content
    * Only checks for prompt injection attempts
    */
-  public validateResponse(content: string): void {
-    // Only check for prompt injection
-    if (this.config.enablePromptInjectionCheck) {
-      this.checkPromptInjection(content);
+  public validateResponse(content: string, language: Language): void {
+    // Check for prompt injection
+    if (this.containsPromptInjection(content)) {
+      throw new ContentSafetyError(
+        SAFETY_RULES.PROMPT_INJECTION.TEMPLATE_LITERAL.message[language],
+        language
+      );
+    }
+
+    // Check for harmful content
+    if (this.containsHarmfulContent(content)) {
+      throw new ContentSafetyError(
+        SAFETY_RULES.RESTRICTED_TOPICS.HARMFUL.message[language],
+        language
+      );
     }
   }
 
@@ -315,6 +378,20 @@ export class ContentSafetyService {
     }).join('');
     
     return content.replace(new RegExp(`[${suspicious}]`, 'g'), '');
+  }
+
+  private containsPromptInjection(content: string): boolean {
+    // Check all prompt injection patterns, including system prompt patterns
+    return Object.values(SAFETY_RULES.PROMPT_INJECTION).some(rule =>
+      rule.patterns.some(pattern => pattern.test(content))
+    ) || SAFETY_RULES.PROMPT_INJECTION.SYSTEM_PROMPT.patterns.some(pattern => 
+      pattern.test(content)
+    );
+  }
+
+  private containsHarmfulContent(content: string): boolean {
+    const harmfulRule = SAFETY_RULES.RESTRICTED_TOPICS.HARMFUL;
+    return harmfulRule.patterns.some(pattern => pattern.test(content));
   }
 }
 

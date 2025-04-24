@@ -6,39 +6,39 @@ export interface SampleQuestion {
 
 export const sampleQuestions: SampleQuestion[] = [
   {
-    title: "Đau đầu",
-    question: "Tôi bị đau đầu thường xuyên, có cách nào chữa theo YHCT không?"
+    title: "Thói quen lành mạnh",
+    question: "Những thói quen sinh hoạt lành mạnh nào tốt cho sức khỏe?"
   },
   {
-    title: "Mất ngủ",
-    question: "Làm thế nào để chữa chứng mất ngủ theo y học cổ truyền?"
+    title: "Giấc ngủ",
+    question: "Làm thế nào để có thói quen ngủ tốt hơn?"
   },
   {
-    title: "Đau dạ dày",
-    question: "Tôi hay bị đau dạ dày, YHCT có phương pháp nào điều trị không?"
+    title: "Ăn uống",
+    question: "Những thực phẩm nào tốt cho sức khỏe theo quan điểm YHCT?"
   },
   {
-    title: "Stress",
-    question: "Có cách nào giảm stress theo YHCT không?"
+    title: "Thư giãn",
+    question: "Có những phương pháp thư giãn nào hiệu quả không?"
   },
   {
-    title: "Ho khan",
-    question: "Em bé nhà tôi bị ho khan, có thể điều trị bằng YHCT không?"
+    title: "Trà thảo mộc",
+    question: "Những loại trà thảo mộc nào tốt cho sức khỏe?"
   },
   {
-    title: "Đau lưng",
-    question: "Tôi bị đau lưng mãn tính, YHCT có giải pháp nào không?"
+    title: "Tập luyện",
+    question: "Những bài tập nào phù hợp để duy trì sức khỏe?"
   },
   {
-    title: "Tiêu hóa",
-    question: "Làm sao để cải thiện tiêu hóa theo YHCT?"
+    title: "Dinh dưỡng",
+    question: "Làm sao để cân bằng dinh dưỡng trong bữa ăn hàng ngày?"
   },
   {
-    title: "Huyết áp",
-    question: "YHCT có cách nào điều hòa huyết áp không?"
+    title: "Thiền định",
+    question: "Thiền định có những lợi ích gì cho sức khỏe?"
   },
   {
-    title: "Mệt mỏi",
-    question: "Tôi hay bị mệt mỏi, theo YHCT thì nên làm gì?"
+    title: "Năng lượng",
+    question: "Làm thế nào để duy trì năng lượng tích cực trong ngày?"
   }
 ]; 
