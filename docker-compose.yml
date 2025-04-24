@@ -5,8 +5,6 @@ services:
     build:
       context: ../yitam-mcp
       dockerfile: Dockerfile
-      args:
-        - NODE_ENV=production
     volumes:
       - yitam-mcp-dist:/app/dist
 

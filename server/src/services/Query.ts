@@ -12,7 +12,6 @@ export class Query {
   private mcpServer: MCPServer;
   private tool: Tool;
   private moderationService: ModerationService;
-  private readonly MAX_QUERY_LENGTH = 1000;
   private readonly RATE_LIMIT_WINDOW = 60000; // 1 minute
   private readonly MAX_REQUESTS_PER_WINDOW = 10;
   private requestTimestamps: number[] = [];
@@ -35,11 +34,6 @@ export class Query {
    */
   private async _checkContentSafety(content: string): Promise<{ isSafe: boolean; reason?: string }> {
     try {
-      // Check length limits first
-      if (content.length > this.MAX_QUERY_LENGTH) {
-        return { isSafe: false, reason: "Query exceeds maximum length" };
-      }
-
       // Use the moderation service for content analysis
       const moderationResult = await this.moderationService.moderateContent(content);
       
