@@ -1,0 +1,17 @@
+[Unit]
+Description=Docker Nginx Security Monitor
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/docker-security-monitor.sh
+Restart=always
+RestartSec=60
+
+# No need for root, just need docker access
+User=YOUR_USERNAME
+Group=docker
+
+[Install]
+WantedBy=multi-user.target 
