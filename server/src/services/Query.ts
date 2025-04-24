@@ -35,11 +35,6 @@ export class Query {
    */
   private async _checkContentSafety(content: string): Promise<{ isSafe: boolean; reason?: string }> {
     try {
-      // Check length limits first
-      if (content.length > this.MAX_QUERY_LENGTH) {
-        return { isSafe: false, reason: "Query exceeds maximum length" };
-      }
-
       // Use the moderation service for content analysis
       const moderationResult = await this.moderationService.moderateContent(content);
       
