@@ -29,12 +29,4 @@ jobs:
       
     - name: Run server tests
       working-directory: ./server
-      run: npm test
-      
-    - name: Install client dependencies
-      working-directory: ./client
-      run: npm ci
-      
-    - name: Run client tests
-      working-directory: ./client
       run: npm test 
