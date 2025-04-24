@@ -12,7 +12,6 @@ export class Query {
   private mcpServer: MCPServer;
   private tool: Tool;
   private moderationService: ModerationService;
-  private readonly MAX_QUERY_LENGTH = 1000;
   private readonly RATE_LIMIT_WINDOW = 60000; // 1 minute
   private readonly MAX_REQUESTS_PER_WINDOW = 10;
   private requestTimestamps: number[] = [];
