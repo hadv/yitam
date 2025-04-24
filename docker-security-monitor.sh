@@ -5,6 +5,8 @@ NGINX_CONTAINER_NAME="client"  # Our nginx container name from docker-compose
 DOCKER_LOG_OPTS="--since 1m"  # Only check logs from the last minute
 BLACKLIST_FILE="./blacklist.conf"  # Store blacklist in the mounted volume
 TEMP_IP_LIST="/tmp/malicious_ips.txt"
+TEMP_REAL_IP_LIST="/tmp/malicious_real_ips.txt"
+TEMP_PROXY_IP_LIST="/tmp/malicious_proxy_ips.txt"
 MAX_REQUESTS=100  # Maximum requests per minute
 ERROR_THRESHOLD=10  # Number of 4xx/5xx errors before considering IP suspicious
 SCAN_INTERVAL=60  # Check every 60 seconds
@@ -50,27 +52,87 @@ get_nginx_logs() {
     docker logs $DOCKER_LOG_OPTS "$NGINX_CONTAINER_NAME" 2>/dev/null
 }
 
+# Extract IPs from X-Forwarded-For header
+extract_forwarded_ips() {
+    local log_line="$1"
+    echo "$log_line" | grep -o 'Forwarded-For: [^"]*' | cut -d' ' -f2- | tr ',' '\n' | tr -d ' '
+}
+
+# Extract Real IP from logs
+extract_real_ip() {
+    local log_line="$1"
+    echo "$log_line" | grep -o 'Real-IP: [^ ]*' | cut -d' ' -f2
+}
+
 # Monitor for suspicious activity
 monitor_suspicious_activity() {
     # Get recent logs from the container
     get_nginx_logs > "$TEMP_IP_LIST.raw"
 
-    # Check for high frequency requests
+    # Process both real IPs and proxy IPs
+    while IFS= read -r line; do
+        # Extract and store real IP
+        real_ip=$(extract_real_ip "$line")
+        if [ ! -z "$real_ip" ]; then
+            echo "$real_ip" >> "$TEMP_REAL_IP_LIST.raw"
+        fi
+        
+        # Extract and store proxy IPs
+        extract_forwarded_ips "$line" >> "$TEMP_PROXY_IP_LIST.raw"
+        
+        # Store original remote addr
+        echo "$line" | awk '{print $1}' >> "$TEMP_IP_LIST.raw"
+    done < "$TEMP_IP_LIST.raw"
+
+    # Check for high frequency requests across all IP types
     echo "Checking for high frequency requests..."
-    awk '{print $1}' "$TEMP_IP_LIST.raw" | \
-        sort | uniq -c | sort -nr | \
-        awk -v threshold=$MAX_REQUESTS '$1 > threshold {print $2}' > "$TEMP_IP_LIST"
+    for ip_file in "$TEMP_REAL_IP_LIST.raw" "$TEMP_PROXY_IP_LIST.raw" "$TEMP_IP_LIST.raw"; do
+        if [ -f "$ip_file" ]; then
+            sort "$ip_file" | uniq -c | sort -nr | \
+                awk -v threshold=$MAX_REQUESTS '$1 > threshold {print $2}' >> "$TEMP_IP_LIST"
+        fi
+    done
 
     # Check for suspicious HTTP status codes (4xx, 5xx)
     echo "Checking for suspicious HTTP status codes..."
-    awk '$9 ~ /^[45]/ {print $1}' "$TEMP_IP_LIST.raw" | \
+    awk '$9 ~ /^[45]/ {
+        # Print remote addr
+        print $1
+        # Try to get real IP
+        if (match($0, /Real-IP: [^ ]*/)) {
+            print substr($0, RSTART+9, RLENGTH-9)
+        }
+        # Try to get forwarded IPs
+        if (match($0, /Forwarded-For: [^""]*/)) {
+            split(substr($0, RSTART+14, RLENGTH-14), ips, ",")
+            for (i in ips) {
+                gsub(/^[ \t]+|[ \t]+$/, "", ips[i])
+                print ips[i]
+            }
+        }
+    }' "$TEMP_IP_LIST.raw" | \
         sort | uniq -c | sort -nr | \
         awk -v threshold=$ERROR_THRESHOLD '$1 > threshold {print $2}' >> "$TEMP_IP_LIST"
 
     # Check for common attack patterns
     echo "Checking for common attack patterns..."
     grep -i "union select\|/etc/passwd\|eval(\|system(\|' OR '1'='1" "$TEMP_IP_LIST.raw" | \
-        awk '{print $1}' | sort | uniq >> "$TEMP_IP_LIST"
+        awk '{
+            # Print remote addr
+            print $1
+            # Try to get real IP
+            if (match($0, /Real-IP: [^ ]*/)) {
+                print substr($0, RSTART+9, RLENGTH-9)
+            }
+            # Try to get forwarded IPs
+            if (match($0, /Forwarded-For: [^""]*/)) {
+                split(substr($0, RSTART+14, RLENGTH-14), ips, ",")
+                for (i in ips) {
+                    gsub(/^[ \t]+|[ \t]+$/, "", ips[i])
+                    print ips[i]
+                }
+            }
+        }' | sort | uniq >> "$TEMP_IP_LIST"
 
     # Process identified IPs
     if [ -f "$TEMP_IP_LIST" ]; then
@@ -79,8 +141,10 @@ monitor_suspicious_activity() {
                 add_to_blacklist "$ip" "Suspicious activity detected"
             fi
         done
-        rm "$TEMP_IP_LIST" "$TEMP_IP_LIST.raw"
     fi
+
+    # Cleanup temporary files
+    rm -f "$TEMP_IP_LIST" "$TEMP_IP_LIST.raw" "$TEMP_REAL_IP_LIST.raw" "$TEMP_PROXY_IP_LIST.raw"
 }
 
 # Reload nginx configuration in Docker container
