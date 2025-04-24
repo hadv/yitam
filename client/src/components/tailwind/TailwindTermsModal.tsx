@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Socket } from 'socket.io-client';
 import { useConsent } from '../../contexts/ConsentContext';
 import ReactMarkdown from 'react-markdown';
@@ -12,6 +12,20 @@ export default function TailwindTermsModal({ socket }: TermsModalProps) {
   const [terms, setTerms] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hasReadToBottom, setHasReadToBottom] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // Handle scroll event to detect when user reaches bottom
+  const handleScroll = () => {
+    if (!contentRef.current) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = contentRef.current;
+    const isAtBottom = Math.ceil(scrollTop + clientHeight) >= scrollHeight - 10; // 10px threshold
+    
+    if (isAtBottom && !hasReadToBottom) {
+      setHasReadToBottom(true);
+    }
+  };
 
   useEffect(() => {
     if (!socket) {
@@ -55,7 +69,11 @@ export default function TailwindTermsModal({ socket }: TermsModalProps) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
-        <div className="p-8 flex-1 overflow-y-auto">
+        <div 
+          ref={contentRef}
+          onScroll={handleScroll}
+          className="p-8 flex-1 overflow-y-auto"
+        >
           {isLoading ? (
             <div className="flex justify-center items-center h-32">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#78A161]"></div>
@@ -83,15 +101,20 @@ export default function TailwindTermsModal({ socket }: TermsModalProps) {
         </div>
         <div className="border-t border-[#E6DFD1] p-6 bg-[#F5EFE0] rounded-b-lg flex justify-between items-center">
           <p className="text-sm text-[#5D4A38] italic">
-            Bằng cách nhấn "Đồng ý", bạn xác nhận đã đọc và chấp nhận các điều khoản.
+            {hasReadToBottom 
+              ? "Bằng cách nhấn 'Đồng ý', bạn xác nhận đã đọc và chấp nhận các điều khoản."
+              : "Vui lòng đọc hết điều khoản để có thể tiếp tục."}
           </p>
           <button
             onClick={() => {
               console.log('Accepting terms');
               setHasAcceptedTerms(true);
             }}
-            className="px-6 py-2.5 bg-[#78A161] text-white rounded-lg hover:bg-[#6a8f54] transition-colors font-medium text-base disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
-            disabled={isLoading || !!error}
+            className={`px-6 py-2.5 bg-[#78A161] text-white rounded-lg transition-all font-medium text-base shadow-sm 
+              ${hasReadToBottom 
+                ? 'hover:bg-[#6a8f54] hover:shadow-md' 
+                : 'opacity-50 cursor-not-allowed'}`}
+            disabled={isLoading || !!error || !hasReadToBottom}
           >
             Đồng ý
           </button>
