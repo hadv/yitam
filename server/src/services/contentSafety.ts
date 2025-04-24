@@ -242,8 +242,6 @@ export class ContentSafetyService {
    * @throws ContentSafetyError if content violates safety rules
    */
   public validateContent(content: string): void {
-    this.validateLength(content);
-    
     if (this.config.enableTopicFiltering) {
       this.validateRestrictedTopics(content);
     }
@@ -271,20 +269,6 @@ export class ContentSafetyService {
       throw new ContentSafetyError(
         SAFETY_RULES.RESTRICTED_TOPICS.HARMFUL.message[language],
         language
-      );
-    }
-  }
-
-  /**
-   * Validates the length of the content
-   */
-  private validateLength(content: string): void {
-    if (content.length > this.config.maxMessageLength) {
-      const lang = this.config.language || 'en';
-      throw new ContentSafetyError(
-        'Message exceeds maximum length limit',
-        'length_exceeded',
-        lang
       );
     }
   }
