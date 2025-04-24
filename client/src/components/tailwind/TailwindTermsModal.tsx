@@ -16,13 +16,21 @@ export default function TailwindTermsModal({ socket }: TermsModalProps) {
   const contentRef = useRef<HTMLDivElement>(null);
 
   // Handle scroll event to detect when user reaches bottom
-  const handleScroll = () => {
-    if (!contentRef.current) return;
-    
-    const { scrollTop, scrollHeight, clientHeight } = contentRef.current;
-    const isAtBottom = Math.ceil(scrollTop + clientHeight) >= scrollHeight - 10; // 10px threshold
-    
-    if (isAtBottom && !hasReadToBottom) {
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const element = e.target as HTMLDivElement;
+    const scrolledToBottom = 
+      Math.abs(element.scrollHeight - element.scrollTop - element.clientHeight) < 30;
+
+    console.log('Scroll detected:', {
+      scrollTop: element.scrollTop,
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+      difference: element.scrollHeight - element.scrollTop - element.clientHeight,
+      scrolledToBottom
+    });
+
+    if (scrolledToBottom && !hasReadToBottom) {
+      console.log('User has scrolled to bottom');
       setHasReadToBottom(true);
     }
   };
@@ -69,10 +77,16 @@ export default function TailwindTermsModal({ socket }: TermsModalProps) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+        <div className="bg-[#F5EFE0] px-8 py-4 rounded-t-lg border-b border-[#E6DFD1]">
+          <h2 className="text-xl font-semibold text-[#3A2E22]">Điều khoản và Điều kiện</h2>
+          <p className="text-sm text-[#5D4A38] mt-1">
+            {!hasReadToBottom && "Vui lòng cuộn xuống để đọc hết điều khoản"}
+          </p>
+        </div>
         <div 
           ref={contentRef}
           onScroll={handleScroll}
-          className="p-8 flex-1 overflow-y-auto"
+          className="px-8 py-6 flex-1 overflow-y-auto scroll-smooth"
         >
           {isLoading ? (
             <div className="flex justify-center items-center h-32">
@@ -96,6 +110,8 @@ export default function TailwindTermsModal({ socket }: TermsModalProps) {
               >
                 {terms}
               </ReactMarkdown>
+              {/* Spacer to ensure content is scrollable */}
+              <div className="h-10" />
             </div>
           )}
         </div>
@@ -103,17 +119,17 @@ export default function TailwindTermsModal({ socket }: TermsModalProps) {
           <p className="text-sm text-[#5D4A38] italic">
             {hasReadToBottom 
               ? "Bằng cách nhấn 'Đồng ý', bạn xác nhận đã đọc và chấp nhận các điều khoản."
-              : "Vui lòng đọc hết điều khoản để có thể tiếp tục."}
+              : "Vui lòng cuộn xuống để đọc hết điều khoản để có thể tiếp tục."}
           </p>
           <button
             onClick={() => {
               console.log('Accepting terms');
               setHasAcceptedTerms(true);
             }}
-            className={`px-6 py-2.5 bg-[#78A161] text-white rounded-lg transition-all font-medium text-base shadow-sm 
+            className={`px-6 py-2.5 text-white rounded-lg transition-all font-medium text-base shadow-sm 
               ${hasReadToBottom 
-                ? 'hover:bg-[#6a8f54] hover:shadow-md' 
-                : 'opacity-50 cursor-not-allowed'}`}
+                ? 'bg-[#78A161] hover:bg-[#6a8f54] hover:shadow-md' 
+                : 'bg-gray-400 cursor-not-allowed'}`}
             disabled={isLoading || !!error || !hasReadToBottom}
           >
             Đồng ý
