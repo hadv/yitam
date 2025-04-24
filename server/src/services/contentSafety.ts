@@ -203,11 +203,13 @@ export class ContentSafetyService {
 
   /**
    * Validates the response content
-   * Currently bypassing all safety checks temporarily
+   * Only checks for prompt injection attempts
    */
   public validateResponse(content: string): void {
-    // Temporarily bypassing all safety checks
-    return;
+    // Only check for prompt injection
+    if (this.config.enablePromptInjectionCheck) {
+      this.checkPromptInjection(content);
+    }
   }
 
   /**
