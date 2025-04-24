@@ -54,7 +54,7 @@ The system monitors Docker container logs in real-time and automatically blocks 
    Edit the script configuration if needed:
    ```bash
    # In docker-security-monitor.sh
-   NGINX_CONTAINER_NAME="nginx"  # Change to your container name
+   NGINX_CONTAINER_NAME="client"  # Our nginx container name from docker-compose
    MAX_REQUESTS=100             # Max requests per minute
    ERROR_THRESHOLD=10           # 4xx/5xx errors threshold
    SCAN_INTERVAL=60            # Check interval in seconds

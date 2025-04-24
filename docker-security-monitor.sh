@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Configuration
-NGINX_CONTAINER_NAME="nginx"  # Change this to match your nginx container name
+NGINX_CONTAINER_NAME="client"  # Our nginx container name from docker-compose
 DOCKER_LOG_OPTS="--since 1m"  # Only check logs from the last minute
 BLACKLIST_FILE="./blacklist.conf"  # Store blacklist in the mounted volume
 TEMP_IP_LIST="/tmp/malicious_ips.txt"
