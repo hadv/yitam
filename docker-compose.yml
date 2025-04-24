@@ -5,26 +5,24 @@ services:
     build:
       context: ../yitam-mcp
       dockerfile: Dockerfile
+      args:
+        - NODE_ENV=production
     volumes:
       - yitam-mcp-dist:/app/dist
-    environment:
-      - NODE_ENV=production
 
   server:
     build:
       context: ./server
       dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - yitam-mcp-dist:/app/mcp:ro
     environment:
       - NODE_ENV=production
       - PORT=3000
       - CLIENT_URL=https://yitam.org
       - MCP_SERVER_PATH=/app/mcp/core/server/yitam-tools.js
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./server/.env:/app/.env:ro
-      - yitam-mcp-dist:/app/mcp:ro
-      - ../yitam-mcp/.env:/app/mcp/.env:ro
     depends_on:
       - yitam-mcp
     restart: unless-stopped
@@ -33,16 +31,21 @@ services:
     build:
       context: ./client
       dockerfile: Dockerfile
-    environment:
-      - VITE_SERVER_URL=https://yitam.org
+      args:
+        - VITE_SERVER_URL=https://yitam.org
     ports:
       - "80:80"
       - "443:443"
     volumes:
+      - ./client/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./client/conf.d/blacklist.conf:/etc/nginx/conf.d/blacklist.conf:ro
+      - nginx_logs:/var/log/nginx
       - ./ssl:/etc/nginx/ssl:ro
     depends_on:
       - server
     restart: unless-stopped
 
 volumes:
-  yitam-mcp-dist: 
+  yitam-mcp-dist:
+  nginx_logs:
+    driver: local 
