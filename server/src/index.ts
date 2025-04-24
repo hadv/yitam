@@ -7,6 +7,10 @@ import Anthropic from '@anthropic-ai/sdk';
 import { MCPClient } from './MCPClient';
 import { config } from './config';
 import { sampleQuestions } from './data/sampleQuestions';
+import { contentSafetyService } from './services/contentSafety';
+import { ContentSafetyError } from './utils/errors';
+import { LegalService } from './services/legalService';
+import legalRoutes, { handleLegalDocumentRequest } from './routes/legal';
 
 // Load environment variables
 dotenv.config();
@@ -27,6 +31,9 @@ const io = new Server(server, {
   allowEIO3: true,
   transports: ['polling', 'websocket']
 });
+
+// Initialize services
+const legalService = LegalService.getInstance();
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
@@ -57,9 +64,50 @@ if (process.env.MCP_SERVER_PATH && process.env.MCP_SERVER_PATH.trim() !== '') {
   console.log('No MCP server path provided, using direct Claude API');
 }
 
+// Error messages for different languages
+const ERROR_MESSAGES = {
+  restricted_content: {
+    en: 'I apologize, but I cannot process this request as it contains restricted content. For your safety and compliance with our policies, I cannot provide advice or information about: medical conditions, financial investments, legal matters, or engage in product marketing.',
+    vi: 'Xin lỗi, tôi không thể xử lý yêu cầu này vì nó chứa nội dung bị hạn chế. Để đảm bảo an toàn và tuân thủ chính sách của chúng tôi, tôi không thể cung cấp tư vấn hoặc thông tin về: các vấn đề y tế, đầu tư tài chính, vấn đề pháp lý, hoặc tham gia tiếp thị sản phẩm.'
+  },
+  invalid_content: {
+    en: 'I apologize, but I cannot process this request as it contains invalid content.',
+    vi: 'Xin lỗi, tôi không thể xử lý yêu cầu này vì nó chứa nội dung không hợp lệ.'
+  },
+  prompt_injection: {
+    en: 'I apologize, but I need to stop here as the response would contain restricted content. Is there something else I can help you with?',
+    vi: 'Xin lỗi, tôi cần dừng lại vì câu trả lời sẽ chứa nội dung bị hạn chế. Tôi có thể giúp gì khác không?'
+  },
+  general_error: {
+    en: 'Sorry, I encountered an error processing your request.',
+    vi: 'Xin lỗi, đã xảy ra lỗi khi xử lý yêu cầu của bạn.'
+  },
+  overloaded: {
+    en: 'Claude API is currently experiencing high traffic. Please try again in a few moments.',
+    vi: 'Hệ thống đang tải cao. Vui lòng thử lại sau vài phút.'
+  },
+  rate_limit: {
+    en: 'Rate limit exceeded. Please try again later.',
+    vi: 'Đã vượt quá giới hạn yêu cầu. Vui lòng thử lại sau.'
+  },
+  auth_error: {
+    en: 'Authentication error. Please check your API key configuration.',
+    vi: 'Lỗi xác thực. Vui lòng kiểm tra cấu hình API key.'
+  },
+  bad_request: {
+    en: 'Sorry, there was an error processing your request. The input may be too long or contain unsupported content.',
+    vi: 'Xin lỗi, đã xảy ra lỗi khi xử lý yêu cầu. Đầu vào có thể quá dài hoặc chứa nội dung không được hỗ trợ.'
+  }
+};
+
 // Socket.IO connection handler
 io.on('connection', (socket: Socket) => {
   console.log('A user connected:', socket.id);
+
+  // Handle legal document requests
+  socket.on('get-legal-document', (documentType: string) => {
+    handleLegalDocumentRequest(socket, documentType);
+  });
 
   // Send sample questions when requested
   socket.on('get-sample-questions', (limit: number = 6) => {
@@ -76,21 +124,55 @@ io.on('connection', (socket: Socket) => {
   socket.on('chat-message', async (message: string) => {
     try {
       console.log('Received message:', message);
+
+      // Validate and sanitize incoming message
+      try {
+        contentSafetyService.validateContent(message);
+        message = contentSafetyService.sanitizeContent(message);
+      } catch (error) {
+        if (error instanceof ContentSafetyError) {
+          socket.emit('bot-response', {
+            text: error.code === 'restricted_topic' 
+              ? ERROR_MESSAGES.restricted_content[error.language]
+              : ERROR_MESSAGES.invalid_content[error.language],
+            id: Date.now().toString(),
+          });
+          return;
+        }
+        throw error;
+      }
       
       // Generate a unique message ID for this response
       const messageId = Date.now().toString();
       
       // Let the client know we're starting a response
       socket.emit('bot-response-start', { id: messageId });
+
+      let responseBuffer = '';
       
       // Check if MCP client is connected and use it if available
       if (mcpClient && mcpConnected) {
         // Process message using MCP client with streaming callback
         await mcpClient.processQueryWithStreaming(message, (chunk) => {
-          socket.emit('bot-response-chunk', {
-            id: messageId,
-            text: chunk
-          });
+          try {
+            // Validate each chunk before sending
+            contentSafetyService.validateResponse(responseBuffer + chunk);
+            responseBuffer += chunk;
+            
+            socket.emit('bot-response-chunk', {
+              id: messageId,
+              text: chunk
+            });
+          } catch (error) {
+            if (error instanceof ContentSafetyError) {
+              socket.emit('bot-response', {
+                text: ERROR_MESSAGES.prompt_injection[error.language],
+                id: messageId,
+              });
+              throw error; // This will stop the streaming
+            }
+            throw error;
+          }
         });
       } else {
         // Fallback to direct Claude API with streaming
@@ -104,11 +186,25 @@ io.on('connection', (socket: Socket) => {
 
         for await (const chunk of stream) {
           if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-            // Send each text chunk to the client
-            socket.emit('bot-response-chunk', {
-              id: messageId,
-              text: chunk.delta.text
-            });
+            try {
+              // Validate each chunk before sending
+              contentSafetyService.validateResponse(responseBuffer + chunk.delta.text);
+              responseBuffer += chunk.delta.text;
+              
+              socket.emit('bot-response-chunk', {
+                id: messageId,
+                text: chunk.delta.text
+              });
+            } catch (error) {
+              if (error instanceof ContentSafetyError) {
+                socket.emit('bot-response', {
+                  text: ERROR_MESSAGES.prompt_injection[error.language],
+                  id: messageId,
+                });
+                break;
+              }
+              throw error;
+            }
           }
         }
       }
@@ -121,17 +217,18 @@ io.on('connection', (socket: Socket) => {
       // Generate a unique message ID for the error response
       const errorId = Date.now().toString();
       
-      let errorMessage = 'Sorry, I encountered an error processing your request.';
+      const language = error instanceof ContentSafetyError ? error.language : 'en';
+      let errorMessage = ERROR_MESSAGES.general_error[language];
       
       // Check for specific Claude API errors
       if (error?.status === 529 || (error?.error?.type === "overloaded_error")) {
-        errorMessage = "Claude API is currently experiencing high traffic. Please try again in a few moments.";
+        errorMessage = ERROR_MESSAGES.overloaded[language];
       } else if (error?.status === 400) {
-        errorMessage = "Sorry, there was an error processing your request. The input may be too long or contain unsupported content.";
+        errorMessage = ERROR_MESSAGES.bad_request[language];
       } else if (error?.status === 401) {
-        errorMessage = "Authentication error. Please check your API key configuration.";
+        errorMessage = ERROR_MESSAGES.auth_error[language];
       } else if (error?.status === 429) {
-        errorMessage = "Rate limit exceeded. Please try again later.";
+        errorMessage = ERROR_MESSAGES.rate_limit[language];
       }
       
       // Send error response directly (not streaming)
