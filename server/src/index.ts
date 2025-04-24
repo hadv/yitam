@@ -156,7 +156,7 @@ io.on('connection', (socket: Socket) => {
         await mcpClient.processQueryWithStreaming(message, (chunk) => {
           try {
             // Validate each chunk before sending
-            contentSafetyService.validateResponse(responseBuffer + chunk);
+            contentSafetyService.validateResponse(responseBuffer + chunk, 'vi');
             responseBuffer += chunk;
             
             socket.emit('bot-response-chunk', {
@@ -188,7 +188,7 @@ io.on('connection', (socket: Socket) => {
           if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
             try {
               // Validate each chunk before sending
-              contentSafetyService.validateResponse(responseBuffer + chunk.delta.text);
+              contentSafetyService.validateResponse(responseBuffer + chunk.delta.text, 'vi');
               responseBuffer += chunk.delta.text;
               
               socket.emit('bot-response-chunk', {
