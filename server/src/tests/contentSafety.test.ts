@@ -1,4 +1,3 @@
-import { jest } from '@jest/globals';
 import { ContentSafetyService } from '../services/contentSafety';
 import { ContentSafetyError } from '../utils/errors';
 
