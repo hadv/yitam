@@ -10,7 +10,7 @@ import { sampleQuestions } from './data/sampleQuestions';
 import { contentSafetyService } from './services/contentSafety';
 import { ContentSafetyError } from './utils/errors';
 import { LegalService } from './services/legalService';
-import legalRoutes, { handleLegalDocumentRequest } from './routes/legal';
+import { handleLegalDocumentRequest } from './routes/legal';
 import { validateAccessCode } from './middleware/accessControl';
 import { verifyRequestSignature } from './utils/crypto';
 
