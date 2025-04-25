@@ -175,7 +175,8 @@ io.on('connection', (socket: Socket) => {
   socket.on('chat-message', async (message: string) => {
     try {
       console.log('Received message:', message);
-
+      const startTime = Date.now();
+      
       // Enable AI-based content safety if it's not already enabled
       if (!contentSafetyService.isAiContentSafetyEnabled()) {
         contentSafetyService.enableAiContentSafety(true);
@@ -429,6 +430,8 @@ io.on('connection', (socket: Socket) => {
       // Signal that the response is complete only if no safety error occurred
       if (!socket.disconnected && !safetyErrorOccurred) {
         socket.emit('bot-response-end', { id: messageId });
+        const responseTime = Date.now() - startTime;
+        console.log(`Total response time: ${responseTime}ms`);
       }
     } catch (error: any) {
       console.error('Error processing message:', error);

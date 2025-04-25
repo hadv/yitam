@@ -5,7 +5,7 @@ dotenv.config();
 
 export const config = {
   model: {
-    name: process.env.ANTHROPIC_MODEL || 'claude-3-7-sonnet-20250219',
+    name: process.env.ANTHROPIC_MODEL || 'claude-3-haiku-20240307',
     maxTokens: parseInt(process.env.MODEL_MAX_TOKENS || '10000'),
   },
   server: {

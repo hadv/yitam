@@ -79,25 +79,40 @@ export class Query {
    * Determines the search query to use for search-focused tools
    */
   private async _determineSearchQuery(query: string): Promise<string> {
-    const extractionResponse = await this.anthropic.messages.create({
-      model: config.model.name,
-      max_tokens: 150,
-      system: SystemPrompts.SEARCH_EXTRACTION,
-      messages: [{
-        role: "user",
-        content: query
-      }]
-    });
-
-    if (extractionResponse.content[0]?.type === "text") {
-      const extractedText = extractionResponse.content[0].text.trim();
-      if (extractedText && extractedText.length > 0 && extractedText.length < query.length) {
-        console.log(`Original query: "${query}"`);
-        console.log(`Extracted search query: "${extractedText}"`);
-        return extractedText;
-      }
+    // Skip search query extraction for simple or short queries
+    if (query.length < 20 || !/\?/.test(query)) {
+      console.log(`Using original query as search query: "${query.substring(0, 50)}..."`);
+      return query;
     }
-    return query;
+  
+    try {
+      console.time('search-query-extraction');
+      
+      const extractionResponse = await this.anthropic.messages.create({
+        model: "claude-3-haiku-20240307", // Use haiku instead of default model for search extraction
+        max_tokens: 150,
+        system: SystemPrompts.SEARCH_EXTRACTION,
+        messages: [{
+          role: "user",
+          content: query
+        }]
+      });
+      
+      console.timeEnd('search-query-extraction');
+
+      if (extractionResponse.content[0]?.type === "text") {
+        const extractedText = extractionResponse.content[0].text.trim();
+        if (extractedText && extractedText.length > 0 && extractedText.length < query.length) {
+          console.log(`Original query: "${query.substring(0, 50)}..."`);
+          console.log(`Extracted search query: "${extractedText}"`);
+          return extractedText;
+        }
+      }
+      return query;
+    } catch (error) {
+      console.warn('Error extracting search query, using original:', error);
+      return query;
+    }
   }
   
   /**
@@ -286,12 +301,15 @@ export class Query {
    */
   async processQueryWithStreaming(
     query: string, 
-    callback: (chunk: string) => void, 
+    callback: (chunk: string) => boolean | Promise<boolean> | void, 
     chatId?: string
   ): Promise<void> {
     // Helper function to send escaped chunks to the client
-    const sendChunk = (chunk: string) => {
-      callback(chunk.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+    const sendChunk = async (chunk: string): Promise<boolean> => {
+      const escapedChunk = chunk.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const result = await callback(escapedChunk);
+      // If callback explicitly returns false, signal to stop streaming
+      return result !== false;
     };
     
     // Check if this is part of an existing chat or a new one
@@ -335,7 +353,12 @@ export class Query {
         for await (const chunk of stream) {
           if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
             // Send text chunks directly to the client with proper escaping
-            sendChunk(chunk.delta.text);
+            const shouldContinue = await sendChunk(chunk.delta.text);
+            if (!shouldContinue) {
+              console.log('Streaming stopped by callback returning false');
+              break; // Exit the streaming loop
+            }
+            
             // Collect the unescaped response for history
             assistantResponse += chunk.delta.text;
           } else if (chunk.type === 'content_block_start' && chunk.content_block.type === 'tool_use') {
@@ -360,7 +383,11 @@ export class Query {
                 const { toolResult, formattedToolCall } = await this._handleToolUse(toolUse, searchQuery);
                 
                 // Send the formatted tool call to the client
-                callback(formattedToolCall);
+                const shouldContinue = await callback(formattedToolCall);
+                if (!shouldContinue) {
+                  console.log('Streaming stopped during tool call results');
+                  return; // Exit the function entirely
+                }
                 
                 // Add tool interactions to conversation history
                 this.conversation.addToolUseMessage(toolUse.id, toolUse.name, toolUse.input);
@@ -369,13 +396,30 @@ export class Query {
                 console.log(`Added tool call and result to history for ${toolUse.name}`);
               } catch (toolError) {
                 console.error(`Error handling tool call ${toolUseId}:`, toolError);
-                callback(`\n\nError executing tool: ${String(toolError instanceof Error ? toolError.message : String(toolError)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}\n\n`);
+                const errorMessage = `\n\nError executing tool: ${String(toolError instanceof Error ? toolError.message : String(toolError)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}\n\n`;
+                const shouldContinue = await callback(errorMessage);
+                if (!shouldContinue) return;
               }
             }
             
             // If we had tool calls, generate a follow-up response
             if (Object.keys(toolCalls).length > 0) {
               try {
+                // Only generate follow-up for significant tool results
+                const hasSignificantResults = Object.values(toolCalls).some(call => {
+                  // Check if tool call likely needs follow-up interpretation
+                  return call.name.includes('search') || 
+                         call.name.includes('web') || 
+                         call.name.includes('retrieve');
+                });
+                
+                if (!hasSignificantResults) {
+                  console.log('Skipping follow-up response for simple tool calls');
+                  return; // Skip follow-up for simple tool calls
+                }
+                
+                console.time('follow-up-response');
+                
                 // Try up to 3 times to get a complete follow-up response
                 let retryCount = 0;
                 const maxRetries = 2;
@@ -394,7 +438,7 @@ export class Query {
                   
                   try {
                     const followUpStream = await this.anthropic.messages.stream({
-                      model: config.model.name,
+                      model: "claude-3-haiku-20240307", // Use haiku for follow-ups
                       max_tokens: config.model.maxTokens,
                       system: SystemPrompts.FOLLOW_UP,
                       messages: this.conversation.getConversationHistory(),
@@ -433,7 +477,11 @@ export class Query {
                           
                           // Send content in reasonable chunks to avoid UI lag
                           if (displayBuffer.length > 50 || displayBuffer.includes("\n")) {
-                            sendChunk(displayBuffer);
+                            const shouldContinue = await sendChunk(displayBuffer);
+                            if (!shouldContinue) {
+                              console.log('Streaming stopped during follow-up response');
+                              return;
+                            }
                             displayBuffer = "";
                           }
                         } else if (followUpChunk.type === 'content_block_start' && followUpChunk.content_block.type === 'text') {
@@ -441,7 +489,11 @@ export class Query {
                         } else if (followUpChunk.type === 'message_stop') {
                           // Message completion - send any remaining display content
                           if (displayBuffer.length > 0) {
-                            sendChunk(displayBuffer);
+                            const shouldContinue = await sendChunk(displayBuffer);
+                            if (!shouldContinue) {
+                              console.log('Streaming stopped during follow-up response');
+                              return;
+                            }
                             displayBuffer = "";
                           }
                           console.log('Follow-up message completed successfully');
@@ -512,13 +564,19 @@ export class Query {
                     // If we have a significant completed portion
                     if (completedPortion.length > bestResponseBuffer.length * 0.7) {
                       // Send a clean, complete response with just the full sentences
-                      sendChunk("\n\n[Continuing with complete information]\n" + completedPortion);
+                      const shouldContinue = await sendChunk("\n\n[Continuing with complete information]\n" + completedPortion);
+                      if (!shouldContinue) {
+                        console.log('Streaming stopped during follow-up response');
+                        return;
+                      }
                     }
                   }
                 }
                 
+                console.timeEnd('follow-up-response');
               } catch (followUpError) {
                 console.error("Error in follow-up response:", followUpError);
+                console.timeEnd('follow-up-response');
               }
             }
           }
@@ -526,11 +584,15 @@ export class Query {
       } catch (streamProcessingError) {
         // Handle errors during stream processing
         console.error("Error processing stream:", streamProcessingError);
-        callback("\n\nError while processing the response stream. The connection may have been interrupted.\n\n");
+        const errorMessage = "\n\nError while processing the response stream. The connection may have been interrupted.\n\n";
+        const shouldContinue = await callback(errorMessage);
+        if (!shouldContinue) return;
       }
     } catch (error: any) {
       console.error("Error processing query with streaming:", error);
-      sendChunk("Kính thưa quý khách, hệ thống đang gặp trục trặc kỹ thuật khi xử lý yêu cầu. Xin quý khách vui lòng thử lại sau. Chúng tôi chân thành xin lỗi vì sự bất tiện này.");
+      const errorMessage = "Kính thưa quý khách, hệ thống đang gặp trục trặc kỹ thuật khi xử lý yêu cầu. Xin quý khách vui lòng thử lại sau. Chúng tôi chân thành xin lỗi vì sự bất tiện này.";
+      const shouldContinue = await callback(errorMessage);
+      if (!shouldContinue) return;
     }
   }
 } 
