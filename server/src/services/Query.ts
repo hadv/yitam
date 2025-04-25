@@ -89,8 +89,8 @@ export class Query {
       console.time('search-query-extraction');
       
       const extractionResponse = await this.anthropic.messages.create({
-        model: "claude-3-haiku-20240307", // Use haiku instead of default model for search extraction
-        max_tokens: 150,
+        model: config.model.name,
+        max_tokens: 150,  // Small token limit is sufficient for extraction
         system: SystemPrompts.SEARCH_EXTRACTION,
         messages: [{
           role: "user",
@@ -335,7 +335,7 @@ export class Query {
       try {
         stream = await this.anthropic.messages.stream({
           model: config.model.name,
-          max_tokens: config.model.maxTokens,
+          max_tokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000),
           system: SystemPrompts.INITIAL,
           messages,
           tools: tools.length > 0 ? tools : undefined,
@@ -405,19 +405,7 @@ export class Query {
             // If we had tool calls, generate a follow-up response
             if (Object.keys(toolCalls).length > 0) {
               try {
-                // Only generate follow-up for significant tool results
-                const hasSignificantResults = Object.values(toolCalls).some(call => {
-                  // Check if tool call likely needs follow-up interpretation
-                  return call.name.includes('search') || 
-                         call.name.includes('web') || 
-                         call.name.includes('retrieve');
-                });
-                
-                if (!hasSignificantResults) {
-                  console.log('Skipping follow-up response for simple tool calls');
-                  return; // Skip follow-up for simple tool calls
-                }
-                
+                // Always generate follow-up responses, regardless of tool type
                 console.time('follow-up-response');
                 
                 // Try up to 3 times to get a complete follow-up response
@@ -438,8 +426,8 @@ export class Query {
                   
                   try {
                     const followUpStream = await this.anthropic.messages.stream({
-                      model: "claude-3-haiku-20240307", // Use haiku for follow-ups
-                      max_tokens: config.model.maxTokens,
+                      model: config.model.name,
+                      max_tokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000),
                       system: SystemPrompts.FOLLOW_UP,
                       messages: this.conversation.getConversationHistory(),
                     });
