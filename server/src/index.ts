@@ -177,14 +177,20 @@ io.on('connection', (socket: Socket) => {
       console.log('Received message:', message);
       const startTime = Date.now();
       
-      // Enable AI-based content safety if it's not already enabled
-      if (!contentSafetyService.isAiContentSafetyEnabled()) {
-        contentSafetyService.enableAiContentSafety(true);
-        console.log('AI-based content safety check enabled');
-      }
-
+      // Only enable AI safety if explicitly turned on in environment
+      const enableAiSafety = process.env.ENABLE_AI_CONTENT_SAFETY === 'true';
+      
       // Validate and sanitize incoming message
       try {
+        // Only do AI validation if explicitly enabled
+        if (enableAiSafety && !contentSafetyService.isAiContentSafetyEnabled()) {
+          contentSafetyService.enableAiContentSafety(true);
+          console.log('AI-based content safety check enabled');
+        } else if (!enableAiSafety && contentSafetyService.isAiContentSafetyEnabled()) {
+          contentSafetyService.enableAiContentSafety(false);
+          console.log('AI-based content safety check disabled');
+        }
+
         await contentSafetyService.validateContent(message);
         message = contentSafetyService.sanitizeContent(message);
       } catch (error) {
@@ -235,8 +241,22 @@ io.on('connection', (socket: Socket) => {
           // Process message using MCP client with streaming callback
           await mcpClient.processQueryWithStreaming(message, async (chunk) => {
             try {
-              // Validate each chunk before sending
-              await contentSafetyService.validateResponse(responseBuffer + chunk, 'vi');
+              // Use different validation based on whether AI safety is enabled
+              if (enableAiSafety) {
+                // Full AI-based validation
+                await contentSafetyService.validateResponse(responseBuffer + chunk, 'vi');
+              } else {
+                // Fast prompt injection check only
+                const isSafe = contentSafetyService.checkPromptInjectionOnly(responseBuffer + chunk, 'vi');
+                if (!isSafe) {
+                  throw new ContentSafetyError(
+                    "Content contains prompt injection attempt",
+                    "prompt_injection",
+                    "vi"
+                  );
+                }
+              }
+              
               responseBuffer += chunk;
               
               // Only emit if socket is still connected
@@ -299,7 +319,7 @@ io.on('connection', (socket: Socket) => {
             try {
               const stream = await anthropic.messages.stream({
                 model: config.model.name,
-                max_tokens: config.model.maxTokens,
+                max_tokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000),
                 messages: [
                   { role: 'user', content: message }
                 ],
@@ -365,7 +385,7 @@ io.on('connection', (socket: Socket) => {
         try {
           const stream = await anthropic.messages.stream({
             model: config.model.name,
-            max_tokens: config.model.maxTokens,
+            max_tokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000),
             messages: [
               { role: 'user', content: message }
             ],
@@ -374,8 +394,22 @@ io.on('connection', (socket: Socket) => {
           for await (const chunk of stream) {
             if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
               try {
-                // Validate each chunk before sending
-                await contentSafetyService.validateResponse(responseBuffer + chunk.delta.text, 'vi');
+                // Use different validation based on whether AI safety is enabled
+                if (enableAiSafety) {
+                  // Full AI-based validation
+                  await contentSafetyService.validateResponse(responseBuffer + chunk.delta.text, 'vi');
+                } else {
+                  // Fast prompt injection check only
+                  const isSafe = contentSafetyService.checkPromptInjectionOnly(responseBuffer + chunk.delta.text, 'vi');
+                  if (!isSafe) {
+                    throw new ContentSafetyError(
+                      "Content contains prompt injection attempt",
+                      "prompt_injection",
+                      "vi"
+                    );
+                  }
+                }
+                
                 responseBuffer += chunk.delta.text;
                 
                 if (!socket.disconnected) {
