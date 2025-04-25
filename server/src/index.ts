@@ -44,7 +44,10 @@ const io = new Server(server, {
     allowedHeaders: config.server.cors.allowedHeaders
   },
   allowEIO3: true,
-  transports: ['polling', 'websocket']
+  transports: ['polling', 'websocket'],
+  pingTimeout: 60000, // Increase ping timeout to 60 seconds
+  pingInterval: 25000, // Set ping interval to 25 seconds
+  connectTimeout: 45000 // Increase connection timeout to 45 seconds
 });
 
 // Add Socket.IO middleware for access code validation
@@ -196,69 +199,155 @@ io.on('connection', (socket: Socket) => {
       // Let the client know we're starting a response
       socket.emit('bot-response-start', { id: messageId });
 
+      // Set a timeout for the MCP tool call
+      const toolCallTimeout = setTimeout(() => {
+        if (!socket.disconnected) {
+          console.log('Tool call taking too long, sending timeout notification to client');
+          socket.emit('tool-call-timeout', { id: messageId });
+        }
+      }, 30000); // 30 second timeout
+
       let responseBuffer = '';
       
       // Check if MCP client is connected and use it if available
       if (mcpClient && mcpConnected) {
-        // Process message using MCP client with streaming callback
-        await mcpClient.processQueryWithStreaming(message, (chunk) => {
-          try {
-            // Validate each chunk before sending
-            contentSafetyService.validateResponse(responseBuffer + chunk, 'vi');
-            responseBuffer += chunk;
-            
-            socket.emit('bot-response-chunk', {
-              id: messageId,
-              text: chunk
-            });
-          } catch (error) {
-            if (error instanceof ContentSafetyError) {
-              socket.emit('bot-response', {
-                text: ERROR_MESSAGES.prompt_injection[error.language],
-                id: messageId,
-              });
-              throw error; // This will stop the streaming
-            }
-            throw error;
-          }
-        });
-      } else {
-        // Fallback to direct Claude API with streaming
-        const stream = await anthropic.messages.stream({
-          model: config.model.name,
-          max_tokens: config.model.maxTokens,
-          messages: [
-            { role: 'user', content: message }
-          ],
-        });
-
-        for await (const chunk of stream) {
-          if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+        try {
+          // Process message using MCP client with streaming callback
+          await mcpClient.processQueryWithStreaming(message, (chunk) => {
             try {
               // Validate each chunk before sending
-              contentSafetyService.validateResponse(responseBuffer + chunk.delta.text, 'vi');
-              responseBuffer += chunk.delta.text;
+              contentSafetyService.validateResponse(responseBuffer + chunk, 'vi');
+              responseBuffer += chunk;
               
-              socket.emit('bot-response-chunk', {
-                id: messageId,
-                text: chunk.delta.text
-              });
+              // Only emit if socket is still connected
+              if (!socket.disconnected) {
+                socket.emit('bot-response-chunk', {
+                  id: messageId,
+                  text: chunk
+                });
+              }
             } catch (error) {
               if (error instanceof ContentSafetyError) {
-                socket.emit('bot-response', {
-                  text: ERROR_MESSAGES.prompt_injection[error.language],
-                  id: messageId,
-                });
-                break;
+                if (!socket.disconnected) {
+                  socket.emit('bot-response', {
+                    text: ERROR_MESSAGES.prompt_injection[error.language],
+                    id: messageId,
+                  });
+                }
+                throw error; // This will stop the streaming
               }
               throw error;
             }
+          });
+          
+          // Clear the timeout if the tool call completes successfully
+          clearTimeout(toolCallTimeout);
+        } catch (error) {
+          // Clear the timeout in case of error
+          clearTimeout(toolCallTimeout);
+          console.error('Error with MCP client during tool call:', error);
+          
+          // If there was a timeout or connection issue, try to fall back to direct API
+          if (!socket.disconnected) {
+            socket.emit('tool-call-error', { 
+              id: messageId,
+              error: 'Tool call failed, falling back to direct API'
+            });
+            
+            // Attempt fallback to direct API
+            try {
+              const stream = await anthropic.messages.stream({
+                model: config.model.name,
+                max_tokens: config.model.maxTokens,
+                messages: [
+                  { role: 'user', content: message }
+                ],
+              });
+              
+              // Reset response buffer for the fallback
+              responseBuffer = '';
+              
+              for await (const chunk of stream) {
+                if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+                  try {
+                    // Validate each chunk before sending
+                    contentSafetyService.validateResponse(responseBuffer + chunk.delta.text, 'vi');
+                    responseBuffer += chunk.delta.text;
+                    
+                    if (!socket.disconnected) {
+                      socket.emit('bot-response-chunk', {
+                        id: messageId,
+                        text: chunk.delta.text
+                      });
+                    }
+                  } catch (error) {
+                    if (error instanceof ContentSafetyError) {
+                      if (!socket.disconnected) {
+                        socket.emit('bot-response', {
+                          text: ERROR_MESSAGES.prompt_injection[error.language],
+                          id: messageId,
+                        });
+                      }
+                      break;
+                    }
+                    throw error;
+                  }
+                }
+              }
+            } catch (fallbackError) {
+              console.error('Fallback to direct API also failed:', fallbackError);
+              throw fallbackError; // Let the outer catch handle this
+            }
           }
+        }
+      } else {
+        // Fallback to direct Claude API with streaming
+        try {
+          const stream = await anthropic.messages.stream({
+            model: config.model.name,
+            max_tokens: config.model.maxTokens,
+            messages: [
+              { role: 'user', content: message }
+            ],
+          });
+
+          for await (const chunk of stream) {
+            if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+              try {
+                // Validate each chunk before sending
+                contentSafetyService.validateResponse(responseBuffer + chunk.delta.text, 'vi');
+                responseBuffer += chunk.delta.text;
+                
+                socket.emit('bot-response-chunk', {
+                  id: messageId,
+                  text: chunk.delta.text
+                });
+              } catch (error) {
+                if (error instanceof ContentSafetyError) {
+                  socket.emit('bot-response', {
+                    text: ERROR_MESSAGES.prompt_injection[error.language],
+                    id: messageId,
+                  });
+                  break;
+                }
+                throw error;
+              }
+            }
+          }
+          
+          // Clear the timeout as we're done with the direct API call
+          clearTimeout(toolCallTimeout);
+        } catch (error) {
+          // Clear the timeout in case of error
+          clearTimeout(toolCallTimeout);
+          throw error;
         }
       }
 
       // Signal that the response is complete
-      socket.emit('bot-response-end', { id: messageId });
+      if (!socket.disconnected) {
+        socket.emit('bot-response-end', { id: messageId });
+      }
     } catch (error: any) {
       console.error('Error processing message:', error);
       
