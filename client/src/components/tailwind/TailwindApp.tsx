@@ -5,7 +5,9 @@ import TailwindChatBox from './TailwindChatBox';
 import TailwindMessageInput from './TailwindMessageInput';
 import TailwindSampleQuestions from './TailwindSampleQuestions';
 import TailwindTermsModal from './TailwindTermsModal';
+import TailwindAccessCodeInput from './TailwindAccessCodeInput';
 import { ConsentProvider } from '../../contexts/ConsentContext';
+import { generateRequestSignature } from '../../utils/security';
 
 // Message interface
 interface Message {
@@ -20,82 +22,157 @@ function TailwindApp() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [hasUserSentMessage, setHasUserSentMessage] = useState(false);
+  const [hasAccess, setHasAccess] = useState(false);
+  const [accessError, setAccessError] = useState('');
   const [questionsLimit] = useState(6); // Default sample questions limit
   const inputRef = useRef<HTMLDivElement>(null);
+  const [pendingAccessCode, setPendingAccessCode] = useState<string | null>(null);
 
   useEffect(() => {
-    // Initialize socket connection
-    const newSocket = io(config.server.url, config.server.socketOptions);
-    
-    newSocket.on('connect', () => {
-      setIsConnected(true);
-      console.log('Connected to server');
-      
-      // Add welcome message
-      setMessages([
-        {
-          id: 'welcome',
-          text: 'Xin chào! Yitam đang lắng nghe!',
-          isBot: true
-        }
-      ]);
-    });
+    if (!pendingAccessCode) return;
 
-    newSocket.on('disconnect', () => {
-      setIsConnected(false);
-      console.log('Disconnected from server');
-    });
+    // Generate request signature and establish connection
+    const connectWithSignature = async () => {
+      try {
+        // Show loading state
+        setAccessError('Đang xác thực mã truy cập...');
+        
+        // Generate a signature for the access code
+        const { signature, timestamp } = await generateRequestSignature(pendingAccessCode);
+        
+        // Initialize socket connection
+        const newSocket = io(config.server.url, {
+          ...config.server.socketOptions,
+          extraHeaders: {
+            'X-Access-Code': pendingAccessCode,
+            'X-Request-Signature': signature,
+            'X-Request-Timestamp': timestamp.toString()
+          }
+        });
+        
+        newSocket.on('connect', () => {
+          setIsConnected(true);
+          setHasAccess(true);
+          setAccessError('');
+          console.log('Connected to server');
+          
+          // Add welcome message
+          setMessages([
+            {
+              id: 'welcome',
+              text: 'Xin chào! Yitam đang lắng nghe!',
+              isBot: true
+            }
+          ]);
+        });
 
-    // Handle old-style responses (for backward compatibility)
-    newSocket.on('bot-response', (response: { text: string, id: string }) => {
-      setMessages(prev => [
-        ...prev,
-        { id: response.id, text: response.text, isBot: true }
-      ]);
-    });
+        newSocket.on('connect_error', (error) => {
+          console.error('Connection error:', error.message);
+          
+          // Provide more specific error messages based on the error
+          if (error.message.includes('Access code is required')) {
+            setAccessError('Vui lòng nhập mã truy cập để tiếp tục.');
+          } else if (error.message.includes('Invalid access code')) {
+            setAccessError('Mã truy cập không hợp lệ. Vui lòng kiểm tra và thử lại.');
+          } else if (error.message.includes('signature')) {
+            setAccessError('Lỗi xác thực chữ ký. Vui lòng thử lại sau hoặc liên hệ hỗ trợ.');
+          } else {
+            setAccessError('Không thể kết nối đến máy chủ. Vui lòng thử lại sau.');
+          }
+          
+          setHasAccess(false);
+          setPendingAccessCode(null);
+          localStorage.removeItem('accessCode');
+          
+          if (socket) {
+            socket.close();
+          }
+        });
 
-    // Handle the start of a streaming response
-    newSocket.on('bot-response-start', (response: { id: string }) => {
-      setMessages(prev => [
-        ...prev,
-        { 
-          id: `bot-${response.id}`, 
-          text: '', 
-          isBot: true, 
-          isStreaming: true 
-        }
-      ]);
-    });
+        newSocket.on('disconnect', () => {
+          setIsConnected(false);
+          console.log('Disconnected from server');
+        });
 
-    // Handle streaming chunks
-    newSocket.on('bot-response-chunk', (response: { text: string, id: string }) => {
-      setMessages(prev => 
-        prev.map(msg => 
-          msg.id === `bot-${response.id}` 
-            ? { ...msg, text: msg.text + response.text }
-            : msg
-        )
-      );
-    });
+        // Handle old-style responses (for backward compatibility)
+        newSocket.on('bot-response', (response: { text: string, id: string }) => {
+          setMessages(prev => [
+            ...prev,
+            { id: response.id, text: response.text, isBot: true }
+          ]);
+        });
 
-    // Handle end of streaming response
-    newSocket.on('bot-response-end', (response: { id: string }) => {
-      setMessages(prev => 
-        prev.map(msg => 
-          msg.id === `bot-${response.id}` 
-            ? { ...msg, isStreaming: false }
-            : msg
-        )
-      );
-    });
+        // Handle the start of a streaming response
+        newSocket.on('bot-response-start', (response: { id: string }) => {
+          setMessages(prev => [
+            ...prev,
+            { 
+              id: `bot-${response.id}`, 
+              text: '', 
+              isBot: true, 
+              isStreaming: true 
+            }
+          ]);
+        });
 
-    setSocket(newSocket);
+        // Handle streaming chunks
+        newSocket.on('bot-response-chunk', (response: { text: string, id: string }) => {
+          setMessages(prev => 
+            prev.map(msg => 
+              msg.id === `bot-${response.id}` 
+                ? { ...msg, text: msg.text + response.text }
+                : msg
+            )
+          );
+        });
 
-    // Cleanup on component unmount
-    return () => {
-      newSocket.disconnect();
+        // Handle end of streaming response
+        newSocket.on('bot-response-end', (response: { id: string }) => {
+          setMessages(prev => 
+            prev.map(msg => 
+              msg.id === `bot-${response.id}` 
+                ? { ...msg, isStreaming: false }
+                : msg
+            )
+          );
+        });
+
+        // Add a connection timeout
+        const connectionTimeout = setTimeout(() => {
+          if (!isConnected) {
+            setAccessError('Kết nối tới máy chủ quá thời gian. Vui lòng thử lại sau.');
+            setPendingAccessCode(null);
+            newSocket.close();
+          }
+        }, 10000); // 10 second timeout
+
+        setSocket(newSocket);
+
+        return () => {
+          clearTimeout(connectionTimeout);
+          if (newSocket) {
+            newSocket.close();
+          }
+        };
+      } catch (error) {
+        console.error('Error generating signature:', error);
+        setAccessError('Lỗi xác thực. Vui lòng thử lại sau.');
+        setPendingAccessCode(null);
+        return () => {};
+      }
     };
-  }, []);
+
+    connectWithSignature();
+  }, [pendingAccessCode]);
+
+  const handleAccessGranted = (accessCode: string) => {
+    setPendingAccessCode(accessCode);
+    localStorage.setItem('accessCode', accessCode);
+  };
+
+  if (!hasAccess) {
+    return <TailwindAccessCodeInput onAccessGranted={handleAccessGranted} error={accessError} />;
+  }
 
   const sendMessage = (text: string) => {
     if (text.trim() === '' || !socket) return;
