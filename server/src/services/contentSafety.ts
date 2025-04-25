@@ -232,6 +232,8 @@ export class ContentSafetyService {
           - category: string (one of "medical_advice", "financial_advice", "legal_advice", "product_marketing", "harmful_content", "adult_content", "gambling", "drugs", "prompt_injection")
           
           For simple general information requests about nutrition, exercise, wellness, finance basics, or legal concepts that don't constitute specific advice, mark as isSafe: true.
+          
+          IMPORTANT: Only return the JSON object, nothing else. No markdown formatting, no extra text.
           `
         }
       ],
@@ -239,14 +241,26 @@ export class ContentSafetyService {
     });
 
     try {
+      // Get the response text
       const responseText = result.content[0].type === 'text' 
         ? result.content[0].text 
         : JSON.stringify(result.content[0]);
-      const aiResponse = JSON.parse(responseText);
+      
+      // Extract JSON from the response - AI might include extra text
+      const aiResponse = this.extractJsonFromText(responseText);
+      
+      if (!aiResponse) {
+        console.error('Failed to extract valid JSON from AI response:', responseText);
+        throw new ContentSafetyError(
+          "Failed to validate content - unable to parse AI response",
+          "processing_error",
+          this.config.language || 'en'
+        );
+      }
       
       if (!aiResponse.isSafe) {
         throw new ContentSafetyError(
-          `Content contains restricted topic: ${aiResponse.reason}`,
+          `Content contains restricted topic: ${aiResponse.reason || 'unknown reason'}`,
           aiResponse.category || 'restricted_topic',
           this.config.language || 'en'
         );
@@ -255,12 +269,119 @@ export class ContentSafetyService {
       if (error instanceof ContentSafetyError) throw error;
       
       console.error('Error parsing AI content safety response:', error);
+      console.error('Raw response text:', result.content[0].type === 'text' ? result.content[0].text : 'non-text response');
       throw new ContentSafetyError(
         "Failed to validate content",
         "processing_error",
         this.config.language || 'en'
       );
     }
+  }
+
+  /**
+   * Attempts to extract valid JSON from text that might contain additional content
+   * @param text Text that might contain JSON
+   * @returns Parsed JSON object or null if extraction failed
+   */
+  private extractJsonFromText(text: string): any {
+    // Try direct parsing first
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      // Continue with extraction methods
+    }
+
+    try {
+      // Method 1: Find text between {} brackets (naive approach, but often works)
+      const jsonRegex = /{[\s\S]*}/;
+      const match = text.match(jsonRegex);
+      if (match && match[0]) {
+        return JSON.parse(match[0]);
+      }
+
+      // Method 2: Look for JSON with markdown code blocks
+      const markdownRegex = /```(?:json)?\s*([\s\S]*?)\s*```/;
+      const markdownMatch = text.match(markdownRegex);
+      if (markdownMatch && markdownMatch[1]) {
+        return JSON.parse(markdownMatch[1]);
+      }
+
+      // Method 3: Try to construct JSON from response by extracting key properties
+      if (text.includes('isSafe')) {
+        const isSafeRegex = /isSafe["\s:]+(\w+)/i;
+        const safeMatch = text.match(isSafeRegex);
+        const isSafe = safeMatch && (safeMatch[1].toLowerCase() === 'true');
+
+        let reason = '';
+        const reasonRegex = /reason["\s:]+["']?([^"'\n,]+(?:\s+[^"'\n,]+)*)["']?/i;
+        const reasonMatch = text.match(reasonRegex);
+        if (reasonMatch) reason = reasonMatch[1];
+
+        let category = '';
+        const categoryRegex = /category["\s:]+["']?([^"'\n,]+)["']?/i;
+        const categoryMatch = text.match(categoryRegex);
+        if (categoryMatch) category = categoryMatch[1];
+
+        return {
+          isSafe: !!isSafe,
+          reason,
+          category
+        };
+      }
+    } catch (e) {
+      console.error('Error in JSON extraction fallback:', e);
+    }
+
+    // If all extraction methods fail
+    return this.createFallbackResponse(text);
+  }
+
+  /**
+   * Creates a fallback response when JSON parsing fails, based on simple text analysis
+   * @param text The original response text
+   * @returns A fallback response object
+   */
+  private createFallbackResponse(text: string): any {
+    // Default to safe if we can't determine otherwise
+    let isSafe = true;
+    let reason = '';
+    let category = '';
+
+    // Check for common indicators of unsafe content
+    const lowerText = text.toLowerCase();
+    
+    if (lowerText.includes('not safe') || 
+        lowerText.includes('unsafe') || 
+        lowerText.includes('false')) {
+      isSafe = false;
+      
+      // Try to determine category
+      if (lowerText.includes('medical')) {
+        category = 'medical_advice';
+        reason = 'Content appears to contain medical advice';
+      } else if (lowerText.includes('financial')) {
+        category = 'financial_advice';
+        reason = 'Content appears to contain financial advice';
+      } else if (lowerText.includes('legal')) {
+        category = 'legal_advice';
+        reason = 'Content appears to contain legal advice';
+      } else if (lowerText.includes('harmful')) {
+        category = 'harmful_content';
+        reason = 'Content appears to contain harmful information';
+      } else if (lowerText.includes('adult') || lowerText.includes('explicit')) {
+        category = 'adult_content';
+        reason = 'Content appears to contain adult content';
+      } else if (lowerText.includes('prompt injection') || lowerText.includes('system')) {
+        category = 'prompt_injection';
+        reason = 'Content appears to contain prompt injection attempts';
+      } else {
+        category = 'restricted_topic';
+        reason = 'Content appears to contain restricted information';
+      }
+    }
+
+    console.warn('Using fallback content safety response');
+    return { isSafe, reason, category };
   }
 
   /**
