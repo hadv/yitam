@@ -12,6 +12,7 @@ import { ContentSafetyError } from './utils/errors';
 import { LegalService } from './services/legalService';
 import legalRoutes, { handleLegalDocumentRequest } from './routes/legal';
 import { validateAccessCode } from './middleware/accessControl';
+import { verifyRequestSignature } from './utils/crypto';
 
 // Load environment variables
 dotenv.config();
@@ -39,6 +40,39 @@ const io = new Server(server, {
   cors: config.server.cors,
   allowEIO3: true,
   transports: ['polling', 'websocket']
+});
+
+// Add Socket.IO middleware for access code validation
+io.use((socket, next) => {
+  const accessCode = socket.handshake.headers['x-access-code'] as string;
+  
+  if (!accessCode) {
+    return next(new Error('Access code is required'));
+  }
+  
+  const validAccessCodes = process.env.VALID_ACCESS_CODES?.split(',') || [];
+  
+  if (!validAccessCodes.includes(accessCode)) {
+    return next(new Error('Invalid access code'));
+  }
+
+  // Verify request signature if enabled
+  if (process.env.ENABLE_SIGNATURE_VERIFICATION === 'true') {
+    const signature = socket.handshake.headers['x-request-signature'] as string;
+    const timestamp = socket.handshake.headers['x-request-timestamp'] as string;
+    
+    if (!signature || !timestamp) {
+      return next(new Error('Request signature required'));
+    }
+    
+    if (!verifyRequestSignature(accessCode, signature, timestamp)) {
+      return next(new Error('Invalid request signature'));
+    }
+  }
+  
+  // Store the access code in the socket object for later use
+  socket.data.accessCode = accessCode;
+  next();
 });
 
 // Initialize services
