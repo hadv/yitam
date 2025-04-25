@@ -250,6 +250,7 @@ io.on('connection', (socket: Socket) => {
               if (error instanceof ContentSafetyError) {
                 safetyErrorOccurred = true;
                 console.log(`Content safety error in response chunk: ${error.message}, code: ${error.code}`);
+                console.log(`Original content that triggered the safety error: "${responseBuffer + chunk.substring(0, 50)}${chunk.length > 50 ? '...' : ''}"`);
                 
                 if (!socket.disconnected) {
                   // Send a clear error response to the client
@@ -323,6 +324,7 @@ io.on('connection', (socket: Socket) => {
                     if (error instanceof ContentSafetyError) {
                       safetyErrorOccurred = true;
                       console.log(`Content safety error in fallback response: ${error.message}, code: ${error.code}`);
+                      console.log(`Original content that triggered the safety error: "${responseBuffer + chunk.delta.text.substring(0, 50)}${chunk.delta.text.length > 50 ? '...' : ''}"`);
                       
                       if (!socket.disconnected) {
                         socket.emit('bot-response', {
@@ -385,6 +387,7 @@ io.on('connection', (socket: Socket) => {
                 if (error instanceof ContentSafetyError) {
                   safetyErrorOccurred = true;
                   console.log(`Content safety error in direct API response: ${error.message}, code: ${error.code}`);
+                  console.log(`Original content that triggered the safety error: "${responseBuffer + chunk.delta.text.substring(0, 50)}${chunk.delta.text.length > 50 ? '...' : ''}"`);
                   
                   if (!socket.disconnected) {
                     socket.emit('bot-response', {
