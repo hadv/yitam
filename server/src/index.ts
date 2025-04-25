@@ -176,16 +176,33 @@ io.on('connection', (socket: Socket) => {
     try {
       console.log('Received message:', message);
 
+      // Enable AI-based content safety if it's not already enabled
+      if (!contentSafetyService.isAiContentSafetyEnabled()) {
+        contentSafetyService.enableAiContentSafety(true);
+        console.log('AI-based content safety check enabled');
+      }
+
       // Validate and sanitize incoming message
       try {
-        contentSafetyService.validateContent(message);
+        await contentSafetyService.validateContent(message);
         message = contentSafetyService.sanitizeContent(message);
       } catch (error) {
         if (error instanceof ContentSafetyError) {
+          console.log(`Content safety error detected in user input: ${error.message}, code: ${error.code}`);
+          
+          // Get appropriate error message based on the error code
+          let errorMessage = ERROR_MESSAGES.invalid_content[error.language];
+          
+          // Use more specific error messages when available
+          if (error.code === 'medical_advice' || error.code === 'financial_advice' || 
+              error.code === 'legal_advice' || error.code === 'product_marketing') {
+            errorMessage = ERROR_MESSAGES.restricted_content[error.language];
+          } else if (error.code === 'prompt_injection') {
+            errorMessage = ERROR_MESSAGES.prompt_injection[error.language];
+          }
+          
           socket.emit('bot-response', {
-            text: error.code === 'restricted_topic' 
-              ? ERROR_MESSAGES.restricted_content[error.language]
-              : ERROR_MESSAGES.invalid_content[error.language],
+            text: errorMessage,
             id: Date.now().toString(),
           });
           return;
@@ -208,15 +225,17 @@ io.on('connection', (socket: Socket) => {
       }, 30000); // 30 second timeout
 
       let responseBuffer = '';
+      // Flag to track if a content safety error occurred
+      let safetyErrorOccurred = false;
       
       // Check if MCP client is connected and use it if available
       if (mcpClient && mcpConnected) {
         try {
           // Process message using MCP client with streaming callback
-          await mcpClient.processQueryWithStreaming(message, (chunk) => {
+          await mcpClient.processQueryWithStreaming(message, async (chunk) => {
             try {
               // Validate each chunk before sending
-              contentSafetyService.validateResponse(responseBuffer + chunk, 'vi');
+              await contentSafetyService.validateResponse(responseBuffer + chunk, 'vi');
               responseBuffer += chunk;
               
               // Only emit if socket is still connected
@@ -226,15 +245,35 @@ io.on('connection', (socket: Socket) => {
                   text: chunk
                 });
               }
+              return true; // Continue streaming
             } catch (error) {
               if (error instanceof ContentSafetyError) {
+                safetyErrorOccurred = true;
+                console.log(`Content safety error in response chunk: ${error.message}, code: ${error.code}`);
+                
                 if (!socket.disconnected) {
+                  // Send a clear error response to the client
                   socket.emit('bot-response', {
                     text: ERROR_MESSAGES.prompt_injection[error.language],
                     id: messageId,
                   });
+                  
+                  // Also emit a specific content safety error event
+                  socket.emit('content-safety-error', {
+                    id: messageId,
+                    error: error.message,
+                    code: error.code
+                  });
+                  
+                  // Make sure to send the end signal to let client know we're done
+                  socket.emit('bot-response-end', { 
+                    id: messageId,
+                    error: true,
+                    errorType: 'content_safety',
+                    errorCode: error.code
+                  });
                 }
-                throw error; // This will stop the streaming
+                return false; // Signal to stop streaming
               }
               throw error;
             }
@@ -271,7 +310,7 @@ io.on('connection', (socket: Socket) => {
                 if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
                   try {
                     // Validate each chunk before sending
-                    contentSafetyService.validateResponse(responseBuffer + chunk.delta.text, 'vi');
+                    await contentSafetyService.validateResponse(responseBuffer + chunk.delta.text, 'vi');
                     responseBuffer += chunk.delta.text;
                     
                     if (!socket.disconnected) {
@@ -282,13 +321,31 @@ io.on('connection', (socket: Socket) => {
                     }
                   } catch (error) {
                     if (error instanceof ContentSafetyError) {
+                      safetyErrorOccurred = true;
+                      console.log(`Content safety error in fallback response: ${error.message}, code: ${error.code}`);
+                      
                       if (!socket.disconnected) {
                         socket.emit('bot-response', {
                           text: ERROR_MESSAGES.prompt_injection[error.language],
                           id: messageId,
                         });
+                        
+                        // Also emit a specific content safety error event
+                        socket.emit('content-safety-error', {
+                          id: messageId,
+                          error: error.message,
+                          code: error.code
+                        });
+                        
+                        // Make sure to send the end signal to let client know we're done
+                        socket.emit('bot-response-end', { 
+                          id: messageId,
+                          error: true,
+                          errorType: 'content_safety',
+                          errorCode: error.code
+                        });
                       }
-                      break;
+                      break; // Stop processing the stream
                     }
                     throw error;
                   }
@@ -315,20 +372,42 @@ io.on('connection', (socket: Socket) => {
             if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
               try {
                 // Validate each chunk before sending
-                contentSafetyService.validateResponse(responseBuffer + chunk.delta.text, 'vi');
+                await contentSafetyService.validateResponse(responseBuffer + chunk.delta.text, 'vi');
                 responseBuffer += chunk.delta.text;
                 
-                socket.emit('bot-response-chunk', {
-                  id: messageId,
-                  text: chunk.delta.text
-                });
+                if (!socket.disconnected) {
+                  socket.emit('bot-response-chunk', {
+                    id: messageId,
+                    text: chunk.delta.text
+                  });
+                }
               } catch (error) {
                 if (error instanceof ContentSafetyError) {
-                  socket.emit('bot-response', {
-                    text: ERROR_MESSAGES.prompt_injection[error.language],
-                    id: messageId,
-                  });
-                  break;
+                  safetyErrorOccurred = true;
+                  console.log(`Content safety error in direct API response: ${error.message}, code: ${error.code}`);
+                  
+                  if (!socket.disconnected) {
+                    socket.emit('bot-response', {
+                      text: ERROR_MESSAGES.prompt_injection[error.language],
+                      id: messageId,
+                    });
+                    
+                    // Also emit a specific content safety error event
+                    socket.emit('content-safety-error', {
+                      id: messageId,
+                      error: error.message,
+                      code: error.code
+                    });
+                    
+                    // Make sure to send the end signal to let client know we're done
+                    socket.emit('bot-response-end', { 
+                      id: messageId,
+                      error: true,
+                      errorType: 'content_safety',
+                      errorCode: error.code
+                    });
+                  }
+                  break; // Stop processing the stream
                 }
                 throw error;
               }
@@ -344,8 +423,8 @@ io.on('connection', (socket: Socket) => {
         }
       }
 
-      // Signal that the response is complete
-      if (!socket.disconnected) {
+      // Signal that the response is complete only if no safety error occurred
+      if (!socket.disconnected && !safetyErrorOccurred) {
         socket.emit('bot-response-end', { id: messageId });
       }
     } catch (error: any) {
