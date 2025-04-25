@@ -534,6 +534,34 @@ export class Query {
                 
                 // If we have a successful response, add it to conversation history
                 if (bestResponseBuffer) {
+                  // Log the response content for debugging
+                  console.log(`Follow-up response content (${bestResponseBuffer.length} chars): "${bestResponseBuffer.substring(0, 100)}${bestResponseBuffer.length > 100 ? '...' : ''}"`);
+                  
+                  // Check if the response is empty or too short
+                  if (bestResponseBuffer.trim().length < 20) {
+                    console.warn("Follow-up response is too short or empty, forcing a new response");
+                    // Force a new response with a more specific prompt
+                    try {
+                      const forceResponse = await this.anthropic.messages.create({
+                        model: config.model.name,
+                        max_tokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000),
+                        system: SystemPrompts.FOLLOW_UP + "\n\nYOU MUST GENERATE A DETAILED RESPONSE. EMPTY OR SHORT RESPONSES ARE UNACCEPTABLE.",
+                        messages: this.conversation.getConversationHistory(),
+                        temperature: 1.0, // Increase temperature to encourage different response
+                      });
+                      
+                      if (forceResponse.content[0]?.type === "text") {
+                        const forcedText = forceResponse.content[0].text.trim();
+                        if (forcedText.length > bestResponseBuffer.trim().length) {
+                          console.log(`Using forced follow-up response (${forcedText.length} chars): "${forcedText.substring(0, 100)}${forcedText.length > 100 ? '...' : ''}"`);
+                          bestResponseBuffer = forcedText;
+                        }
+                      }
+                    } catch (error) {
+                      console.error("Error forcing new follow-up response:", error);
+                    }
+                  }
+                  
                   this.conversation.addAssistantMessage(bestResponseBuffer);
                   console.log(`Added follow-up response to history (${bestResponseBuffer.length} chars)`);
                 }
