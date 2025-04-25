@@ -3,6 +3,7 @@ import { io, Socket } from 'socket.io-client';
 import { config } from './config';
 import ChatBox from './components/ChatBox';
 import MessageInput from './components/MessageInput';
+import AccessCodeInput from './components/AccessCodeInput';
 import './App.css';
 
 // Message interface
@@ -17,10 +18,19 @@ function App() {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isConnected, setIsConnected] = useState(false);
+  const [hasAccess, setHasAccess] = useState(false);
+  const [accessError, setAccessError] = useState('');
 
   useEffect(() => {
+    if (!hasAccess) return;
+
     // Initialize socket connection
-    const newSocket = io(config.server.url, config.server.socketOptions);
+    const newSocket = io(config.server.url, {
+      ...config.server.socketOptions,
+      extraHeaders: {
+        'X-Access-Code': localStorage.getItem('accessCode') || ''
+      }
+    });
     
     newSocket.on('connect', () => {
       setIsConnected(true);
@@ -34,6 +44,14 @@ function App() {
           isBot: true
         }
       ]);
+    });
+
+    newSocket.on('connect_error', (error) => {
+      if (error.message.includes('Invalid access code')) {
+        setAccessError('Invalid access code. Please try again.');
+        setHasAccess(false);
+        localStorage.removeItem('accessCode');
+      }
     });
 
     newSocket.on('disconnect', () => {
@@ -81,11 +99,19 @@ function App() {
 
     setSocket(newSocket);
 
-    // Cleanup on component unmount
     return () => {
-      newSocket.disconnect();
+      newSocket.close();
     };
-  }, []);
+  }, [hasAccess]);
+
+  const handleAccessGranted = (accessCode: string) => {
+    localStorage.setItem('accessCode', accessCode);
+    setHasAccess(true);
+  };
+
+  if (!hasAccess) {
+    return <AccessCodeInput onAccessGranted={handleAccessGranted} />;
+  }
 
   const sendMessage = (text: string) => {
     if (text.trim() === '' || !socket) return;

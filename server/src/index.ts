@@ -11,6 +11,7 @@ import { contentSafetyService } from './services/contentSafety';
 import { ContentSafetyError } from './utils/errors';
 import { LegalService } from './services/legalService';
 import legalRoutes, { handleLegalDocumentRequest } from './routes/legal';
+import { validateAccessCode } from './middleware/accessControl';
 
 // Load environment variables
 dotenv.config();
@@ -19,6 +20,14 @@ dotenv.config();
 const app: Express = express();
 app.use(cors(config.server.cors));
 app.use(express.json());
+
+// Apply access control middleware to all routes except health check
+app.use((req, res, next) => {
+  if (req.path === '/health') {
+    return next();
+  }
+  validateAccessCode(req, res, next);
+});
 
 const PORT = config.server.port;
 
@@ -243,6 +252,11 @@ io.on('connection', (socket: Socket) => {
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
   });
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
 });
 
 // Start the server
