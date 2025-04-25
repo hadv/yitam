@@ -222,7 +222,7 @@ io.on('connection', (socket: Socket) => {
           console.log('Tool call taking too long, sending timeout notification to client');
           socket.emit('tool-call-timeout', { id: messageId });
         }
-      }, 30000); // 30 second timeout
+      }, 60000); // 60 second timeout (increased from 30 seconds)
 
       let responseBuffer = '';
       // Flag to track if a content safety error occurred
