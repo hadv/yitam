@@ -27,7 +27,7 @@ function TailwindApp() {
   const [questionsLimit] = useState(6); // Default sample questions limit
   const inputRef = useRef<HTMLDivElement>(null);
   const [pendingAccessCode, setPendingAccessCode] = useState<string | null>(null);
-
+  
   useEffect(() => {
     if (!pendingAccessCode) return;
 
@@ -50,7 +50,11 @@ function TailwindApp() {
           }
         });
         
+        // Prepare a variable for connection timeout
+        let connectionTimeout: ReturnType<typeof setTimeout>;
+
         newSocket.on('connect', () => {
+          clearTimeout(connectionTimeout);
           setIsConnected(true);
           setHasAccess(true);
           setAccessError('');
@@ -67,6 +71,7 @@ function TailwindApp() {
         });
 
         newSocket.on('connect_error', (error) => {
+          clearTimeout(connectionTimeout);
           console.error('Connection error:', error.message);
           
           // Provide more specific error messages based on the error
@@ -84,9 +89,8 @@ function TailwindApp() {
           setPendingAccessCode(null);
           localStorage.removeItem('accessCode');
           
-          if (socket) {
-            socket.close();
-          }
+          // Close the socket on error
+          newSocket.close();
         });
 
         newSocket.on('disconnect', () => {
@@ -138,8 +142,8 @@ function TailwindApp() {
         });
 
         // Add a connection timeout
-        const connectionTimeout = setTimeout(() => {
-          if (!isConnected) {
+        connectionTimeout = setTimeout(() => {
+          if (!newSocket.connected) {
             setAccessError('Kết nối tới máy chủ quá thời gian. Vui lòng thử lại sau.');
             setPendingAccessCode(null);
             newSocket.close();
@@ -195,6 +199,21 @@ function TailwindApp() {
     socket.emit('chat-message', text);
   };
 
+  // Function to start a new chat
+  const startNewChat = () => {
+    setMessages([
+      {
+        id: 'welcome',
+        text: 'Xin chào! Yitam đang lắng nghe!',
+        isBot: true
+      }
+    ]);
+    setHasUserSentMessage(false);
+  };
+
+  // Check if any bot message is currently streaming
+  const isBotResponding = messages.some(msg => msg.isBot && msg.isStreaming);
+
   return (
     <ConsentProvider>
       <>
@@ -225,7 +244,7 @@ function TailwindApp() {
             </header>
 
             {/* Scrollable chat area - takes remaining height */}
-            <div className={`flex-1 overflow-y-auto my-[10px] ${hasUserSentMessage ? 'pb-[80px]' : ''}`}>
+            <div className={`flex-1 overflow-y-auto my-[10px] ${hasUserSentMessage ? 'pb-[80px]' : ''} relative`}>
               <TailwindChatBox messages={messages} />
               {messages.length <= 1 && (
                 <>
@@ -252,22 +271,45 @@ function TailwindApp() {
               >
                 <TailwindMessageInput onSendMessage={sendMessage} disabled={!isConnected} />
                 
-                {/* Footer */}
-                <footer className="bg-[#F5EFE0] mt-2 py-[5px] px-[5px] flex justify-between items-center border-t border-[#E6DFD1] rounded shadow-[0_-1px_1px_rgba(0,0,0,0.05)] min-h-[30px]">
-                  <div className={`text-[0.65rem] font-medium px-1 py-[1px] rounded ${
-                    isConnected 
-                      ? 'bg-[rgba(120,161,97,0.2)] text-[#78A161]' 
-                      : 'bg-[rgba(188,71,73,0.2)] text-[#BC4749]'
-                  }`}>
-                    {isConnected ? 'Sẵn sàng' : 'Ngoại tuyến'}
+                {/* Footer with the New Chat button added */}
+                <footer className="bg-[#F5EFE0] mt-2 py-2 px-3 flex justify-between items-center border-t border-[#E6DFD1] rounded shadow-[0_-1px_1px_rgba(0,0,0,0.05)] min-h-[45px]">
+                  <div className="flex items-center flex-1">
+                    <div className={`text-sm font-medium px-2 py-1 rounded ${
+                      isConnected 
+                        ? 'bg-[rgba(120,161,97,0.2)] text-[#78A161]' 
+                        : 'bg-[rgba(188,71,73,0.2)] text-[#BC4749]'
+                    }`}>
+                      {isConnected ? 'Sẵn sàng' : 'Ngoại tuyến'}
+                    </div>
+                    
+                    {/* Bigger New Chat button in the footer */}
+                    {messages.length > 1 ? (
+                      <button
+                        onClick={startNewChat}
+                        disabled={isBotResponding}
+                        className={`ml-3 flex items-center text-sm font-medium py-1.5 px-3 rounded-md transition-all duration-200 ${
+                          isBotResponding 
+                            ? 'bg-[#E6DFD1] text-[#9E9689] cursor-not-allowed opacity-80' 
+                            : 'bg-[#78A161] text-white hover:bg-[#5D8A46] shadow-sm hover:shadow'
+                        }`}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Cuộc trò chuyện mới
+                      </button>
+                    ) : (
+                      <div className="ml-3 py-1.5 px-3 invisible">Placeholder</div>
+                    )}
                   </div>
+                  
                   <a 
                     href="https://github.com/sponsors/hadv" 
                     target="_blank" 
                     rel="noopener noreferrer" 
-                    className="flex items-center text-[0.6rem] font-medium text-[#78A161] bg-[rgba(120,161,97,0.1)] hover:bg-[rgba(120,161,97,0.2)] px-[3px] py-[1px] rounded transition-all hover:scale-105"
+                    className="flex items-center text-sm font-medium text-[#78A161] bg-[rgba(120,161,97,0.1)] hover:bg-[rgba(120,161,97,0.2)] px-2 py-1 rounded transition-all hover:scale-105 ml-2"
                   >
-                    <span className="text-[#BC4749] mr-1 text-[0.65rem]">♥</span>
+                    <span className="text-[#BC4749] mr-1.5 text-base">♥</span>
                     <span className="leading-none">Hỗ trợ dự án</span>
                   </a>
                 </footer>
@@ -276,21 +318,25 @@ function TailwindApp() {
 
             {/* Footer shown at the bottom initially */}
             {!hasUserSentMessage && (
-              <footer className="bg-[#F5EFE0] mt-2 py-[5px] px-[5px] flex justify-between items-center border-t border-[#E6DFD1] rounded shadow-[0_-1px_1px_rgba(0,0,0,0.05)] min-h-[30px]">
-                <div className={`text-[0.65rem] font-medium px-1 py-[1px] rounded ${
-                  isConnected 
-                    ? 'bg-[rgba(120,161,97,0.2)] text-[#78A161]' 
-                    : 'bg-[rgba(188,71,73,0.2)] text-[#BC4749]'
-                }`}>
-                  {isConnected ? 'Sẵn sàng' : 'Ngoại tuyến'}
+              <footer className="bg-[#F5EFE0] mt-2 py-2 px-3 flex justify-between items-center border-t border-[#E6DFD1] rounded shadow-[0_-1px_1px_rgba(0,0,0,0.05)] min-h-[45px]">
+                <div className="flex items-center flex-1">
+                  <div className={`text-sm font-medium px-2 py-1 rounded ${
+                    isConnected 
+                      ? 'bg-[rgba(120,161,97,0.2)] text-[#78A161]' 
+                      : 'bg-[rgba(188,71,73,0.2)] text-[#BC4749]'
+                  }`}>
+                    {isConnected ? 'Sẵn sàng' : 'Ngoại tuyến'}
+                  </div>
+                  {/* Invisible placeholder to maintain consistent footer size */}
+                  <div className="ml-3 py-1.5 px-3 invisible">Placeholder</div>
                 </div>
                 <a 
                   href="https://github.com/sponsors/hadv" 
                   target="_blank" 
                   rel="noopener noreferrer" 
-                  className="flex items-center text-[0.6rem] font-medium text-[#78A161] bg-[rgba(120,161,97,0.1)] hover:bg-[rgba(120,161,97,0.2)] px-[3px] py-[1px] rounded transition-all hover:scale-105"
+                  className="flex items-center text-sm font-medium text-[#78A161] bg-[rgba(120,161,97,0.1)] hover:bg-[rgba(120,161,97,0.2)] px-2 py-1 rounded transition-all hover:scale-105 ml-2"
                 >
-                  <span className="text-[#BC4749] mr-1 text-[0.65rem]">♥</span>
+                  <span className="text-[#BC4749] mr-1.5 text-base">♥</span>
                   <span className="leading-none">Hỗ trợ dự án</span>
                 </a>
               </footer>
