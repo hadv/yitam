@@ -15,7 +15,13 @@ export const config = {
       origin: process.env.CLIENT_URL || 'http://localhost:3000',
       methods: ['GET', 'POST'],
       credentials: true,
-      allowedHeaders: ['my-custom-header']
+      allowedHeaders: [
+        'Content-Type', 
+        'Authorization', 
+        'X-Access-Code', 
+        'X-Request-Signature', 
+        'X-Request-Timestamp'
+      ]
     }
   }
 }; 

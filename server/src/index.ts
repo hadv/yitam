@@ -37,7 +37,12 @@ const server = createServer(app);
 
 // Initialize Socket.IO
 const io = new Server(server, {
-  cors: config.server.cors,
+  cors: {
+    origin: config.server.cors.origin,
+    methods: config.server.cors.methods,
+    credentials: config.server.cors.credentials,
+    allowedHeaders: config.server.cors.allowedHeaders
+  },
   allowEIO3: true,
   transports: ['polling', 'websocket']
 });
