@@ -5,6 +5,7 @@ import TailwindChatBox from './TailwindChatBox';
 import TailwindMessageInput from './TailwindMessageInput';
 import TailwindSampleQuestions from './TailwindSampleQuestions';
 import TailwindTermsModal from './TailwindTermsModal';
+import TailwindAccessCodeInput from './TailwindAccessCodeInput';
 import { ConsentProvider } from '../../contexts/ConsentContext';
 
 // Message interface
@@ -20,15 +21,27 @@ function TailwindApp() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [hasUserSentMessage, setHasUserSentMessage] = useState(false);
+  const [hasAccess, setHasAccess] = useState(false);
+  const [accessError, setAccessError] = useState('');
   const [questionsLimit] = useState(6); // Default sample questions limit
   const inputRef = useRef<HTMLDivElement>(null);
+  const [pendingAccessCode, setPendingAccessCode] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!pendingAccessCode) return;
+
     // Initialize socket connection
-    const newSocket = io(config.server.url, config.server.socketOptions);
+    const newSocket = io(config.server.url, {
+      ...config.server.socketOptions,
+      extraHeaders: {
+        'X-Access-Code': pendingAccessCode
+      }
+    });
     
     newSocket.on('connect', () => {
       setIsConnected(true);
+      setHasAccess(true); // Only set hasAccess to true after successful connection
+      setAccessError('');
       console.log('Connected to server');
       
       // Add welcome message
@@ -39,6 +52,18 @@ function TailwindApp() {
           isBot: true
         }
       ]);
+    });
+
+    newSocket.on('connect_error', (error) => {
+      if (error.message.includes('Invalid access code')) {
+        setAccessError('Mã truy cập không hợp lệ. Vui lòng thử lại.');
+        setHasAccess(false);
+        setPendingAccessCode(null);
+        localStorage.removeItem('accessCode');
+        if (socket) {
+          socket.close();
+        }
+      }
     });
 
     newSocket.on('disconnect', () => {
@@ -93,9 +118,20 @@ function TailwindApp() {
 
     // Cleanup on component unmount
     return () => {
-      newSocket.disconnect();
+      if (newSocket) {
+        newSocket.close();
+      }
     };
-  }, []);
+  }, [pendingAccessCode]);
+
+  const handleAccessGranted = (accessCode: string) => {
+    setPendingAccessCode(accessCode);
+    localStorage.setItem('accessCode', accessCode);
+  };
+
+  if (!hasAccess) {
+    return <TailwindAccessCodeInput onAccessGranted={handleAccessGranted} error={accessError} />;
+  }
 
   const sendMessage = (text: string) => {
     if (text.trim() === '' || !socket) return;
