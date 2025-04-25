@@ -7,7 +7,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { MCPClient } from './MCPClient';
 import { config } from './config';
 import { sampleQuestions } from './data/sampleQuestions';
-import { contentSafetyService } from './services/contentSafety';
+import { contentSafetyService } from './services/ContentSafety';
 import { ContentSafetyError } from './utils/errors';
 import { LegalService } from './services/legalService';
 import { handleLegalDocumentRequest } from './routes/legal';

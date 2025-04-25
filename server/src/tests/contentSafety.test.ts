@@ -1,4 +1,4 @@
-import { ContentSafetyService } from '../services/contentSafety';
+import { ContentSafetyService } from '../services/ContentSafety';
 import { ContentSafetyError } from '../utils/errors';
 
 describe('ContentSafetyService', () => {
