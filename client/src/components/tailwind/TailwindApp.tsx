@@ -34,6 +34,9 @@ function TailwindApp() {
     // Generate request signature and establish connection
     const connectWithSignature = async () => {
       try {
+        // Show loading state
+        setAccessError('Đang xác thực mã truy cập...');
+        
         // Generate a signature for the access code
         const { signature, timestamp } = await generateRequestSignature(pendingAccessCode);
         
@@ -66,17 +69,20 @@ function TailwindApp() {
         newSocket.on('connect_error', (error) => {
           console.error('Connection error:', error.message);
           
-          if (error.message.includes('Access code')) {
-            setAccessError('Mã truy cập không hợp lệ. Vui lòng thử lại.');
-            setHasAccess(false);
-            setPendingAccessCode(null);
-            localStorage.removeItem('accessCode');
+          // Provide more specific error messages based on the error
+          if (error.message.includes('Access code is required')) {
+            setAccessError('Vui lòng nhập mã truy cập để tiếp tục.');
+          } else if (error.message.includes('Invalid access code')) {
+            setAccessError('Mã truy cập không hợp lệ. Vui lòng kiểm tra và thử lại.');
           } else if (error.message.includes('signature')) {
-            setAccessError('Lỗi xác thực. Vui lòng thử lại sau.');
-            setHasAccess(false);
-            setPendingAccessCode(null);
-            localStorage.removeItem('accessCode');
+            setAccessError('Lỗi xác thực chữ ký. Vui lòng thử lại sau hoặc liên hệ hỗ trợ.');
+          } else {
+            setAccessError('Không thể kết nối đến máy chủ. Vui lòng thử lại sau.');
           }
+          
+          setHasAccess(false);
+          setPendingAccessCode(null);
+          localStorage.removeItem('accessCode');
           
           if (socket) {
             socket.close();
@@ -131,9 +137,19 @@ function TailwindApp() {
           );
         });
 
+        // Add a connection timeout
+        const connectionTimeout = setTimeout(() => {
+          if (!isConnected) {
+            setAccessError('Kết nối tới máy chủ quá thời gian. Vui lòng thử lại sau.');
+            setPendingAccessCode(null);
+            newSocket.close();
+          }
+        }, 10000); // 10 second timeout
+
         setSocket(newSocket);
 
         return () => {
+          clearTimeout(connectionTimeout);
           if (newSocket) {
             newSocket.close();
           }
