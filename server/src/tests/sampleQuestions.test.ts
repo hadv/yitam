@@ -1,4 +1,4 @@
-import { sampleQuestions } from '../data/sampleQuestions';
+import { sampleQuestions } from '../data/SampleQuestions';
 import { contentSafetyService } from '../services/ContentSafety';
 import { ContentSafetyError } from '../utils/errors';
 

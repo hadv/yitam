@@ -6,12 +6,12 @@ import dotenv from 'dotenv';
 import Anthropic from '@anthropic-ai/sdk';
 import { MCPClient } from './MCPClient';
 import { config } from './config';
-import { sampleQuestions } from './data/sampleQuestions';
+import { sampleQuestions } from './data/SampleQuestions';
 import { contentSafetyService } from './services/ContentSafety';
 import { ContentSafetyError } from './utils/errors';
-import { LegalService } from './services/legalService';
+import { LegalService } from './services/LegalService';
 import { handleLegalDocumentRequest } from './routes/legal';
-import { validateAccessCode } from './middleware/accessControl';
+import { validateAccessCode } from './middleware/AccessControl';
 import { verifyRequestSignature } from './utils/crypto';
 
 // Load environment variables
