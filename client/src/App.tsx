@@ -141,6 +141,10 @@ function App() {
         </div>
       </header>
       
+      <div className="beta-notification mb-4">
+        ⚠️ Đây là phiên bản beta của chatbot. Các tính năng và phản hồi có thể bị giới hạn hoặc đang trong giai đoạn thử nghiệm.
+      </div>
+      
       <main className="chat-container">
         <ChatBox messages={messages} />
         <MessageInput onSendMessage={sendMessage} disabled={!isConnected} />
