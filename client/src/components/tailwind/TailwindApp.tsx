@@ -243,6 +243,11 @@ function TailwindApp() {
               </div>
             </header>
 
+            {/* Beta warning banner */}
+            <div className="bg-yellow-50 text-yellow-800 p-3 text-center text-sm rounded-md my-4 mx-2 border border-yellow-200">
+              ⚠️ Đây là phiên bản beta của chatbot. Các tính năng và phản hồi có thể bị giới hạn hoặc đang trong giai đoạn thử nghiệm.
+            </div>
+
             {/* Scrollable chat area - takes remaining height */}
             <div className={`flex-1 overflow-y-auto my-[10px] ${hasUserSentMessage ? 'pb-[80px]' : ''} relative`}>
               <TailwindChatBox messages={messages} />

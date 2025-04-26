@@ -242,3 +242,14 @@
     opacity: 1;
   }
 }
+
+.beta-notification {
+  background-color: #fff3cd;
+  color: #856404;
+  padding: 10px 15px;
+  text-align: center;
+  font-size: 14px;
+  border-bottom: 1px solid #ffeeba;
+  margin-bottom: 10px;
+  border-radius: 4px;
+}
