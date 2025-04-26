@@ -79,12 +79,6 @@ export class Query {
    * Determines the search query to use for search-focused tools
    */
   private async _determineSearchQuery(query: string): Promise<string> {
-    // Skip search query extraction for simple or short queries
-    if (query.length < 20 || !/\?/.test(query)) {
-      console.log(`Using original query as search query: "${query.substring(0, 50)}..."`);
-      return query;
-    }
-  
     try {
       console.time('search-query-extraction');
       
@@ -102,7 +96,7 @@ export class Query {
 
       if (extractionResponse.content[0]?.type === "text") {
         const extractedText = extractionResponse.content[0].text.trim();
-        if (extractedText && extractedText.length > 0 && extractedText.length < query.length) {
+        if (extractedText && extractedText.length > 0) {
           console.log(`Original query: "${query.substring(0, 50)}..."`);
           console.log(`Extracted search query: "${extractedText}"`);
           return extractedText;
