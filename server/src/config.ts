@@ -7,6 +7,12 @@ export const config = {
   model: {
     name: process.env.ANTHROPIC_MODEL || 'claude-3-7-sonnet-20250219',
     maxTokens: parseInt(process.env.MODEL_MAX_TOKENS || '10000'),
+    // Add model-specific max token limits to prevent errors
+    tokenLimits: {
+      'claude-3-7-sonnet-20250219': 10000,
+      'claude-3-haiku-20240307': 4000,
+      'default': 4000 // Fallback for models not explicitly listed
+    } as Record<string, number>
   },
   server: {
     port: parseInt(process.env.PORT || '5001'),

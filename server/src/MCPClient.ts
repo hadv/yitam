@@ -56,8 +56,16 @@ export class MCPClient {
     return this.query.processQuery(query, chatId);
   }
 
-  async processQueryWithStreaming(query: string, callback: (chunk: string) => void, chatId?: string): Promise<void> {
-    return this.query.processQueryWithStreaming(query, callback, chatId);
+  /**
+   * Process a query using the MCP with streaming support
+   * @param query The user query to process
+   * @param streamCallback Callback function called for each text chunk, should return true to continue streaming or false to stop
+   */
+  public async processQueryWithStreaming(
+    query: string, 
+    streamCallback: (text: string) => boolean | Promise<boolean> | void
+  ): Promise<void> {
+    return this.query.processQueryWithStreaming(query, streamCallback);
   }
 
   getTools(): AnthropicTool[] {

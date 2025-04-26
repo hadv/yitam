@@ -1,5 +1,5 @@
-import { sampleQuestions } from '../data/sampleQuestions';
-import { contentSafetyService } from '../services/contentSafety';
+import { sampleQuestions } from '../data/SampleQuestions';
+import { contentSafetyService } from '../services/ContentSafety';
 import { ContentSafetyError } from '../utils/errors';
 
 describe('Sample Questions', () => {
