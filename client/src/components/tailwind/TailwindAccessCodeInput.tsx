@@ -35,7 +35,7 @@ const TailwindAccessCodeInput = ({ onAccessGranted, error: propError }: AccessCo
 
   return (
     <div className="h-screen bg-[#FDFBF6] text-[#3A2E22] flex justify-center items-center">
-      <div className="w-full max-w-[500px] p-6">
+      <div className="w-full max-w-[600px] p-6 mt-[-100px]">
         <div className="bg-[#F5EFE0] rounded-lg shadow-[0_1px_1px_rgba(0,0,0,0.05)] p-8">
           <div className="text-center mb-8">
             <img 
@@ -105,7 +105,15 @@ const TailwindAccessCodeInput = ({ onAccessGranted, error: propError }: AccessCo
 
           <div className="mt-6 text-center">
             <p className="text-[0.75rem] text-[#5D4A38] opacity-60">
-              Nếu bạn chưa có mã truy cập, vui lòng liên hệ với chúng tôi
+              Nếu bạn chưa có mã truy cập, vui lòng liên hệ với chúng tôi qua email: <a href="mailto:info@yitam.org" className="text-[#78A161] hover:underline">info@yitam.org</a>
+            </p>
+            <p className="mt-2 text-[0.75rem] text-[#5D4A38] opacity-60">
+              Bạn cũng có thể hỗ trợ chúng tôi <a href="https://github.com/sponsors/hadv" target="_blank" rel="noopener noreferrer" className="text-[#78A161] hover:underline inline-flex items-center">
+               bằng cách đóng góp tại đây ♥
+                <svg className="w-4 h-4 ml-1" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
+                </svg>
+              </a>
             </p>
           </div>
         </div>
