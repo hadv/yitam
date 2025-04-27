@@ -138,14 +138,6 @@ export default function TailwindTermsModal({ socket }: TermsModalProps) {
               </div>
             ) : (
               <div className="prose prose-lg max-w-none prose-headings:text-[#3A2E22] prose-headings:font-semibold prose-h1:text-3xl prose-h2:text-2xl prose-h3:text-xl prose-p:text-[#5D4A38] prose-p:leading-relaxed prose-li:text-[#5D4A38] prose-strong:text-[#3A2E22] prose-strong:font-semibold">
-                {/* Vietnamese version header */}
-                <div className="bg-[#F9F7F2] p-4 rounded-md border border-[#E6DFD1] mb-8">
-                  <h3 className="mt-0 mb-2 text-[#3A2E22] font-medium">Phiên bản tiếng Việt</h3>
-                  <p className="text-sm text-[#5D4A38] my-0">
-                    Đây là bản dịch tiếng Việt của {documents[activeDocument].title}. Vui lòng đọc kỹ nội dung.
-                  </p>
-                </div>
-                
                 <ReactMarkdown
                   components={{
                     h1: ({node, ...props}) => <h1 className="mb-8 pb-2 border-b border-[#E6DFD1]" {...props} />,
