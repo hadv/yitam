@@ -13,25 +13,39 @@ interface LegalDocument {
   isLoading: boolean;
   content: string;
   error: string | null;
+  lastUpdated: string;
 }
+
+// Format current date as DD/MM/YYYY
+const getCurrentDate = () => {
+  const today = new Date();
+  const day = String(today.getDate()).padStart(2, '0');
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const year = today.getFullYear();
+  return `${day}/${month}/${year}`;
+};
 
 export default function TailwindTermsModal({ socket }: TermsModalProps) {
   const { hasAcceptedTerms, setHasAcceptedTerms } = useConsent();
   const [activeDocument, setActiveDocument] = useState<string | null>(null);
+  const currentDate = getCurrentDate();
+  
   const [documents, setDocuments] = useState<Record<string, LegalDocument>>({
     terms: {
       title: 'Điều khoản và Điều kiện',
       type: 'terms',
       isLoading: true,
       content: '',
-      error: null
+      error: null,
+      lastUpdated: currentDate
     },
     privacy: {
       title: 'Chính sách Bảo mật',
       type: 'privacy',
       isLoading: true,
       content: '',
-      error: null
+      error: null,
+      lastUpdated: currentDate
     }
   });
 
@@ -96,9 +110,14 @@ export default function TailwindTermsModal({ socket }: TermsModalProps) {
         // Document viewer
         <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
           <div className="bg-[#F5EFE0] px-8 py-4 rounded-t-lg border-b border-[#E6DFD1] flex justify-between items-center">
-            <h2 className="text-xl font-semibold text-[#3A2E22]">
-              {documents[activeDocument].title}
-            </h2>
+            <div>
+              <h2 className="text-xl font-semibold text-[#3A2E22]">
+                {documents[activeDocument].title}
+              </h2>
+              <p className="text-xs text-[#5D4A38] mt-1">
+                Cập nhật lần cuối: {documents[activeDocument].lastUpdated}
+              </p>
+            </div>
             <button 
               onClick={closeDocument}
               className="text-[#5D4A38] hover:text-[#3A2E22] transition-colors"
@@ -119,6 +138,14 @@ export default function TailwindTermsModal({ socket }: TermsModalProps) {
               </div>
             ) : (
               <div className="prose prose-lg max-w-none prose-headings:text-[#3A2E22] prose-headings:font-semibold prose-h1:text-3xl prose-h2:text-2xl prose-h3:text-xl prose-p:text-[#5D4A38] prose-p:leading-relaxed prose-li:text-[#5D4A38] prose-strong:text-[#3A2E22] prose-strong:font-semibold">
+                {/* Vietnamese version header */}
+                <div className="bg-[#F9F7F2] p-4 rounded-md border border-[#E6DFD1] mb-8">
+                  <h3 className="mt-0 mb-2 text-[#3A2E22] font-medium">Phiên bản tiếng Việt</h3>
+                  <p className="text-sm text-[#5D4A38] my-0">
+                    Đây là bản dịch tiếng Việt của {documents[activeDocument].title}. Vui lòng đọc kỹ nội dung.
+                  </p>
+                </div>
+                
                 <ReactMarkdown
                   components={{
                     h1: ({node, ...props}) => <h1 className="mb-8 pb-2 border-b border-[#E6DFD1]" {...props} />,
@@ -150,6 +177,9 @@ export default function TailwindTermsModal({ socket }: TermsModalProps) {
             <h2 className="text-2xl font-semibold text-[#3A2E22]">Chào mừng đến với Yitam</h2>
             <p className="text-[#5D4A38] mt-3">
               Trước khi bắt đầu, vui lòng đọc và đồng ý với các điều khoản và chính sách của chúng tôi.
+            </p>
+            <p className="text-xs text-[#5D4A38] mt-2">
+              Cập nhật lần cuối: {currentDate}
             </p>
           </div>
           
