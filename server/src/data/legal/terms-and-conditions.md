@@ -1,38 +1,5 @@
 # Terms and Conditions
-Last Updated: March 19, 2024
-
-## English Version
-
-### 1. Acceptance of Terms
-By accessing and using this AI chat service, you agree to be bound by these Terms and Conditions.
-
-### 2. Service Description
-We provide an AI-powered chat service focused on traditional medicine consultation. This service is for informational purposes only and should not replace professional medical advice.
-
-### 3. Content Restrictions
-Users must not:
-- Request or provide medical prescriptions
-- Share personal medical information
-- Promote or market medical products
-- Share harmful or inappropriate content
-- Attempt to manipulate or deceive the AI system
-
-### 4. Service Termination
-We reserve the absolute right to:
-- Terminate or suspend access to the service, in whole or in part
-- Discontinue the service at any time without prior notice
-- Block any user from accessing the service
-- Make changes to the service without notification
-These actions may be taken at our sole discretion, without explanation or liability.
-
-### 5. Disclaimer
-- The information provided is for general knowledge only
-- We do not guarantee the accuracy of AI responses
-- Users should consult healthcare professionals for medical advice
-- We are not liable for any decisions made based on the information provided
-
-### 6. Privacy
-Your use of this service is also governed by our Privacy Policy. Chat messages may be monitored for safety and quality purposes.
+Last Updated: 16/08/2024
 
 ## Điều khoản và Điều kiện (Vietnamese Version)
 
@@ -67,8 +34,41 @@ Những hành động này có thể được thực hiện theo quyết định
 ### 6. Quyền riêng tư
 Việc sử dụng dịch vụ này của bạn cũng được điều chỉnh bởi Chính sách Quyền riêng tư của chúng tôi. Tin nhắn chat có thể được giám sát vì mục đích an toàn và chất lượng.
 
+## English Version
+
+### 1. Acceptance of Terms
+By accessing and using this AI chat service, you agree to be bound by these Terms and Conditions.
+
+### 2. Service Description
+We provide an AI-powered chat service focused on traditional medicine consultation. This service is for informational purposes only and should not replace professional medical advice.
+
+### 3. Content Restrictions
+Users must not:
+- Request or provide medical prescriptions
+- Share personal medical information
+- Promote or market medical products
+- Share harmful or inappropriate content
+- Attempt to manipulate or deceive the AI system
+
+### 4. Service Termination
+We reserve the absolute right to:
+- Terminate or suspend access to the service, in whole or in part
+- Discontinue the service at any time without prior notice
+- Block any user from accessing the service
+- Make changes to the service without notification
+These actions may be taken at our sole discretion, without explanation or liability.
+
+### 5. Disclaimer
+- The information provided is for general knowledge only
+- We do not guarantee the accuracy of AI responses
+- Users should consult healthcare professionals for medical advice
+- We are not liable for any decisions made based on the information provided
+
+### 6. Privacy
+Your use of this service is also governed by our Privacy Policy. Chat messages may be monitored for safety and quality purposes.
+
 ---
 
-By using our Service, you acknowledge that you have read and understood both the English and Vietnamese versions of these Terms and Conditions, and agree to be bound by them.
+By using our Service, you acknowledge that you have read and understood both the Vietnamese and English versions of these Terms and Conditions, and agree to be bound by them.
 
-Bằng việc sử dụng Dịch vụ của chúng tôi, bạn xác nhận rằng bạn đã đọc và hiểu cả phiên bản tiếng Anh và tiếng Việt của các Điều khoản và Điều kiện này, và đồng ý bị ràng buộc bởi chúng. 
+Bằng việc sử dụng Dịch vụ của chúng tôi, bạn xác nhận rằng bạn đã đọc và hiểu cả phiên bản tiếng Việt và tiếng Anh của các Điều khoản và Điều kiện này, và đồng ý bị ràng buộc bởi chúng. 

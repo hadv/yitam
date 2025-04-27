@@ -1,52 +1,5 @@
 # Privacy Policy
-Last Updated: [Current Date]
-
-## English Version
-
-### 1. Information We Collect
-We collect and process the following types of information:
-- Chat messages and interactions with our AI service
-- Technical information (IP address, browser type, device information)
-- Usage patterns and preferences
-- Any information you voluntarily provide during conversations
-
-### 2. How We Use Your Information
-Your information is used to:
-- Provide and improve our AI chat service
-- Maintain and enhance the safety and security of our service
-- Analyze and improve our content filtering systems
-- Comply with legal obligations
-- Debug and optimize service performance
-
-### 3. Data Protection
-We implement various security measures to protect your information:
-- End-to-end encryption for chat messages
-- Regular security audits and updates
-- Strict access controls and authentication
-- Automated content filtering and safety checks
-
-### 4. Data Retention
-- Chat messages are retained only for the duration necessary to provide the service
-- Technical logs are kept for a maximum of 30 days
-- You can request deletion of your chat history at any time
-
-### 5. Your Rights
-You have the right to:
-- Access your personal data
-- Request correction of inaccurate data
-- Request deletion of your data
-- Object to processing of your data
-- Data portability
-- Withdraw consent at any time
-
-### 6. Third-Party Services
-We use the following third-party services:
-- Anthropic's Claude AI API for chat processing
-- Standard web hosting and cloud services
-- Analytics tools for service improvement
-
-### 7. Children's Privacy
-Our service is not intended for users under 13 years of age. We do not knowingly collect information from children.
+Last Updated: 16/08/2024
 
 ## Chính sách Bảo mật (Vietnamese Version)
 
@@ -95,8 +48,55 @@ Chúng tôi sử dụng các dịch vụ bên thứ ba sau:
 ### 7. Quyền riêng tư của Trẻ em
 Dịch vụ của chúng tôi không dành cho người dùng dưới 13 tuổi. Chúng tôi không cố ý thu thập thông tin từ trẻ em.
 
+## English Version
+
+### 1. Information We Collect
+We collect and process the following types of information:
+- Chat messages and interactions with our AI service
+- Technical information (IP address, browser type, device information)
+- Usage patterns and preferences
+- Any information you voluntarily provide during conversations
+
+### 2. How We Use Your Information
+Your information is used to:
+- Provide and improve our AI chat service
+- Maintain and enhance the safety and security of our service
+- Analyze and improve our content filtering systems
+- Comply with legal obligations
+- Debug and optimize service performance
+
+### 3. Data Protection
+We implement various security measures to protect your information:
+- End-to-end encryption for chat messages
+- Regular security audits and updates
+- Strict access controls and authentication
+- Automated content filtering and safety checks
+
+### 4. Data Retention
+- Chat messages are retained only for the duration necessary to provide the service
+- Technical logs are kept for a maximum of 30 days
+- You can request deletion of your chat history at any time
+
+### 5. Your Rights
+You have the right to:
+- Access your personal data
+- Request correction of inaccurate data
+- Request deletion of your data
+- Object to processing of your data
+- Data portability
+- Withdraw consent at any time
+
+### 6. Third-Party Services
+We use the following third-party services:
+- Anthropic's Claude AI API for chat processing
+- Standard web hosting and cloud services
+- Analytics tools for service improvement
+
+### 7. Children's Privacy
+Our service is not intended for users under 13 years of age. We do not knowingly collect information from children.
+
 ---
 
-By using our Service, you acknowledge that you have read and understood both the English and Vietnamese versions of this Privacy Policy.
+By using our Service, you acknowledge that you have read and understood both the Vietnamese and English versions of this Privacy Policy.
 
-Bằng việc sử dụng Dịch vụ của chúng tôi, bạn xác nhận rằng bạn đã đọc và hiểu cả phiên bản tiếng Anh và tiếng Việt của Chính sách Bảo mật này. 
+Bằng việc sử dụng Dịch vụ của chúng tôi, bạn xác nhận rằng bạn đã đọc và hiểu cả phiên bản tiếng Việt và tiếng Anh của Chính sách Bảo mật này. 
