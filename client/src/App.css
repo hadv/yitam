@@ -107,6 +107,18 @@
   border-radius: 4px;
   box-shadow: 0 -1px 1px rgba(0, 0, 0, 0.05);
   min-height: 30px;
+  flex-wrap: wrap;
+}
+
+.copyright {
+  font-size: 0.6rem;
+  color: var(--text-color);
+  opacity: 0.7;
+  padding: 1px 3px;
+  margin-left: auto;
+  text-align: right;
+  flex-basis: 100%;
+  margin-top: 3px;
 }
 
 .sponsor-link {
@@ -207,5 +219,10 @@
   
   .sponsor-link img {
     height: 16px;
+  }
+  
+  .copyright {
+    font-size: 0.55rem;
+    margin-top: 2px;
   }
 } 
