@@ -158,6 +158,9 @@ function App() {
           <span className="sponsor-icon">♥</span>
           <span className="sponsor-text">Hỗ trợ dự án</span>
         </a>
+        <div className="copyright">
+          © {new Date().getFullYear()} Yitam. All rights reserved.
+        </div>
       </footer>
     </div>
   );
