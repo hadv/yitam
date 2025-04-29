@@ -22,6 +22,49 @@ The system monitors Docker container logs in real-time and automatically blocks 
 - Backup and rollback capabilities
 - Systemd service integration
 
+## Docker User Setup
+
+For security best practices, the monitoring service should run under a dedicated non-root user with appropriate Docker access.
+
+### Creating a Docker User and Group
+
+1. **Create a new user**
+   ```bash
+   sudo useradd -m dockeruser
+   sudo passwd dockeruser
+   ```
+
+2. **Create a Docker group (if it doesn't exist)**
+   ```bash
+   # Check if the docker group exists
+   getent group docker
+   
+   # If not, create it
+   sudo groupadd docker
+   ```
+
+3. **Add user to the Docker group**
+   ```bash
+   sudo usermod -aG docker dockeruser
+   ```
+
+4. **Verify the setup**
+   ```bash
+   # Switch to the new user
+   su - dockeruser
+   
+   # Verify Docker access works without sudo
+   docker ps
+   ```
+
+5. **Update the service file**
+   When installing the service, update the User parameter in the service file:
+   ```bash
+   sudo sed -i 's/YOUR_USERNAME/dockeruser/g' /etc/systemd/system/docker-security-monitor.service
+   ```
+
+> **Security Note**: Users in the Docker group effectively have root-equivalent permissions on the host. Keep the number of users in this group to a minimum and only grant it to trusted users.
+
 ## Installation
 
 ### Prerequisites
@@ -67,7 +110,7 @@ The system monitors Docker container logs in real-time and automatically blocks 
    sudo cp docker-security-monitor.service /etc/systemd/system/
    
    # Update username in service file
-   sudo sed -i 's/YOUR_USERNAME/'$USER'/g' /etc/systemd/system/docker-security-monitor.service
+   sudo sed -i 's/YOUR_USERNAME/dockeruser/g' /etc/systemd/system/docker-security-monitor.service
    
    # Reload systemd and enable service
    sudo systemctl daemon-reload
