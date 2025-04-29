@@ -7,6 +7,7 @@ services:
       dockerfile: Dockerfile
     volumes:
       - yitam-mcp-dist:/app/dist
+      - ./mcp.env:/app/core/.env:ro
 
   server:
     build:
@@ -16,6 +17,7 @@ services:
       - "3000:3000"
     volumes:
       - yitam-mcp-dist:/app/mcp:ro
+      - ./mcp.env:/app/mcp/core/.env:ro
     environment:
       - NODE_ENV=production
       - PORT=3000

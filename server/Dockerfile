@@ -19,11 +19,14 @@ WORKDIR /app
 
 COPY package*.json ./
 
-# Install only production dependencies
-RUN npm install --production
+# Install all dependencies (including @qdrant/js-client-rest)
+RUN npm install
 
 # Copy built app from builder stage
 COPY --from=builder /app/dist ./dist
+
+# Create directories for data persistence
+RUN mkdir -p /app/data/knowledge
 
 EXPOSE 3000
 
