@@ -23,6 +23,9 @@ FROM nginx:alpine
 # Install required packages
 RUN apk add --no-cache logrotate
 
+# Create SSL directories
+RUN mkdir -p /etc/nginx/ssl
+
 # Copy Nginx configurations
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY conf.d/blacklist.conf /etc/nginx/conf.d/blacklist.conf
