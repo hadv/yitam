@@ -7,7 +7,6 @@ services:
       dockerfile: Dockerfile
     volumes:
       - yitam-mcp-dist:/app/dist
-      - ../yitam-mcp/core/.env:/app/core/.env:ro
 
   server:
     build:
@@ -17,14 +16,11 @@ services:
       - "3000:3000"
     volumes:
       - yitam-mcp-dist:/app/mcp:ro
-      - ../yitam-mcp/core/.env:/app/mcp/core/.env:ro
     environment:
       - NODE_ENV=production
       - PORT=3000
       - CLIENT_URL=https://yitam.org
       - MCP_SERVER_PATH=/app/mcp/core/server/yitam-tools.js
-    env_file:
-      - prod.env
     depends_on:
       - yitam-mcp
     restart: unless-stopped
