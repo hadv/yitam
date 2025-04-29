@@ -2,16 +2,19 @@ import { useState } from 'react';
 
 interface AccessCodeInputProps {
   onAccessGranted: (accessCode: string) => void;
+  error?: string;
 }
 
-const AccessCodeInput = ({ onAccessGranted }: AccessCodeInputProps) => {
+const AccessCodeInput = ({ onAccessGranted, error: externalError }: AccessCodeInputProps) => {
   const [accessCode, setAccessCode] = useState('');
-  const [error, setError] = useState('');
+  const [internalError, setInternalError] = useState('');
+  
+  const errorMessage = externalError || internalError;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!accessCode.trim()) {
-      setError('Please enter an access code');
+      setInternalError('Please enter an access code');
       return;
     }
     onAccessGranted(accessCode);
@@ -28,12 +31,12 @@ const AccessCodeInput = ({ onAccessGranted }: AccessCodeInputProps) => {
               value={accessCode}
               onChange={(e) => {
                 setAccessCode(e.target.value);
-                setError('');
+                setInternalError('');
               }}
               placeholder="Enter your access code"
               className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-            {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+            {errorMessage && <p className="mt-2 text-sm text-red-600">{errorMessage}</p>}
           </div>
           <button
             type="submit"

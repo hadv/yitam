@@ -1,4 +1,4 @@
-FROM node:20-alpine as build
+FROM node:20-alpine AS build
 
 # Add build arguments
 ARG VITE_SERVER_URL
@@ -12,12 +12,19 @@ RUN npm install
 
 COPY . .
 
+# Run TypeScript checks separately with --noEmit to see errors without failing the build
+RUN npx tsc --noEmit || echo "TypeScript check completed with warnings"
+
+# Build the application
 RUN npm run build
 
 FROM nginx:alpine
 
 # Install required packages
 RUN apk add --no-cache logrotate
+
+# Create SSL directories
+RUN mkdir -p /etc/nginx/ssl
 
 # Copy Nginx configurations
 COPY nginx.conf /etc/nginx/conf.d/default.conf
@@ -32,12 +39,15 @@ RUN mkdir -p /var/log/nginx && \
     chown -R nginx:nginx /var/log/nginx && \
     chmod -R 750 /var/log/nginx
 
+# Create necessary directories for periodic tasks
+RUN mkdir -p /etc/periodic/daily
+
 # Copy and set up log rotation script
 COPY setup-logrotate.sh /usr/local/bin/setup-logrotate.sh
 RUN chmod +x /usr/local/bin/setup-logrotate.sh && \
     /usr/local/bin/setup-logrotate.sh
 
-# Create a script to start Nginx and logrotate
+# Copy the start script
 COPY start.sh /usr/local/bin/start.sh
 RUN chmod +x /usr/local/bin/start.sh
 

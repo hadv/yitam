@@ -19,7 +19,7 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [hasAccess, setHasAccess] = useState(false);
-  const [accessError, setAccessError] = useState('');
+  const [connectionError, setConnectionError] = useState('');
 
   useEffect(() => {
     if (!hasAccess) return;
@@ -48,7 +48,7 @@ function App() {
 
     newSocket.on('connect_error', (error) => {
       if (error.message.includes('Invalid access code')) {
-        setAccessError('Invalid access code. Please try again.');
+        setConnectionError('Invalid access code. Please try again.');
         setHasAccess(false);
         localStorage.removeItem('accessCode');
       }
@@ -105,12 +105,13 @@ function App() {
   }, [hasAccess]);
 
   const handleAccessGranted = (accessCode: string) => {
+    setConnectionError(''); // Clear any previous errors
     localStorage.setItem('accessCode', accessCode);
     setHasAccess(true);
   };
 
   if (!hasAccess) {
-    return <AccessCodeInput onAccessGranted={handleAccessGranted} />;
+    return <AccessCodeInput onAccessGranted={handleAccessGranted} error={connectionError} />;
   }
 
   const sendMessage = (text: string) => {

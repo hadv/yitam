@@ -7,6 +7,7 @@ node_modules/
 .env
 .env.local
 .env.*.local
+prod.env
 
 # Build outputs
 dist/
