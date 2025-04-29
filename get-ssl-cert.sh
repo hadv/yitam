@@ -25,7 +25,7 @@ certbot certonly --standalone \
     --agree-tos \
     --non-interactive \
     --preferred-challenges http \
-    --email admin@yitam.org \
+    --email info@yitam.org \
     --rsa-key-size 4096
 
 # Create SSL directory if it doesn't exist
