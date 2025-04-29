@@ -59,10 +59,18 @@ Format your response as JSON with the following structure:
 
       if (response.content[0]?.type === "text") {
         try {
-          const result = JSON.parse(response.content[0].text) as ModerationResult;
+          let responseText = response.content[0].text;
+          
+          // Handle markdown-formatted JSON (remove ```json and ``` delimiters)
+          if (responseText.includes('```')) {
+            responseText = responseText.replace(/```json\s*|\s*```/g, '');
+          }
+          
+          const result = JSON.parse(responseText) as ModerationResult;
           return result;
         } catch (parseError) {
           console.error("Error parsing moderation response:", parseError);
+          console.log("Raw response:", response.content[0]?.text);
           return {
             isSafe: false,
             categories: {
