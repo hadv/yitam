@@ -1,4 +1,4 @@
-FROM node:20-alpine as build
+FROM node:20-alpine AS build
 
 # Add build arguments
 ARG VITE_SERVER_URL
@@ -12,6 +12,10 @@ RUN npm install
 
 COPY . .
 
+# Run TypeScript checks separately with --noEmit to see errors without failing the build
+RUN npx tsc --noEmit || echo "TypeScript check completed with warnings"
+
+# Build the application
 RUN npm run build
 
 FROM nginx:alpine
