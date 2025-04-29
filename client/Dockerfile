@@ -36,12 +36,15 @@ RUN mkdir -p /var/log/nginx && \
     chown -R nginx:nginx /var/log/nginx && \
     chmod -R 750 /var/log/nginx
 
+# Create necessary directories for periodic tasks
+RUN mkdir -p /etc/periodic/daily
+
 # Copy and set up log rotation script
 COPY setup-logrotate.sh /usr/local/bin/setup-logrotate.sh
 RUN chmod +x /usr/local/bin/setup-logrotate.sh && \
     /usr/local/bin/setup-logrotate.sh
 
-# Create a script to start Nginx and logrotate
+# Copy the start script
 COPY start.sh /usr/local/bin/start.sh
 RUN chmod +x /usr/local/bin/start.sh
 

@@ -1,40 +1,34 @@
-#!/bin/bash
+#!/bin/sh
 
-# Create log directory if it doesn't exist
-sudo mkdir -p /var/log/nginx
+# Create log directory if it doesn't exist already (though we do this in Dockerfile too)
+mkdir -p /var/log/nginx
 
-# Set proper permissions
-sudo chown -R www-data:adm /var/log/nginx
-sudo chmod -R 750 /var/log/nginx
+# Set proper permissions - using nginx user instead of www-data (Alpine uses nginx)
+chown -R nginx:nginx /var/log/nginx
+chmod -R 750 /var/log/nginx
 
-# Install logrotate if not already installed
-if ! command -v logrotate &> /dev/null; then
-    echo "Installing logrotate..."
-    sudo apt-get update
-    sudo apt-get install -y logrotate
-fi
+# logrotate should already be installed in the Dockerfile
 
-# Copy the logrotate configuration
+# Copy the logrotate configuration - should already be done in Dockerfile
 echo "Setting up Nginx log rotation..."
-sudo cp nginx-logrotate.conf /etc/logrotate.d/nginx
 
 # Test the configuration
 echo "Testing logrotate configuration..."
-sudo logrotate -d /etc/logrotate.d/nginx
+logrotate -d /etc/logrotate.d/nginx
 
 # Create a cron job to run logrotate daily
 echo "Setting up daily log rotation..."
-sudo bash -c 'cat > /etc/cron.daily/logrotate << EOL
+cat > /etc/periodic/daily/logrotate << EOL
 #!/bin/sh
 /usr/sbin/logrotate /etc/logrotate.conf
-EXITVALUE=$?
-if [ $EXITVALUE != 0 ]; then
-    /usr/bin/logger -t logrotate "ALERT exited abnormally with [$EXITVALUE]"
+EXITVALUE=\$?
+if [ \$EXITVALUE != 0 ]; then
+    logger -t logrotate "ALERT exited abnormally with [\$EXITVALUE]"
 fi
 exit 0
-EOL'
+EOL
 
-sudo chmod +x /etc/cron.daily/logrotate
+chmod +x /etc/periodic/daily/logrotate
 
 echo "Log rotation setup complete!"
 echo "Logs will be rotated daily and kept for 14 days"
