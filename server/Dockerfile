@@ -4,8 +4,8 @@ WORKDIR /app
 
 COPY package*.json ./
 
-# Install all dependencies including dev dependencies
-RUN npm install
+# Install all dependencies including dev dependencies with legacy-peer-deps flag
+RUN npm install --legacy-peer-deps
 
 COPY . .
 
@@ -19,8 +19,8 @@ WORKDIR /app
 
 COPY package*.json ./
 
-# Install all dependencies (including @qdrant/js-client-rest)
-RUN npm install
+# Install all dependencies with legacy-peer-deps flag
+RUN npm install --legacy-peer-deps
 
 # Copy built app from builder stage
 COPY --from=builder /app/dist ./dist
