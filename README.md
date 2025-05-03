@@ -156,3 +156,44 @@ Your support helps maintain and improve the project!
   - Docker Compose
   - Nginx (serving client and reverse proxy)
   - Let's Encrypt SSL certificate automation
+
+## MCP Server Communication
+
+### HTTP/SSE Transport
+
+The project now uses HTTP/SSE (Server-Sent Events) transport for communication with the MCP server, replacing the previous stdio-based transport. This change improves scalability, reliability, and facilitates distributed deployments.
+
+#### Benefits
+
+- Better scalability across multiple instances
+- Improved reliability with automatic reconnection
+- Easier deployment in distributed environments
+- Standard HTTP protocol with well-defined behavior
+
+#### Configuration
+
+The Docker Compose configuration has been updated to:
+
+1. Expose the MCP server on an internal port (3030)
+2. Configure the server container to connect via HTTP URL
+3. Maintain backward compatibility with stdio-based transport
+
+The environment variables have been updated:
+
+- `MCP_SERVER_URL`: The URL of the MCP server's HTTP/SSE endpoint
+- `MCP_SERVER_PATH`: (Deprecated) The path to the MCP server script for stdio transport
+
+#### Setup
+
+To update your deployment to use HTTP/SSE transport:
+
+```bash
+# Run the update script
+./update-mcp-to-http-sse.sh
+
+# Restart the containers
+docker-compose down
+docker-compose up --build -d
+```
+
+For more details, see the [MCP Server HTTP/SSE Configuration Guide](docs/mcp-server-http-sse.md).

@@ -1,18 +1,48 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import * as fs from 'fs';
 import * as path from 'path';
 
 export class MCPServer {
   private mcp: Client;
-  private transport: StdioClientTransport | null = null;
+  private transport: StdioClientTransport | SSEClientTransport | null = null;
   
   constructor() {
     this.mcp = new Client({ name: "mcp-client-cli", version: "1.0.0" });
   }
   
   /**
+   * Connects to an MCP server via HTTP/SSE
+   */
+  async connectToServerViaHttp(serverUrl: string): Promise<{success: boolean, tools?: any[]}> {
+    try {
+      console.log(`Connecting to MCP server via HTTP/SSE at: ${serverUrl}`);
+      
+      // Create SSE transport with URL object
+      this.transport = new SSEClientTransport(new URL(serverUrl));
+      
+      if (this.transport) {
+        this.mcp.connect(this.transport);
+      } else {
+        throw new Error("Failed to create transport connection");
+      }
+      
+      const toolsResult = await this.mcp.listTools();
+      
+      return {
+        success: true,
+        tools: toolsResult.tools
+      };
+    } catch (e) {
+      console.log("Failed to connect to MCP server via HTTP/SSE: ", e);
+      return { success: false };
+    }
+  }
+  
+  /**
    * Connects to an MCP server and returns all available tools
+   * @deprecated Use connectToServerViaHttp instead
    */
   async connectToServer(serverScriptPath: string): Promise<{success: boolean, tools?: any[]}> {
     try {
