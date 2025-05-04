@@ -27,7 +27,6 @@ services:
       - PORT=3000
       - CLIENT_URL=https://yitam.org
       - MCP_SERVER_URL=http://yitam-mcp:3030/sse
-      - MCP_SERVER_PATH=/app/mcp/core/server/yitam-tools.js
     env_file:
       - prod.env
     depends_on:

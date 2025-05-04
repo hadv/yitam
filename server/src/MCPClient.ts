@@ -47,31 +47,6 @@ export class MCPClient {
     }
   }
 
-  /**
-   * @deprecated Use connectToServerViaHttp instead
-   */
-  async connectToServer(serverScriptPath: string): Promise<boolean> {
-    try {
-      const { success, tools } = await this.mcpServer.connectToServer(serverScriptPath);
-      
-      if (success && tools) {
-        // Register tools with the tool service
-        this.tool.registerTools(tools);
-        
-        console.log(
-          "Connected to server with tools:",
-          this.tool.getTools().map(({ name }) => name)
-        );
-        return true;
-      }
-      
-      return false;
-    } catch (e) {
-      console.log("Failed to connect to MCP server: ", e);
-      return false;
-    }
-  }
-
   startNewChat(): string {
     return this.conversation.startNewChat();
   }

@@ -95,7 +95,7 @@ const anthropic = new Anthropic({
 let mcpClient: MCPClient | null = null;
 let mcpConnected = false;
 
-// Connect to MCP server using HTTP/SSE endpoint if URL is provided, or fallback to stdio if path is provided
+// Only support HTTP/SSE transport
 if (process.env.MCP_SERVER_URL && process.env.MCP_SERVER_URL.trim() !== '') {
   mcpClient = new MCPClient(process.env.ANTHROPIC_API_KEY || '');
   mcpClient.connectToServerViaHttp(process.env.MCP_SERVER_URL)
@@ -111,25 +111,8 @@ if (process.env.MCP_SERVER_URL && process.env.MCP_SERVER_URL.trim() !== '') {
       console.error('Error connecting to MCP server via HTTP/SSE:', err);
       console.log('Falling back to direct Claude API');
     });
-} else if (process.env.MCP_SERVER_PATH && process.env.MCP_SERVER_PATH.trim() !== '') {
-  // Fallback to stdio-based transport (deprecated)
-  console.log('Warning: Using deprecated stdio-based transport. Please update to HTTP/SSE.');
-  mcpClient = new MCPClient(process.env.ANTHROPIC_API_KEY || '');
-  mcpClient.connectToServer(process.env.MCP_SERVER_PATH)
-    .then(connected => {
-      mcpConnected = connected;
-      if (connected) {
-        console.log('Successfully connected to MCP server via stdio');
-      } else {
-        console.log('Failed to connect to MCP server, falling back to direct Claude API');
-      }
-    })
-    .catch(err => {
-      console.error('Error connecting to MCP server:', err);
-      console.log('Falling back to direct Claude API');
-    });
 } else {
-  console.log('No MCP server URL or path provided, using direct Claude API');
+  console.log('No MCP server URL provided, using direct Claude API');
 }
 
 // Error messages for different languages
