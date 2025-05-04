@@ -16,7 +16,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@google/generative-ai": "0.24.0",
-    "@modelcontextprotocol/sdk": "^1.8.0",
+    "@modelcontextprotocol/sdk": "^1.11.0",
     "@qdrant/js-client-rest": "^1.13.0",
     "chromadb": "^2.1.0",
     "cors": "^2.8.5",

@@ -22,16 +22,19 @@ export class MCPClient {
     );
   }
 
-  async connectToServer(serverScriptPath: string): Promise<boolean> {
+  /**
+   * Connect to MCP server using HTTP/SSE transport
+   */
+  async connectToServerViaHttp(serverUrl: string): Promise<boolean> {
     try {
-      const { success, tools } = await this.mcpServer.connectToServer(serverScriptPath);
+      const { success, tools } = await this.mcpServer.connectToServerViaHttp(serverUrl);
       
       if (success && tools) {
         // Register tools with the tool service
         this.tool.registerTools(tools);
         
         console.log(
-          "Connected to server with tools:",
+          "Connected to HTTP/SSE server with tools:",
           this.tool.getTools().map(({ name }) => name)
         );
         return true;
@@ -39,7 +42,7 @@ export class MCPClient {
       
       return false;
     } catch (e) {
-      console.log("Failed to connect to MCP server: ", e);
+      console.log("Failed to connect to HTTP/SSE MCP server: ", e);
       return false;
     }
   }
