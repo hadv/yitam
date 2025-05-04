@@ -13,6 +13,8 @@ services:
       - PORT=3030
       - MCP_SERVER_HOST=0.0.0.0
       - NODE_ENV=production
+    env_file:
+      - prod.env
 
   server:
     build:
