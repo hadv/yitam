@@ -95,24 +95,24 @@ const anthropic = new Anthropic({
 let mcpClient: MCPClient | null = null;
 let mcpConnected = false;
 
-// Only support HTTP/SSE transport
-if (process.env.MCP_SERVER_URL && process.env.MCP_SERVER_URL.trim() !== '') {
+// Only try to connect to MCP if path is provided and not empty
+if (process.env.MCP_SERVER_PATH && process.env.MCP_SERVER_PATH.trim() !== '') {
   mcpClient = new MCPClient(process.env.ANTHROPIC_API_KEY || '');
-  mcpClient.connectToServerViaHttp(process.env.MCP_SERVER_URL)
+  mcpClient.connectToServer(process.env.MCP_SERVER_PATH)
     .then(connected => {
       mcpConnected = connected;
       if (connected) {
-        console.log('Successfully connected to MCP server via HTTP/SSE');
+        console.log('Successfully connected to MCP server');
       } else {
-        console.log('Failed to connect to MCP server via HTTP/SSE, falling back to direct Claude API');
+        console.log('Failed to connect to MCP server, falling back to direct Claude API');
       }
     })
     .catch(err => {
-      console.error('Error connecting to MCP server via HTTP/SSE:', err);
+      console.error('Error connecting to MCP server:', err);
       console.log('Falling back to direct Claude API');
     });
 } else {
-  console.log('No MCP server URL provided, using direct Claude API');
+  console.log('No MCP server path provided, using direct Claude API');
 }
 
 // Error messages for different languages
