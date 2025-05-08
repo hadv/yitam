@@ -6,8 +6,12 @@ import TailwindMessageInput from './TailwindMessageInput';
 import TailwindSampleQuestions from './TailwindSampleQuestions';
 import TailwindTermsModal from './TailwindTermsModal';
 import TailwindAccessCodeInput from './TailwindAccessCodeInput';
+import TailwindPersonaSelector from './TailwindPersonaSelector';
 import { ConsentProvider } from '../../contexts/ConsentContext';
 import { generateRequestSignature } from '../../utils/security';
+
+// Import persona constant from the selector component
+import { AVAILABLE_PERSONAS, Persona } from './TailwindPersonaSelector';
 
 // Message interface
 interface Message {
@@ -25,8 +29,24 @@ function TailwindApp() {
   const [hasAccess, setHasAccess] = useState(false);
   const [accessError, setAccessError] = useState('');
   const [questionsLimit] = useState(6); // Default sample questions limit
+  const [selectedPersonaId, setSelectedPersonaId] = useState('yitam'); // Default to Yitam
+  const [isPersonaLocked, setIsPersonaLocked] = useState(false); // Add state for persona locking
   const inputRef = useRef<HTMLDivElement>(null);
   const [pendingAccessCode, setPendingAccessCode] = useState<string | null>(null);
+  
+  // Effect to update welcome message when persona changes (if it's the only message)
+  useEffect(() => {
+    if (messages.length === 1 && messages[0].id === 'welcome' && !hasUserSentMessage) {
+      const selectedPersona = AVAILABLE_PERSONAS.find((p: Persona) => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
+      setMessages([
+        {
+          id: 'welcome',
+          text: `Xin chào! ${selectedPersona.displayName} đang lắng nghe!`,
+          isBot: true
+        }
+      ]);
+    }
+  }, [selectedPersonaId, messages, hasUserSentMessage]);
   
   useEffect(() => {
     if (!pendingAccessCode) return;
@@ -60,11 +80,14 @@ function TailwindApp() {
           setAccessError('');
           console.log('Connected to server');
           
-          // Add welcome message
+          // Get the default persona
+          const defaultPersona = AVAILABLE_PERSONAS[0];
+          
+          // Add welcome message with the default persona's name
           setMessages([
             {
               id: 'welcome',
-              text: 'Xin chào! Yitam đang lắng nghe!',
+              text: `Xin chào! ${defaultPersona.displayName} đang lắng nghe!`,
               isBot: true
             }
           ]);
@@ -190,25 +213,43 @@ function TailwindApp() {
     
     setMessages(prev => [...prev, userMessage]);
     
-    // Mark that user has sent a message
+    // Mark that user has sent a message and lock persona
     if (!hasUserSentMessage) {
       setHasUserSentMessage(true);
+      setIsPersonaLocked(true); // Lock persona after first message
     }
     
-    // Send message to server
-    socket.emit('chat-message', text);
+    // Find selected persona to get its domains
+    const selectedPersona = AVAILABLE_PERSONAS.find((p: Persona) => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
+    
+    // Send message to server with selected persona and its domain information
+    socket.emit('chat-message', {
+      message: text,
+      personaId: selectedPersonaId,
+      domains: selectedPersona.domains
+    });
+  };
+  
+  const handleSelectPersona = (personaId: string) => {
+    if (isPersonaLocked) return; // Don't allow changes if locked
+    setSelectedPersonaId(personaId);
+    console.log(`Selected persona: ${personaId}`);
   };
 
   // Function to start a new chat
   const startNewChat = () => {
+    // Find selected persona
+    const selectedPersona = AVAILABLE_PERSONAS.find((p: Persona) => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
+    
     setMessages([
       {
         id: 'welcome',
-        text: 'Xin chào! Yitam đang lắng nghe!',
+        text: `Xin chào! ${selectedPersona.displayName} đang lắng nghe!`,
         isBot: true
       }
     ]);
     setHasUserSentMessage(false);
+    setIsPersonaLocked(false); // Unlock persona on new chat
   };
 
   // Check if any bot message is currently streaming
@@ -246,6 +287,16 @@ function TailwindApp() {
             {/* Beta warning banner */}
             <div className="bg-yellow-50 text-yellow-800 p-3 text-center text-sm rounded-md my-4 mx-2 border border-yellow-200">
               ⚠️ Đây là phiên bản beta của chatbot. Các tính năng và phản hồi có thể bị giới hạn hoặc đang trong giai đoạn thử nghiệm.
+            </div>
+            
+            {/* Persona selector container */}
+            <div className="flex justify-center md:justify-end px-2 pb-2">
+              <TailwindPersonaSelector
+                onSelectPersona={handleSelectPersona}
+                socket={socket}
+                selectedPersonaId={selectedPersonaId}
+                isLocked={isPersonaLocked}
+              />
             </div>
 
             {/* Scrollable chat area - takes remaining height */}

@@ -3,6 +3,7 @@ import { Conversation } from './services/Conversation';
 import { MCPServer } from './services/MCPServer';
 import { Query } from './services/Query';
 import { Tool } from './services/Tool';
+import { Persona, availablePersonas, getPersonaById } from './constants/Personas';
 
 export class MCPClient {
   private conversation: Conversation;
@@ -44,28 +45,66 @@ export class MCPClient {
     }
   }
 
-  startNewChat(): string {
-    return this.conversation.startNewChat();
+  /**
+   * Start new chat with optional persona
+   */
+  startNewChat(personaId?: string): string {
+    return this.conversation.startNewChat(personaId);
   }
 
   addToExistingChat(chatId: string, message: any): boolean {
     return this.conversation.addToExistingChat(chatId, message);
   }
+  
+  /**
+   * Set the persona for the current conversation
+   */
+  setPersona(personaId: string): void {
+    this.conversation.setPersona(personaId);
+  }
+  
+  /**
+   * Get the current persona
+   */
+  getCurrentPersona(): Persona {
+    return this.conversation.getCurrentPersona();
+  }
+  
+  /**
+   * Get the list of available personas
+   */
+  getAvailablePersonas(): Persona[] {
+    return availablePersonas;
+  }
+  
+  /**
+   * Find a persona by ID
+   */
+  getPersonaById(id: string): Persona {
+    return getPersonaById(id);
+  }
 
-  async processQuery(query: string, chatId?: string): Promise<string> {
-    return this.query.processQuery(query, chatId);
+  /**
+   * Process a query with optional chatId and personaId
+   */
+  async processQuery(query: string, chatId?: string, personaId?: string): Promise<string> {
+    return this.query.processQuery(query, chatId, personaId);
   }
 
   /**
    * Process a query using the MCP with streaming support
    * @param query The user query to process
    * @param streamCallback Callback function called for each text chunk, should return true to continue streaming or false to stop
+   * @param chatId Optional chat ID for continuing an existing conversation
+   * @param personaId Optional persona ID to use for this query
    */
   public async processQueryWithStreaming(
     query: string, 
-    streamCallback: (text: string) => boolean | Promise<boolean> | void
+    streamCallback: (text: string) => boolean | Promise<boolean> | void,
+    chatId?: string,
+    personaId?: string
   ): Promise<void> {
-    return this.query.processQueryWithStreaming(query, streamCallback);
+    return this.query.processQueryWithStreaming(query, streamCallback, chatId, personaId);
   }
 
   getTools(): AnthropicTool[] {

@@ -2,6 +2,7 @@ import { Anthropic } from "@anthropic-ai/sdk";
 import { config } from '../config';
 import { SystemPrompts } from '../constants/SystemPrompts';
 import { availableDomains } from '../constants/Domains';
+import { getPersonaSystemPrompt } from '../constants/Personas';
 import { Conversation } from './Conversation';
 import { MCPServer } from './MCPServer';
 import { Tool } from './Tool';
@@ -83,9 +84,14 @@ export class Query {
     try {
       console.time('search-query-extraction');
       
-      // Run domain detection in parallel with search query extraction
-      const domainDetectionPromise = this._detectQueryDomains(query);
+      // Get the current persona and its associated domains
+      const currentPersona = this.conversation.getCurrentPersona();
       
+      // If using a persona other than default, we'll use its fixed domains
+      // Only run domain detection for the default Yitam persona
+      const isDefaultPersona = currentPersona.id === 'yitam';
+      
+      // Extract search query in all cases
       const extractionResponse = await this.anthropic.messages.create({
         model: config.model.name,
         max_tokens: 150,  // Small token limit is sufficient for extraction
@@ -108,13 +114,30 @@ export class Query {
         }
       }
       
-      // Get detected domains
-      const domains = await domainDetectionPromise;
+      let domains: string[];
+      
+      // For non-default personas, always use their fixed domains
+      // For default persona (Yitam), run domain detection
+      if (!isDefaultPersona) {
+        domains = currentPersona.domains;
+        console.log(`Using fixed domains for ${currentPersona.displayName}: ${domains.join(', ')}`);
+      } else {
+        // Only run domain detection for Yitam persona
+        const detectedDomains = await this._detectQueryDomains(query);
+        domains = detectedDomains;
+        console.log(`Using detected domains for Yitam: ${domains.join(', ')}`);
+      }
       
       return { searchQuery: extractedText, domains };
     } catch (error) {
       console.warn('Error extracting search query, using original:', error);
-      return { searchQuery: query, domains: [] };
+      
+      // On error, fallback to current persona domains
+      const currentPersona = this.conversation.getCurrentPersona();
+      return { 
+        searchQuery: query, 
+        domains: currentPersona.domains
+      };
     }
   }
   
@@ -216,7 +239,7 @@ export class Query {
   /**
    * Process a query without streaming
    */
-  async processQuery(query: string, chatId?: string): Promise<string> {
+  async processQuery(query: string, chatId?: string, personaId?: string): Promise<string> {
     // Check rate limiting
     const rateLimitCheck = this._checkRateLimit();
     if (!rateLimitCheck.allowed) {
@@ -233,9 +256,14 @@ export class Query {
     if (chatId && chatId === this.conversation.getCurrentChatId()) {
       console.log(`Adding to existing chat: ${chatId}`);
       this.conversation.addUserMessage(query);
+      
+      // If a persona ID is provided, update the persona for this chat
+      if (personaId) {
+        this.conversation.setPersona(personaId);
+      }
     } else {
-      // Start a new chat with this query
-      this.conversation.startNewChat();
+      // Start a new chat with this query and optional persona
+      this.conversation.startNewChat(personaId);
       console.log(`Starting new chat with query: ${query.substring(0, 50)}...`);
       this.conversation.addUserMessage(query);
     }
@@ -247,11 +275,19 @@ export class Query {
     try {
       const { searchQuery, domains } = await this._determineSearchQuery(query);
       const tools = this.tool.getTools();
+      
+      // Get the current persona for system prompt customization
+      const currentPersona = this.conversation.getCurrentPersona();
+      
+      // Customize system prompt based on persona
+      const personaSystemPrompt = getPersonaSystemPrompt(SystemPrompts.INITIAL, currentPersona);
+      
+      console.log(`Using persona: ${currentPersona.displayName} for response`);
 
       const response = await this.anthropic.messages.create({
         model: config.model.name,
         max_tokens: config.model.maxTokens,
-        system: SystemPrompts.INITIAL,
+        system: personaSystemPrompt,
         messages,
         tools: tools.length > 0 ? tools : undefined,
       });
@@ -261,9 +297,17 @@ export class Query {
 
       for (const content of response.content) {
         if (content.type === "text") {
-          finalText.push(content.text);
+          // Customize the response if needed based on persona
+          let textContent = content.text;
+          
+          // For non-default personas, ensure responses are properly formatted
+          if (currentPersona.id !== 'yitam' && !textContent.startsWith(currentPersona.displayName)) {
+            textContent = `${currentPersona.displayName}: ${textContent}`;
+          }
+          
+          finalText.push(textContent);
           // Add assistant's response to conversation history
-          this.conversation.addAssistantMessage(content.text);
+          this.conversation.addAssistantMessage(textContent);
         } else if (content.type === "tool_use") {
           const { toolResult, formattedToolCall } = await this._handleToolUse(content, { searchQuery, domains });
           toolResults.push(toolResult);
@@ -273,18 +317,28 @@ export class Query {
           this.conversation.addToolUseMessage(content.id, content.name, content.input);
           this.conversation.addToolResultMessage(content.id, toolResult.content);
 
+          // Update system prompt for follow-up based on persona
+          const personaFollowUpPrompt = getPersonaSystemPrompt(SystemPrompts.FOLLOW_UP, currentPersona);
+          
           const followUpResponse = await this.anthropic.messages.create({
             model: config.model.name,
             max_tokens: config.model.maxTokens,
-            system: SystemPrompts.FOLLOW_UP,
+            system: personaFollowUpPrompt,
             messages: this.conversation.getConversationHistory(),
           });
 
           if (followUpResponse.content && followUpResponse.content.length > 0) {
             if (followUpResponse.content[0].type === "text") {
-              finalText.push(followUpResponse.content[0].text);
+              let followUpText = followUpResponse.content[0].text;
+              
+              // For non-default personas, ensure follow-up responses are properly formatted
+              if (currentPersona.id !== 'yitam' && !followUpText.startsWith(currentPersona.displayName)) {
+                followUpText = `${currentPersona.displayName}: ${followUpText}`;
+              }
+              
+              finalText.push(followUpText);
               // Add follow-up response to conversation history
-              this.conversation.addAssistantMessage(followUpResponse.content[0].text);
+              this.conversation.addAssistantMessage(followUpText);
             }
           } else {
             console.log("Follow-up response has no content");
@@ -305,11 +359,25 @@ export class Query {
   async processQueryWithStreaming(
     query: string, 
     callback: (chunk: string) => boolean | Promise<boolean> | void, 
-    chatId?: string
+    chatId?: string,
+    personaId?: string
   ): Promise<void> {
     // Helper function to send escaped chunks to the client
     const sendChunk = async (chunk: string): Promise<boolean> => {
-      const escapedChunk = chunk.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      // Get current persona for potential text customization
+      const currentPersona = this.conversation.getCurrentPersona();
+      
+      // For non-default personas, check if chunk starts with response indicator
+      let modifiedChunk = chunk;
+      if (currentPersona.id !== 'yitam') {
+        // Replace "Yitam:" prefix at the beginning of chunks with persona name
+        modifiedChunk = chunk.replace(
+          /^(Yitam:?\s+|Yitam\s+)/g, 
+          `${currentPersona.displayName}: `
+        );
+      }
+      
+      const escapedChunk = modifiedChunk.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const result = await callback(escapedChunk);
       // If callback explicitly returns false, signal to stop streaming
       return result !== false;
@@ -319,9 +387,14 @@ export class Query {
     if (chatId && chatId === this.conversation.getCurrentChatId()) {
       console.log(`Adding to existing chat (streaming): ${chatId}`);
       this.conversation.addUserMessage(query);
+      
+      // If a persona ID is provided, update the persona for this chat
+      if (personaId) {
+        this.conversation.setPersona(personaId);
+      }
     } else {
       // Start a new chat with this query
-      this.conversation.startNewChat();
+      this.conversation.startNewChat(personaId);
       console.log(`Starting new chat with query (streaming): ${query.substring(0, 50)}...`);
       this.conversation.addUserMessage(query);
     }
@@ -333,13 +406,21 @@ export class Query {
     try {
       const { searchQuery, domains } = await this._determineSearchQuery(query);
       const tools = this.tool.getTools();
+      
+      // Get the current persona for system prompt customization
+      const currentPersona = this.conversation.getCurrentPersona();
+      
+      // Customize system prompt based on persona
+      const personaSystemPrompt = getPersonaSystemPrompt(SystemPrompts.INITIAL, currentPersona);
+      
+      console.log(`Using persona: ${currentPersona.displayName} for streaming response`);
 
       let stream: AsyncIterable<any>;
       try {
         stream = await this.anthropic.messages.stream({
           model: config.model.name,
           max_tokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000),
-          system: SystemPrompts.INITIAL,
+          system: personaSystemPrompt,
           messages,
           tools: tools.length > 0 ? tools : undefined,
         });
@@ -375,6 +456,11 @@ export class Query {
           } else if (chunk.type === 'message_stop') {
             // If we have collected text from the assistant, add it to history
             if (assistantResponse) {
+              // For non-default personas, check if response needs persona prefix
+              if (currentPersona.id !== 'yitam' && !assistantResponse.startsWith(currentPersona.displayName)) {
+                assistantResponse = `${currentPersona.displayName}: ${assistantResponse}`;
+              }
+              
               this.conversation.addAssistantMessage(assistantResponse);
               console.log(`Added assistant text response to history (${assistantResponse.length} chars)`);
             }
@@ -420,6 +506,9 @@ export class Query {
                 let bestResponseBuffer = "";
                 let currentResponseBuffer = "";
                 
+                // Update system prompt for follow-up based on persona
+                const personaFollowUpPrompt = getPersonaSystemPrompt(SystemPrompts.FOLLOW_UP, currentPersona);
+                
                 while (retryCount <= maxRetries && !successfulCompletion) {
                   if (retryCount > 0) {
                     console.log(`Retrying follow-up response (attempt ${retryCount} of ${maxRetries})`);
@@ -431,7 +520,7 @@ export class Query {
                     const followUpStream = await this.anthropic.messages.stream({
                       model: config.model.name,
                       max_tokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000),
-                      system: SystemPrompts.FOLLOW_UP,
+                      system: personaFollowUpPrompt,
                       messages: this.conversation.getConversationHistory(),
                     });
                     
@@ -537,6 +626,11 @@ export class Query {
                 
                 // If we have a successful response, add it to conversation history
                 if (bestResponseBuffer) {
+                  // For non-default personas, add persona prefix if needed
+                  if (currentPersona.id !== 'yitam' && !bestResponseBuffer.startsWith(currentPersona.displayName)) {
+                    bestResponseBuffer = `${currentPersona.displayName}: ${bestResponseBuffer}`;
+                  }
+                  
                   // Log the response content for debugging
                   console.log(`Follow-up response content (${bestResponseBuffer.length} chars): "${bestResponseBuffer.substring(0, 100)}${bestResponseBuffer.length > 100 ? '...' : ''}"`);
                   
@@ -545,16 +639,27 @@ export class Query {
                     console.warn("Follow-up response is too short or empty, forcing a new response");
                     // Force a new response with a more specific prompt
                     try {
+                      const forcedPersonaPrompt = getPersonaSystemPrompt(
+                        SystemPrompts.FOLLOW_UP + "\n\nYOU MUST GENERATE A DETAILED RESPONSE. EMPTY OR SHORT RESPONSES ARE UNACCEPTABLE.", 
+                        currentPersona
+                      );
+                      
                       const forceResponse = await this.anthropic.messages.create({
                         model: config.model.name,
                         max_tokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000),
-                        system: SystemPrompts.FOLLOW_UP + "\n\nYOU MUST GENERATE A DETAILED RESPONSE. EMPTY OR SHORT RESPONSES ARE UNACCEPTABLE.",
+                        system: forcedPersonaPrompt,
                         messages: this.conversation.getConversationHistory(),
                         temperature: 1.0, // Increase temperature to encourage different response
                       });
                       
                       if (forceResponse.content[0]?.type === "text") {
-                        const forcedText = forceResponse.content[0].text.trim();
+                        let forcedText = forceResponse.content[0].text.trim();
+                        
+                        // For non-default personas, add persona prefix if needed
+                        if (currentPersona.id !== 'yitam' && !forcedText.startsWith(currentPersona.displayName)) {
+                          forcedText = `${currentPersona.displayName}: ${forcedText}`;
+                        }
+                        
                         if (forcedText.length > bestResponseBuffer.trim().length) {
                           console.log(`Using forced follow-up response (${forcedText.length} chars): "${forcedText.substring(0, 100)}${forcedText.length > 100 ? '...' : ''}"`);
                           bestResponseBuffer = forcedText;
