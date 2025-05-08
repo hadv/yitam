@@ -1,5 +1,6 @@
 import { Tool as AnthropicTool } from "@anthropic-ai/sdk/resources/messages/messages.mjs";
 import { HTMLFormatter } from "../utils/HTMLFormatter";
+import { domainKeywordMappings, defaultDomains } from "../constants/Domains";
 
 export class Tool {
   private tools: AnthropicTool[] = [];
@@ -41,10 +42,13 @@ export class Tool {
   /**
    * Enriches tool arguments with additional context if needed
    */
-  enrichToolArguments(toolName: string, toolArgs: any, searchQuery: string): any {
+  enrichToolArguments(toolName: string, toolArgs: any, searchInfo: { searchQuery: string; domains: string[] }): any {
     // Get the tool schema if available
     const toolSchema = this.toolSchemas.get(toolName);
     const enrichedArgs = { ...toolArgs };
+    
+    // Extract searchQuery and domains from searchInfo
+    const { searchQuery, domains } = searchInfo;
     
     // If we have a schema, use it to validate and provide defaults
     if (toolSchema && toolSchema.properties) {
@@ -66,6 +70,24 @@ export class Tool {
             }
           }
         } 
+        
+        // Handle domains parameter for database search queries
+        if (paramName === 'domains' && toolSchema.properties.domains) {
+          if (!enrichedArgs.domains || (Array.isArray(enrichedArgs.domains) && enrichedArgs.domains.length === 0)) {
+            // Use the detected domains from the query
+            if (domains && domains.length > 0) {
+              console.log(`Adding detected domains for ${toolName}: ${domains.join(', ')}`);
+              enrichedArgs.domains = domains;
+            } else {
+              // Fall back to keyword-based domain detection if LLM detection failed
+              const keywordDomains = this._determineDomainsByKeywords(searchQuery);
+              if (keywordDomains.length > 0) {
+                console.log(`Adding keyword-based domains for ${toolName}: ${keywordDomains.join(', ')}`);
+                enrichedArgs.domains = keywordDomains;
+              }
+            }
+          }
+        }
         
         // If required parameters are missing but have defaults in the schema, add them
         if (toolSchema.required?.includes(paramName) && 
@@ -92,6 +114,33 @@ export class Tool {
     }
 
     return enrichedArgs;
+  }
+
+  /**
+   * Determine relevant domains based on keyword matching
+   * Used as a fallback method if LLM-based detection fails
+   */
+  private _determineDomainsByKeywords(query: string): string[] {
+    const lowercaseQuery = query.toLowerCase();
+    
+    // Match domains based on keywords from our constant mappings
+    const matchedDomains: string[] = [];
+    for (const [domain, keywords] of Object.entries(domainKeywordMappings)) {
+      for (const keyword of keywords) {
+        if (lowercaseQuery.includes(keyword)) {
+          matchedDomains.push(domain);
+          break; // Only add each domain once
+        }
+      }
+    }
+    
+    // If no domains matched, return default domains
+    if (matchedDomains.length === 0) {
+      return defaultDomains;
+    }
+    
+    // Return unique domains, limit to 3 to avoid overly restricting the search
+    return [...new Set(matchedDomains)].slice(0, 3);
   }
 
   /**
