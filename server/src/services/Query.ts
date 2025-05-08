@@ -1,6 +1,7 @@
 import { Anthropic } from "@anthropic-ai/sdk";
 import { config } from '../config';
 import { SystemPrompts } from '../constants/SystemPrompts';
+import { availableDomains } from '../constants/Domains';
 import { Conversation } from './Conversation';
 import { MCPServer } from './MCPServer';
 import { Tool } from './Tool';
@@ -76,11 +77,14 @@ export class Query {
   }
   
   /**
-   * Determines the search query to use for search-focused tools
+   * Determines the search query and domains to use for search-focused tools
    */
-  private async _determineSearchQuery(query: string): Promise<string> {
+  private async _determineSearchQuery(query: string): Promise<{ searchQuery: string; domains: string[] }> {
     try {
       console.time('search-query-extraction');
+      
+      // Run domain detection in parallel with search query extraction
+      const domainDetectionPromise = this._detectQueryDomains(query);
       
       const extractionResponse = await this.anthropic.messages.create({
         model: config.model.name,
@@ -94,18 +98,23 @@ export class Query {
       
       console.timeEnd('search-query-extraction');
 
+      let extractedText = query;
       if (extractionResponse.content[0]?.type === "text") {
-        const extractedText = extractionResponse.content[0].text.trim();
-        if (extractedText && extractedText.length > 0) {
+        const text = extractionResponse.content[0].text.trim();
+        if (text && text.length > 0) {
           console.log(`Original query: "${query.substring(0, 50)}..."`);
-          console.log(`Extracted search query: "${extractedText}"`);
-          return extractedText;
+          console.log(`Extracted search query: "${text}"`);
+          extractedText = text;
         }
       }
-      return query;
+      
+      // Get detected domains
+      const domains = await domainDetectionPromise;
+      
+      return { searchQuery: extractedText, domains };
     } catch (error) {
       console.warn('Error extracting search query, using original:', error);
-      return query;
+      return { searchQuery: query, domains: [] };
     }
   }
   
@@ -114,7 +123,7 @@ export class Query {
    */
   private async _handleToolUse(
     content: { name: string; input: any; id: string },
-    searchQuery: string
+    searchInfo: { searchQuery: string; domains: string[] }
   ): Promise<{ toolResult: any; formattedToolCall: string }> {
     const toolName = content.name;
     const toolArgs = content.input as { [x: string]: unknown } | undefined;
@@ -134,7 +143,7 @@ export class Query {
     const enrichedArgs = this.tool.enrichToolArguments(
       toolName,
       toolArgs,
-      searchQuery
+      searchInfo
     );
 
     // Set maximum result size limits
@@ -236,7 +245,7 @@ export class Query {
     console.log(`Using conversation history with ${messages.length} messages`);
 
     try {
-      const searchQuery = await this._determineSearchQuery(query);
+      const { searchQuery, domains } = await this._determineSearchQuery(query);
       const tools = this.tool.getTools();
 
       const response = await this.anthropic.messages.create({
@@ -256,7 +265,7 @@ export class Query {
           // Add assistant's response to conversation history
           this.conversation.addAssistantMessage(content.text);
         } else if (content.type === "tool_use") {
-          const { toolResult, formattedToolCall } = await this._handleToolUse(content, searchQuery);
+          const { toolResult, formattedToolCall } = await this._handleToolUse(content, { searchQuery, domains });
           toolResults.push(toolResult);
           finalText.push(formattedToolCall);
 
@@ -322,7 +331,7 @@ export class Query {
     console.log(`Using conversation history with ${messages.length} messages (streaming)`);
 
     try {
-      const searchQuery = await this._determineSearchQuery(query);
+      const { searchQuery, domains } = await this._determineSearchQuery(query);
       const tools = this.tool.getTools();
 
       let stream: AsyncIterable<any>;
@@ -374,7 +383,7 @@ export class Query {
             for (const toolUseId in toolCalls) {
               try {
                 const toolUse = toolCalls[toolUseId];
-                const { toolResult, formattedToolCall } = await this._handleToolUse(toolUse, searchQuery);
+                const { toolResult, formattedToolCall } = await this._handleToolUse(toolUse, { searchQuery, domains });
                 
                 // Send the formatted tool call to the client
                 const shouldContinue = await callback(formattedToolCall);
@@ -603,6 +612,57 @@ export class Query {
       const errorMessage = "Kính thưa quý khách, hệ thống đang gặp trục trặc kỹ thuật khi xử lý yêu cầu. Xin quý khách vui lòng thử lại sau. Chúng tôi chân thành xin lỗi vì sự bất tiện này.";
       const shouldContinue = await callback(errorMessage);
       if (!shouldContinue) return;
+    }
+  }
+
+  /**
+   * Uses the LLM to determine domains relevant to the query
+   * More sophisticated than keyword matching
+   */
+  private async _detectQueryDomains(query: string): Promise<string[]> {
+    console.time('domain-detection');
+    
+    try {
+      // Create the domain list for the system prompt
+      const domainOptions = availableDomains.map(domain => `- ${domain}`).join('\n');
+      
+      const domainResponse = await this.anthropic.messages.create({
+        model: "claude-3-haiku-20240307",  // Use a smaller, faster model
+        max_tokens: 50,  // Small token limit for domain extraction
+        system: `You are a domain classification expert specialized in traditional Eastern medicine, philosophy, and spiritual practices. Your task is to identify the relevant knowledge domains that a query belongs to.
+Respond ONLY with a comma-separated list of domains (no explanation). Choose from these domains:
+${domainOptions}
+
+Only include domains that are directly relevant to the query. Return between 1-3 domains maximum. If the query doesn't match any domain, respond with the most general applicable domains.
+Example responses:
+"đông y, nội kinh"
+"lão tử, dịch lý"
+"đạo phật, thích nhất hạnh"`,
+        messages: [{
+          role: "user",
+          content: `What domains does this query belong to? "${query}"`
+        }]
+      });
+      
+      console.timeEnd('domain-detection');
+
+      if (domainResponse.content[0]?.type === "text") {
+        const domainsText = domainResponse.content[0].text.trim();
+        if (domainsText && domainsText.length > 0) {
+          // Split on commas and clean up any extra spacing
+          const domains = domainsText.split(',').map(d => d.trim()).filter(Boolean);
+          
+          // Validate that all returned domains are in our available domains list
+          const validDomains = domains.filter(domain => availableDomains.includes(domain));
+          
+          console.log(`Detected domains for query: ${validDomains.join(', ')}`);
+          return validDomains;
+        }
+      }
+      return [];
+    } catch (error) {
+      console.warn('Error detecting domains for query:', error);
+      return [];
     }
   }
 } 
