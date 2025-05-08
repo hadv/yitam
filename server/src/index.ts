@@ -171,16 +171,36 @@ io.on('connection', (socket: Socket) => {
     socket.emit('sample-questions', selectedQuestions);
   });
 
+  // Get available personas when requested
+  socket.on('get-personas', () => {
+    console.log('Available personas requested');
+    
+    if (mcpClient && mcpConnected) {
+      const personas = mcpClient.getAvailablePersonas();
+      socket.emit('available-personas', personas);
+    } else {
+      socket.emit('available-personas', []);
+    }
+  });
+
   // Handle chat messages
-  socket.on('chat-message', async (message: string) => {
+  socket.on('chat-message', async (data: { message: string; personaId?: string }) => {
     try {
-      console.log('Received message:', message);
+      const userMessage = data.message;
+      const personaId = data.personaId;
+      
+      console.log('Received message:', userMessage);
+      if (personaId) {
+        console.log('Using persona:', personaId);
+      }
+      
       const startTime = Date.now();
       
       // Only enable AI safety if explicitly turned on in environment
       const enableAiSafety = process.env.ENABLE_AI_CONTENT_SAFETY === 'true';
       
       // Validate and sanitize incoming message
+      let sanitizedMessage = userMessage;
       try {
         // Only do AI validation if explicitly enabled
         if (enableAiSafety && !contentSafetyService.isAiContentSafetyEnabled()) {
@@ -191,8 +211,8 @@ io.on('connection', (socket: Socket) => {
           console.log('AI-based content safety check disabled');
         }
 
-        await contentSafetyService.validateContent(message);
-        message = contentSafetyService.sanitizeContent(message);
+        await contentSafetyService.validateContent(userMessage);
+        sanitizedMessage = contentSafetyService.sanitizeContent(userMessage);
       } catch (error) {
         if (error instanceof ContentSafetyError) {
           console.log(`Content safety error detected in user input: ${error.message}, code: ${error.code}`);
@@ -239,158 +259,112 @@ io.on('connection', (socket: Socket) => {
       if (mcpClient && mcpConnected) {
         try {
           // Process message using MCP client with streaming callback
-          await mcpClient.processQueryWithStreaming(message, async (chunk) => {
-            try {
-              // Use different validation based on whether AI safety is enabled
-              if (enableAiSafety) {
-                // Full AI-based validation
-                await contentSafetyService.validateResponse(responseBuffer + chunk, 'vi');
-              } else {
-                // Fast prompt injection check only
-                const isSafe = contentSafetyService.checkPromptInjectionOnly(responseBuffer + chunk, 'vi');
-                if (!isSafe) {
-                  throw new ContentSafetyError(
-                    "Content contains prompt injection attempt",
-                    "prompt_injection",
-                    "vi"
-                  );
-                }
-              }
-              
-              responseBuffer += chunk;
-              
-              // Only emit if socket is still connected
-              if (!socket.disconnected) {
-                socket.emit('bot-response-chunk', {
-                  id: messageId,
-                  text: chunk
-                });
-              }
-              return true; // Continue streaming
-            } catch (error) {
-              if (error instanceof ContentSafetyError) {
-                safetyErrorOccurred = true;
-                console.log(`Content safety error in response chunk: ${error.message}, code: ${error.code}`);
-                console.log(`Original content that triggered the safety error: "${responseBuffer + chunk.substring(0, 50)}${chunk.length > 50 ? '...' : ''}"`);
-                
-                if (!socket.disconnected) {
-                  // Send a clear error response to the client
-                  socket.emit('bot-response', {
-                    text: ERROR_MESSAGES.prompt_injection[error.language],
-                    id: messageId,
-                  });
-                  
-                  // Also emit a specific content safety error event
-                  socket.emit('content-safety-error', {
-                    id: messageId,
-                    error: error.message,
-                    code: error.code
-                  });
-                  
-                  // Make sure to send the end signal to let client know we're done
-                  socket.emit('bot-response-end', { 
-                    id: messageId,
-                    error: true,
-                    errorType: 'content_safety',
-                    errorCode: error.code
-                  });
-                }
-                return false; // Signal to stop streaming
-              }
-              throw error;
-            }
-          });
-          
-          // Clear the timeout if the tool call completes successfully
-          clearTimeout(toolCallTimeout);
-        } catch (error) {
-          // Clear the timeout in case of error
-          clearTimeout(toolCallTimeout);
-          console.error('Error with MCP client during tool call:', error);
-          
-          // If there was a timeout or connection issue, try to fall back to direct API
-          if (!socket.disconnected) {
-            socket.emit('tool-call-error', { 
-              id: messageId,
-              error: 'Tool call failed, falling back to direct API'
-            });
-            
-            // Attempt fallback to direct API
-            try {
-              const stream = await anthropic.messages.stream({
-                model: config.model.name,
-                max_tokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000),
-                messages: [
-                  { role: 'user', content: message }
-                ],
-              });
-              
-              // Reset response buffer for the fallback
-              responseBuffer = '';
-              
-              for await (const chunk of stream) {
-                if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-                  try {
-                    // Validate each chunk before sending
-                    await contentSafetyService.validateResponse(responseBuffer + chunk.delta.text, 'vi');
-                    responseBuffer += chunk.delta.text;
-                    
-                    if (!socket.disconnected) {
-                      socket.emit('bot-response-chunk', {
-                        id: messageId,
-                        text: chunk.delta.text
-                      });
-                    }
-                  } catch (error) {
-                    if (error instanceof ContentSafetyError) {
-                      safetyErrorOccurred = true;
-                      console.log(`Content safety error in fallback response: ${error.message}, code: ${error.code}`);
-                      console.log(`Original content that triggered the safety error: "${responseBuffer + chunk.delta.text.substring(0, 50)}${chunk.delta.text.length > 50 ? '...' : ''}"`);
-                      
-                      if (!socket.disconnected) {
-                        socket.emit('bot-response', {
-                          text: ERROR_MESSAGES.prompt_injection[error.language],
-                          id: messageId,
-                        });
-                        
-                        // Also emit a specific content safety error event
-                        socket.emit('content-safety-error', {
-                          id: messageId,
-                          error: error.message,
-                          code: error.code
-                        });
-                        
-                        // Make sure to send the end signal to let client know we're done
-                        socket.emit('bot-response-end', { 
-                          id: messageId,
-                          error: true,
-                          errorType: 'content_safety',
-                          errorCode: error.code
-                        });
-                      }
-                      break; // Stop processing the stream
-                    }
-                    throw error;
+          await mcpClient.processQueryWithStreaming(
+            sanitizedMessage, 
+            async (chunk) => {
+              try {
+                // Use different validation based on whether AI safety is enabled
+                if (enableAiSafety) {
+                  // Full AI-based validation
+                  await contentSafetyService.validateResponse(responseBuffer + chunk, 'vi');
+                } else {
+                  // Fast prompt injection check only
+                  const isSafe = contentSafetyService.checkPromptInjectionOnly(responseBuffer + chunk, 'vi');
+                  if (!isSafe) {
+                    console.log(`Content safety error detected in AI response - prompt injection attempt`);
+                    safetyErrorOccurred = true;
+                    socket.emit('bot-response-end', { 
+                      id: messageId,
+                      error: true, 
+                      errorMessage: ERROR_MESSAGES.prompt_injection['vi']
+                    });
+                    return false; // Stop streaming
                   }
                 }
+                
+                // Update the buffer with this chunk
+                responseBuffer += chunk;
+                
+                // Emit the response chunk to the client
+                socket.emit('bot-response-chunk', {
+                  id: messageId,
+                  text: chunk,
+                });
+                
+                return true; // Continue streaming
+              } catch (error) {
+                if (error instanceof ContentSafetyError) {
+                  console.log(`Content safety error detected in AI response: ${error.message}, code: ${error.code}`);
+                  safetyErrorOccurred = true;
+                  
+                  // Get appropriate error message based on the error code
+                  let errorMessage = ERROR_MESSAGES.invalid_content[error.language];
+                  
+                  // Use more specific error messages when available
+                  if (error.code === 'medical_advice' || error.code === 'financial_advice' || 
+                      error.code === 'legal_advice' || error.code === 'product_marketing') {
+                    errorMessage = ERROR_MESSAGES.restricted_content[error.language];
+                  } else if (error.code === 'prompt_injection') {
+                    errorMessage = ERROR_MESSAGES.prompt_injection[error.language];
+                  }
+                  
+                  socket.emit('bot-response-end', { 
+                    id: messageId,
+                    error: true, 
+                    errorMessage
+                  });
+                  
+                  return false; // Stop streaming
+                } else {
+                  console.error('Error validating content during streaming response:', error);
+                  throw error;
+                }
               }
-            } catch (fallbackError) {
-              console.error('Fallback to direct API also failed:', fallbackError);
-              throw fallbackError; // Let the outer catch handle this
-            }
+            },
+            undefined, // Use default chat ID
+            personaId // Pass persona ID if provided
+          );
+          
+          // Clear the timeout since we got a response
+          clearTimeout(toolCallTimeout);
+          
+          // If no safety error occurred, finalize the response
+          if (!safetyErrorOccurred) {
+            socket.emit('bot-response-end', { 
+              id: messageId,
+              text: responseBuffer,
+              responseTime: Date.now() - startTime
+            });
           }
+        } catch (err) {
+          console.error('Error with MCP client:', err);
+          clearTimeout(toolCallTimeout);
+          
+          // Send appropriate error message to client
+          let errorMessage = ERROR_MESSAGES.general_error.vi;
+          if (err instanceof Error && err.message.includes('overloaded')) {
+            errorMessage = ERROR_MESSAGES.overloaded.vi;
+          } else if (err instanceof Error && err.message.includes('rate limit')) {
+            errorMessage = ERROR_MESSAGES.rate_limit.vi;
+          }
+          
+          socket.emit('bot-response-end', { 
+            id: messageId,
+            error: true, 
+            errorMessage
+          });
         }
       } else {
-        // Fallback to direct Claude API with streaming
         try {
+          // Use direct Anthropic API since MCP is not available
           const stream = await anthropic.messages.stream({
             model: config.model.name,
             max_tokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000),
             messages: [
-              { role: 'user', content: message }
+              { role: 'user', content: sanitizedMessage }
             ],
           });
-
+          
           for await (const chunk of stream) {
             if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
               try {
@@ -402,70 +376,92 @@ io.on('connection', (socket: Socket) => {
                   // Fast prompt injection check only
                   const isSafe = contentSafetyService.checkPromptInjectionOnly(responseBuffer + chunk.delta.text, 'vi');
                   if (!isSafe) {
-                    throw new ContentSafetyError(
-                      "Content contains prompt injection attempt",
-                      "prompt_injection",
-                      "vi"
-                    );
-                  }
-                }
-                
-                responseBuffer += chunk.delta.text;
-                
-                if (!socket.disconnected) {
-                  socket.emit('bot-response-chunk', {
-                    id: messageId,
-                    text: chunk.delta.text
-                  });
-                }
-              } catch (error) {
-                if (error instanceof ContentSafetyError) {
-                  safetyErrorOccurred = true;
-                  console.log(`Content safety error in direct API response: ${error.message}, code: ${error.code}`);
-                  console.log(`Original content that triggered the safety error: "${responseBuffer + chunk.delta.text.substring(0, 50)}${chunk.delta.text.length > 50 ? '...' : ''}"`);
-                  
-                  if (!socket.disconnected) {
-                    socket.emit('bot-response', {
-                      text: ERROR_MESSAGES.prompt_injection[error.language],
-                      id: messageId,
-                    });
-                    
-                    // Also emit a specific content safety error event
-                    socket.emit('content-safety-error', {
-                      id: messageId,
-                      error: error.message,
-                      code: error.code
-                    });
-                    
-                    // Make sure to send the end signal to let client know we're done
+                    console.log(`Content safety error detected in AI response - prompt injection attempt`);
+                    safetyErrorOccurred = true;
                     socket.emit('bot-response-end', { 
                       id: messageId,
-                      error: true,
-                      errorType: 'content_safety',
-                      errorCode: error.code
+                      error: true, 
+                      errorMessage: ERROR_MESSAGES.prompt_injection['vi']
                     });
+                    break; // Stop processing
                   }
-                  break; // Stop processing the stream
                 }
-                throw error;
+                
+                // Update the buffer with this chunk
+                responseBuffer += chunk.delta.text;
+                
+                // Emit the response chunk to the client
+                socket.emit('bot-response-chunk', {
+                  id: messageId,
+                  text: chunk.delta.text,
+                });
+              } catch (error) {
+                if (error instanceof ContentSafetyError) {
+                  console.log(`Content safety error detected in AI response: ${error.message}, code: ${error.code}`);
+                  safetyErrorOccurred = true;
+                  
+                  // Get appropriate error message based on the error code
+                  let errorMessage = ERROR_MESSAGES.invalid_content[error.language];
+                  
+                  // Use more specific error messages when available
+                  if (error.code === 'medical_advice' || error.code === 'financial_advice' || 
+                      error.code === 'legal_advice' || error.code === 'product_marketing') {
+                    errorMessage = ERROR_MESSAGES.restricted_content[error.language];
+                  } else if (error.code === 'prompt_injection') {
+                    errorMessage = ERROR_MESSAGES.prompt_injection[error.language];
+                  }
+                  
+                  socket.emit('bot-response-end', { 
+                    id: messageId,
+                    error: true, 
+                    errorMessage
+                  });
+                  
+                  break; // Stop processing
+                } else {
+                  console.error('Error validating content during streaming response:', error);
+                  throw error;
+                }
               }
             }
           }
           
-          // Clear the timeout as we're done with the direct API call
+          // Clear the timeout since we got a response
           clearTimeout(toolCallTimeout);
-        } catch (error) {
-          // Clear the timeout in case of error
+          
+          // If no safety error occurred, finalize the response
+          if (!safetyErrorOccurred) {
+            socket.emit('bot-response-end', { 
+              id: messageId,
+              text: responseBuffer,
+              responseTime: Date.now() - startTime
+            });
+          }
+        } catch (err) {
+          console.error('Error with Anthropic API:', err);
           clearTimeout(toolCallTimeout);
-          throw error;
+          
+          // Send appropriate error message to client
+          let errorMessage = ERROR_MESSAGES.general_error.vi;
+          
+          if (err instanceof Error) {
+            if (err.message.includes('overloaded')) {
+              errorMessage = ERROR_MESSAGES.overloaded.vi;
+            } else if (err.message.includes('rate limit')) {
+              errorMessage = ERROR_MESSAGES.rate_limit.vi;
+            } else if (err.message.includes('auth')) {
+              errorMessage = ERROR_MESSAGES.auth_error.vi;
+            } else if (err.message.includes('bad request')) {
+              errorMessage = ERROR_MESSAGES.bad_request.vi;
+            }
+          }
+          
+          socket.emit('bot-response-end', { 
+            id: messageId,
+            error: true, 
+            errorMessage
+          });
         }
-      }
-
-      // Signal that the response is complete only if no safety error occurred
-      if (!socket.disconnected && !safetyErrorOccurred) {
-        socket.emit('bot-response-end', { id: messageId });
-        const responseTime = Date.now() - startTime;
-        console.log(`Total response time: ${responseTime}ms`);
       }
     } catch (error: any) {
       console.error('Error processing message:', error);
