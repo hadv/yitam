@@ -14,12 +14,44 @@ import { generateRequestSignature } from '../../utils/security';
 // Import persona constant from the selector component
 import { AVAILABLE_PERSONAS, Persona } from './TailwindPersonaSelector';
 
-// Message interface
+interface AnthropicError {
+  type: string;
+  error: {
+    type: string;
+    message: string;
+  };
+}
+
+interface ErrorResponse {
+  type: string;
+  message?: string;
+  details?: {
+    retryAfter?: number;
+  };
+  retryAfter?: number;
+}
+
 interface Message {
   id: string;
   text: string;
   isBot: boolean;
   isStreaming?: boolean;
+  error?: {
+    type: 'rate_limit' | 'other';
+    message: string;
+    retryAfter?: number;
+  };
+}
+
+interface AnthropicErrorResponse {
+  request_id: string;
+  error: {
+    type: string;
+    error: {
+      type: string;
+      message: string;
+    };
+  };
 }
 
 function TailwindApp() {
@@ -36,6 +68,17 @@ function TailwindApp() {
   const [pendingAccessCode, setPendingAccessCode] = useState<string | null>(null);
   const lastMessageRef = useRef<string | null>(null); // Track last message to prevent duplicates
   
+  // Debug log for messages state
+  useEffect(() => {
+    console.log("Messages state updated:", messages.map(m => ({
+      id: m.id,
+      isBot: m.isBot,
+      hasError: !!m.error,
+      errorType: m.error?.type,
+      isStreaming: m.isStreaming
+    })));
+  }, [messages]);
+
   // Effect to update welcome message when persona changes (if it's the only message)
   useEffect(() => {
     if (messages.length === 1 && messages[0].id === 'welcome' && !hasUserSentMessage) {
@@ -189,54 +232,139 @@ function TailwindApp() {
           });
         });
 
+        // Handle streaming errors, including rate limits
+        newSocket.on('bot-response-error', (response: any) => {
+          console.error("Received error response:", JSON.stringify(response, null, 2));
+
+          // Extract error information from any possible structure
+          let errorType: 'rate_limit' | 'other';
+          let errorMessage = '';
+          let retryAfter = 60; // Default to 60 seconds for rate limits
+          
+          try {
+            // Handle Anthropic's error format first (most specific)
+            if (response.error?.error?.type === 'rate_limit_error') {
+              errorType = 'rate_limit';
+              errorMessage = response.error.error.message;
+              console.log("Detected Anthropic rate limit error");
+            }
+            // Handle string error
+            else if (typeof response.error === 'string') {
+              errorType = response.error.toLowerCase().includes('rate_limit') ? 'rate_limit' : 'other';
+              errorMessage = response.error;
+            } 
+            // Handle direct error object
+            else if (response.error?.type) {
+              errorType = response.error.type.toLowerCase().includes('rate_limit') ? 'rate_limit' : 'other';
+              errorMessage = response.error.message;
+            }
+            // Handle completely unknown format
+            else {
+              errorType = 'other';
+              errorMessage = 'Unknown error occurred';
+            }
+
+            // Extract retry after if available
+            if (response.error?.retryAfter) {
+              retryAfter = response.error.retryAfter;
+            } else if (response.error?.details?.retryAfter) {
+              retryAfter = response.error.details.retryAfter;
+            }
+
+            console.log("Parsed error details:", { errorType, errorMessage, retryAfter });
+          } catch (e) {
+            console.error("Error parsing error response:", e);
+            errorType = 'other';
+            errorMessage = 'Error parsing server response';
+          }
+
+          const isRateLimit = errorType === 'rate_limit';
+          
+          // Create user-friendly messages
+          const friendlyMessage = isRateLimit 
+            ? "Xin lỗi bạn! Yitam đang nhận quá nhiều tin nhắn và cần nghỉ ngơi một chút." 
+            : "Đã xảy ra lỗi khi xử lý phản hồi. Vui lòng thử lại sau.";
+
+          // Create the error object with guaranteed structure
+          const errorObject = {
+            type: errorType,
+            message: `${friendlyMessage}\n\n${errorMessage}`,
+            retryAfter: isRateLimit ? retryAfter : undefined
+          } as const;
+
+          console.log("Created error object:", errorObject);
+
+          // Update messages in a single operation
+          setMessages(prevMessages => {
+            // Find the last bot message that was streaming
+            const lastStreamingMessage = [...prevMessages].reverse().find(msg => msg.isBot && msg.isStreaming);
+            console.log("Found streaming message:", lastStreamingMessage);
+
+            let newMessages;
+            if (lastStreamingMessage) {
+              // Update the existing streaming message with the error
+              newMessages = prevMessages.map(msg => 
+                msg.id === lastStreamingMessage.id
+                  ? { 
+                      ...msg, 
+                      isStreaming: false, 
+                      error: errorObject,
+                      text: msg.text || 'Đã xảy ra lỗi trong quá trình xử lý.'
+                    }
+                  : msg
+              );
+            } else {
+              // If no streaming message found, add a new error message
+              const newMessage: Message = {
+                id: `bot-${Date.now()}-error`,
+                text: 'Đã xảy ra lỗi trong quá trình xử lý.',
+                isBot: true,
+                isStreaming: false,
+                error: errorObject
+              };
+              newMessages = [...prevMessages, newMessage];
+            }
+
+            console.log("Updated messages:", newMessages);
+            return newMessages;
+          });
+
+          // Handle rate limit UI state
+          if (isRateLimit) {
+            setIsConnected(false);
+            const timer = setTimeout(() => {
+              setIsConnected(true);
+            }, retryAfter * 1000);
+
+            // Cleanup timer if component unmounts
+            return () => clearTimeout(timer);
+          }
+        });
+
         // Handle end of streaming response
         newSocket.on('bot-response-end', (response: { id: string }) => {
           console.log("Bot response ended:", { responseId: response.id });
           
           setMessages(prev => {
-            const finalMessages = prev.map(msg => 
-              msg.id.includes(`-${response.id}`) // Match any ID containing the response ID
-                ? { ...msg, isStreaming: false }
-                : msg
-            );
-            console.log("Final messages after bot response:", finalMessages.length);
+            const finalMessages = prev.map(msg => {
+              if (msg.id.includes(`-${response.id}`)) {
+                // If the message is empty when streaming ends, add an error message
+                if (!msg.text.trim()) {
+                  return {
+                    ...msg,
+                    isStreaming: false,
+                    text: 'Đã xảy ra lỗi trong quá trình xử lý.',
+                    error: {
+                      type: 'other' as const,
+                      message: 'Không nhận được phản hồi từ hệ thống. Vui lòng thử lại.'
+                    }
+                  };
+                }
+                return { ...msg, isStreaming: false };
+              }
+              return msg;
+            });
             return finalMessages;
-          });
-        });
-
-        // Handle streaming errors, including rate limits
-        newSocket.on('bot-response-error', (response: { id: string, error: any }) => {
-          console.error("Bot response error:", response);
-          
-          // Check if it's a rate limit error
-          const isRateLimit = response.error?.type === 'rate_limit_error' || 
-                             (typeof response.error === 'string' && response.error.includes('rate_limit'));
-          
-          // Create a user-friendly error message
-          const friendlyMessage = isRateLimit 
-            ? "⚠️ Hệ thống hiện đang bận do lượng truy cập cao. Xin vui lòng thử lại sau vài phút." 
-            : "Đã xảy ra lỗi khi xử lý phản hồi. Vui lòng thử lại sau.";
-          
-          setMessages(prev => {
-            // First find and stop streaming for the current message
-            const updatedMessages = prev.map(msg => 
-              msg.id.includes(`-${response.id}`) 
-                ? { ...msg, isStreaming: false } 
-                : msg
-            );
-            
-            // If this is a rate limit error, add it as a new bot message
-            if (isRateLimit) {
-              const botErrorId = `bot-${Date.now()}-error`;
-              return [...updatedMessages, {
-                id: botErrorId,
-                text: friendlyMessage,
-                isBot: true,
-                isStreaming: false
-              }];
-            }
-            
-            return updatedMessages;
           });
         });
 

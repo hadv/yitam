@@ -6,6 +6,11 @@ interface Message {
   text: string;
   isBot: boolean;
   isStreaming?: boolean;
+  error?: {
+    type: 'rate_limit' | 'other';
+    message: string;
+    retryAfter?: number; // seconds to wait before retrying
+  };
 }
 
 interface ChatBoxProps {
@@ -14,11 +19,57 @@ interface ChatBoxProps {
 
 const TailwindChatBox: React.FC<ChatBoxProps> = ({ messages }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
-  // Auto-scroll to the bottom when messages change
+  const chatBoxRef = useRef<HTMLDivElement>(null);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const [retryCountdown, setRetryCountdown] = useState<number | null>(null);
+
+  // Debug log for messages with errors
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const messagesWithErrors = messages.filter(msg => msg.error);
+    if (messagesWithErrors.length > 0) {
+      console.log("Messages with errors:", messagesWithErrors);
+    }
   }, [messages]);
+
+  // Handle countdown for rate limit
+  useEffect(() => {
+    const latestMessage = messages[messages.length - 1];
+    if (latestMessage?.error?.type === 'rate_limit' && latestMessage.error.retryAfter) {
+      setRetryCountdown(latestMessage.error.retryAfter);
+      const interval = setInterval(() => {
+        setRetryCountdown(prev => {
+          if (prev === null || prev <= 1) {
+            clearInterval(interval);
+            return null;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [messages]);
+
+  // Track scroll position and update auto-scroll behavior
+  const handleScroll = () => {
+    if (!chatBoxRef.current) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = chatBoxRef.current;
+    const isAtBottom = Math.abs(scrollHeight - clientHeight - scrollTop) < 50;
+    setShouldAutoScroll(isAtBottom);
+  };
+
+  // Auto-scroll to bottom only if user was already at bottom or it's a new message
+  useEffect(() => {
+    if (!shouldAutoScroll && messages[messages.length - 1]?.isStreaming) return;
+    
+    const scrollToBottom = () => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: shouldAutoScroll ? 'smooth' : 'auto' });
+      }
+    };
+
+    scrollToBottom();
+  }, [messages, shouldAutoScroll]);
 
   // Ensure messages are sorted by their timestamp ID (user-timestamp-randomid format)
   const sortedMessages = [...messages].sort((a, b) => {
@@ -40,7 +91,11 @@ const TailwindChatBox: React.FC<ChatBoxProps> = ({ messages }) => {
   });
 
   return (
-    <div className="flex flex-col p-2.5 bg-white rounded-[8px] shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
+    <div 
+      className="flex flex-col p-2.5 bg-white rounded-[8px] shadow-[0_1px_3px_rgba(0,0,0,0.1)] overflow-y-auto"
+      ref={chatBoxRef}
+      onScroll={handleScroll}
+    >
       {sortedMessages.length === 0 ? (
         <div className="flex items-center justify-center h-[200px] text-[#3A2E22] opacity-60 text-[1.1rem]">
           Xin chào! Yitam đang lắng nghe!
@@ -74,6 +129,35 @@ const TailwindChatBox: React.FC<ChatBoxProps> = ({ messages }) => {
                           <span className="typing-dot"></span>
                           <span className="typing-dot"></span>
                         </span>
+                      )}
+                      {message.error && (
+                        <div className={`mt-4 p-4 rounded-lg border ${
+                          message.error.type === 'rate_limit'
+                            ? 'bg-amber-50 border-amber-200 text-amber-800'
+                            : 'bg-red-50 border-red-200 text-red-700'
+                        }`}>
+                          <div className="flex items-center mb-2">
+                            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
+                                d={message.error.type === 'rate_limit'
+                                  ? "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" // Clock icon for rate limit
+                                  : "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" // Warning icon for other errors
+                                }
+                              />
+                            </svg>
+                            <div className="font-medium">
+                              {message.error.message.split('\n')[0]}
+                            </div>
+                          </div>
+                          {message.error.message.split('\n').slice(1).map((line, index) => (
+                            line && <div key={index} className="mt-2 text-sm whitespace-pre-wrap">{line}</div>
+                          ))}
+                          {message.error.type === 'rate_limit' && message.error.retryAfter && (
+                            <div className="mt-3 text-sm font-medium">
+                              Hệ thống sẽ tự động tiếp tục sau {message.error.retryAfter} giây
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   ) : (
