@@ -7,6 +7,7 @@ import TailwindSampleQuestions from './TailwindSampleQuestions';
 import TailwindTermsModal from './TailwindTermsModal';
 import TailwindAccessCodeInput from './TailwindAccessCodeInput';
 import TailwindPersonaSelector from './TailwindPersonaSelector';
+import TailwindToolCallParser from './TailwindToolCallParser';
 import { ConsentProvider } from '../../contexts/ConsentContext';
 import { generateRequestSignature } from '../../utils/security';
 
@@ -33,6 +34,7 @@ function TailwindApp() {
   const [isPersonaLocked, setIsPersonaLocked] = useState(false); // Add state for persona locking
   const inputRef = useRef<HTMLDivElement>(null);
   const [pendingAccessCode, setPendingAccessCode] = useState<string | null>(null);
+  const lastMessageRef = useRef<string | null>(null); // Track last message to prevent duplicates
   
   // Effect to update welcome message when persona changes (if it's the only message)
   useEffect(() => {
@@ -47,6 +49,14 @@ function TailwindApp() {
       ]);
     }
   }, [selectedPersonaId, messages, hasUserSentMessage]);
+
+  // Scroll to bottom when new messages arrive
+  useEffect(() => {
+    const chatContainer = document.getElementById('yitam-chat-container');
+    if (chatContainer) {
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+  }, [messages]);
   
   useEffect(() => {
     if (!pendingAccessCode) return;
@@ -81,7 +91,7 @@ function TailwindApp() {
           console.log('Connected to server');
           
           // Get the default persona
-          const defaultPersona = AVAILABLE_PERSONAS[0];
+          const defaultPersona = AVAILABLE_PERSONAS.find(p => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
           
           // Add welcome message with the default persona's name
           setMessages([
@@ -123,45 +133,111 @@ function TailwindApp() {
 
         // Handle old-style responses (for backward compatibility)
         newSocket.on('bot-response', (response: { text: string, id: string }) => {
-          setMessages(prev => [
-            ...prev,
-            { id: response.id, text: response.text, isBot: true }
-          ]);
+          console.log('Received bot-response:', response);
+          
+          // Create a timestamp-based bot ID for proper ordering
+          const botTimestamp = Date.now() + 100; // Slightly later than user message
+          const botId = `bot-${botTimestamp}-${response.id}`;
+          
+          setMessages(prev => {
+            const newMessages = [
+              ...prev,
+              { id: botId, text: response.text, isBot: true }
+            ];
+            console.log("Messages after adding bot response:", newMessages.length);
+            return newMessages;
+          });
         });
 
         // Handle the start of a streaming response
         newSocket.on('bot-response-start', (response: { id: string }) => {
-          setMessages(prev => [
-            ...prev,
-            { 
-              id: `bot-${response.id}`, 
-              text: '', 
-              isBot: true, 
-              isStreaming: true 
-            }
-          ]);
+          // Create a timestamp-based bot ID for proper ordering
+          const botTimestamp = Date.now() + 100; // Slightly later than user message
+          const botId = `bot-${botTimestamp}-${response.id}`;
+          
+          console.log("Bot response starting:", { responseId: response.id, botId });
+          
+          setMessages(prev => {
+            const newMessages = [
+              ...prev,
+              { 
+                id: botId, 
+                text: '', 
+                isBot: true, 
+                isStreaming: true 
+              }
+            ];
+            console.log("Messages after adding bot start:", newMessages.length, newMessages.map(m => ({ id: m.id, isBot: m.isBot })));
+            return newMessages;
+          });
         });
 
         // Handle streaming chunks
         newSocket.on('bot-response-chunk', (response: { text: string, id: string }) => {
-          setMessages(prev => 
-            prev.map(msg => 
-              msg.id === `bot-${response.id}` 
+          console.log("Bot response chunk:", { responseId: response.id, textLength: response.text.length });
+          
+          // Update the state
+          setMessages(prev => {
+            const updatedMessages = prev.map(msg => 
+              msg.id.includes(`-${response.id}`) // Match any ID containing the response ID
                 ? { ...msg, text: msg.text + response.text }
                 : msg
-            )
-          );
+            );
+            const updatedMsg = updatedMessages.find(msg => msg.id.includes(`-${response.id}`));
+            console.log("Updated bot message:", updatedMsg ? { id: updatedMsg.id, textLength: updatedMsg.text.length } : "No matching message found");
+            return updatedMessages;
+          });
         });
 
         // Handle end of streaming response
         newSocket.on('bot-response-end', (response: { id: string }) => {
-          setMessages(prev => 
-            prev.map(msg => 
-              msg.id === `bot-${response.id}` 
+          console.log("Bot response ended:", { responseId: response.id });
+          
+          setMessages(prev => {
+            const finalMessages = prev.map(msg => 
+              msg.id.includes(`-${response.id}`) // Match any ID containing the response ID
                 ? { ...msg, isStreaming: false }
                 : msg
-            )
-          );
+            );
+            console.log("Final messages after bot response:", finalMessages.length);
+            return finalMessages;
+          });
+        });
+
+        // Handle streaming errors, including rate limits
+        newSocket.on('bot-response-error', (response: { id: string, error: any }) => {
+          console.error("Bot response error:", response);
+          
+          // Check if it's a rate limit error
+          const isRateLimit = response.error?.type === 'rate_limit_error' || 
+                             (typeof response.error === 'string' && response.error.includes('rate_limit'));
+          
+          // Create a user-friendly error message
+          const friendlyMessage = isRateLimit 
+            ? "⚠️ Hệ thống hiện đang bận do lượng truy cập cao. Xin vui lòng thử lại sau vài phút." 
+            : "Đã xảy ra lỗi khi xử lý phản hồi. Vui lòng thử lại sau.";
+          
+          setMessages(prev => {
+            // First find and stop streaming for the current message
+            const updatedMessages = prev.map(msg => 
+              msg.id.includes(`-${response.id}`) 
+                ? { ...msg, isStreaming: false } 
+                : msg
+            );
+            
+            // If this is a rate limit error, add it as a new bot message
+            if (isRateLimit) {
+              const botErrorId = `bot-${Date.now()}-error`;
+              return [...updatedMessages, {
+                id: botErrorId,
+                text: friendlyMessage,
+                isBot: true,
+                isStreaming: false
+              }];
+            }
+            
+            return updatedMessages;
+          });
         });
 
         // Add a connection timeout
@@ -204,43 +280,141 @@ function TailwindApp() {
   const sendMessage = (text: string) => {
     if (text.trim() === '' || !socket) return;
     
-    // Add user message to state
+    // Check if this exact message was just sent to prevent duplicates
+    if (lastMessageRef.current === text) {
+      console.log("Preventing duplicate message:", text);
+      return;
+    }
+    
+    // Store this message as the last one sent
+    lastMessageRef.current = text;
+    
+    // Create a user message with a very unique ID to ensure React treats it as a new item
+    const timestamp = Date.now();
+    const randomId = Math.random().toString(36).substring(2, 10);
     const userMessage: Message = {
-      id: `user-${Date.now().toString()}`,
+      id: `user-${timestamp}-${randomId}`,
       text,
       isBot: false
     };
     
-    setMessages(prev => [...prev, userMessage]);
+    console.log("🚀 SENDING MESSAGE:", { text, id: userMessage.id });
     
-    // Mark that user has sent a message and lock persona
-    if (!hasUserSentMessage) {
-      setHasUserSentMessage(true);
-      setIsPersonaLocked(true); // Lock persona after first message
-    }
+    // Update React state for the user message - use functional update to ensure we're working with latest state
+    setMessages(prevMessages => {
+      const newMessages = [...prevMessages, userMessage];
+      console.log("Messages after adding:", newMessages.length, newMessages.map(m => ({ id: m.id, isBot: m.isBot })));
+      return newMessages;
+    });
     
-    // Find selected persona to get its domains
-    const selectedPersona = AVAILABLE_PERSONAS.find((p: Persona) => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
+    // Force a rerender by updating an unrelated state
+    setHasUserSentMessage(true);
+    setIsPersonaLocked(true);
     
-    // Send message to server with selected persona and its domain information
+    // Find selected persona
+    const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
+    
+    // Send to server
     socket.emit('chat-message', {
       message: text,
       personaId: selectedPersonaId,
       domains: selectedPersona.domains
     });
+    
+    // Force check - add the user message to the DOM directly if React state isn't updating
+    setTimeout(() => {
+      const chatContainer = document.getElementById('yitam-chat-container');
+      if (!chatContainer) return;
+      
+      const chatMessagesList = chatContainer.querySelectorAll('[data-message-type]');
+      const hasUserMessageInDOM = Array.from(chatMessagesList).some(el => 
+        el.getAttribute('data-message-type') === 'user' && 
+        el.textContent?.includes(text)
+      );
+      
+      if (!hasUserMessageInDOM) {
+        console.log("User message not found in DOM, forcing direct addition");
+        
+        // Create a user message element using the same styling as in the ChatBox component
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'mb-3 flex w-full justify-end';
+        messageDiv.setAttribute('data-message-id', userMessage.id);
+        messageDiv.setAttribute('data-message-type', 'user');
+        
+        const innerDiv = document.createElement('div');
+        innerDiv.className = 'max-w-[80%]';
+        innerDiv.style.display = 'block';
+        
+        const bubble = document.createElement('div');
+        bubble.className = 'p-[10px_14px] rounded-[8px] text-[0.95rem] leading-[1.5] bg-[#5D4A38] text-white rounded-[8px_8px_0_8px]';
+        
+        const textDiv = document.createElement('div');
+        textDiv.className = 'whitespace-pre-wrap text-white';
+        textDiv.textContent = text;
+        bubble.appendChild(textDiv);
+        
+        const label = document.createElement('div');
+        label.className = 'text-xs text-gray-500 ml-2 mt-1';
+        label.textContent = 'Bạn';
+        
+        innerDiv.appendChild(bubble);
+        innerDiv.appendChild(label);
+        messageDiv.appendChild(innerDiv);
+        
+        // Check if we have only a welcome message or no messages
+        if (chatMessagesList.length === 0 || 
+            (chatMessagesList.length === 1 && 
+             chatContainer.textContent?.includes('Xin chào'))) {
+          // If this is the first user message, replace the welcome div
+          chatContainer.innerHTML = '';
+          chatContainer.appendChild(messageDiv);
+        } else {
+          // Find where to insert the message based on timestamp
+          const timestamp = parseInt(userMessage.id.split('-')[1], 10);
+          let insertAfterNode = null;
+          
+          // Find the last message with a timestamp less than our new message
+          for (let i = chatMessagesList.length - 1; i >= 0; i--) {
+            const msgId = chatMessagesList[i].getAttribute('data-message-id') || '';
+            const msgTimestamp = parseInt((msgId.match(/(\d+)/) || ['', '0'])[1], 10);
+            
+            if (msgTimestamp < timestamp) {
+              insertAfterNode = chatMessagesList[i];
+              break;
+            }
+          }
+          
+          if (insertAfterNode) {
+            // Insert after the found node
+            insertAfterNode.after(messageDiv);
+          } else {
+            // Insert at the beginning (after welcome message if present)
+            const welcomeMsg = chatContainer.querySelector('[data-message-id="welcome"]');
+            if (welcomeMsg) {
+              welcomeMsg.after(messageDiv);
+            } else {
+              // No welcome message, just prepend
+              chatContainer.prepend(messageDiv);
+            }
+          }
+        }
+        
+        // Scroll to the newly added message
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+      }
+    }, 100);
   };
   
   const handleSelectPersona = (personaId: string) => {
     if (isPersonaLocked) return; // Don't allow changes if locked
-    setSelectedPersonaId(personaId);
-    console.log(`Selected persona: ${personaId}`);
-  };
-
-  // Function to start a new chat
-  const startNewChat = () => {
-    // Find selected persona
-    const selectedPersona = AVAILABLE_PERSONAS.find((p: Persona) => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
     
+    // Update the selected persona
+    setSelectedPersonaId(personaId);
+    
+    // Find the newly selected persona
+    const selectedPersona = AVAILABLE_PERSONAS.find((p: Persona) => p.id === personaId) || AVAILABLE_PERSONAS[0];
+    
+    // Update the welcome message with the new persona
     setMessages([
       {
         id: 'welcome',
@@ -248,8 +422,60 @@ function TailwindApp() {
         isBot: true
       }
     ]);
-    setHasUserSentMessage(false);
-    setIsPersonaLocked(false); // Unlock persona on new chat
+    
+    console.log(`Selected persona: ${personaId}`, selectedPersona);
+  };
+
+  // Function to start a new chat
+  const startNewChat = () => {
+    // Find selected persona
+    const selectedPersona = AVAILABLE_PERSONAS.find((p: Persona) => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
+    
+    // Reset message state with just the welcome message
+    setMessages([
+      {
+        id: 'welcome',
+        text: `Xin chào! ${selectedPersona.displayName} đang lắng nghe!`,
+        isBot: true
+      }
+    ]);
+    
+    // Also clear any manually added messages in the DOM
+    setTimeout(() => {
+      const chatContainer = document.getElementById('yitam-chat-container');
+      if (chatContainer) {
+        // Get all messages except for the welcome message
+        const messagesToRemove = chatContainer.querySelectorAll('[data-message-id]:not([data-message-id="welcome"])');
+        messagesToRemove.forEach(element => element.remove());
+        
+        // Check if welcome message exists in DOM, if not add it
+        const welcomeMessage = chatContainer.querySelector('[data-message-id="welcome"]');
+        if (!welcomeMessage) {
+          chatContainer.innerHTML = `
+            <div data-message-id="welcome" data-message-type="bot" class="mb-3 self-start max-w-[80%]" style="display: block;">
+              <div class="p-[10px_14px] rounded-[8px] text-[0.95rem] leading-[1.5] bg-[#F2EEE5] text-[#3A2E22] rounded-[0_8px_8px_8px]">
+                <div class="prose prose-sm max-w-none prose-headings:my-2 prose-headings:font-semibold prose-p:my-2 prose-ul:my-2 prose-ul:pl-6 prose-ol:my-2 prose-ol:pl-6 prose-li:my-1 prose-code:bg-[rgba(93,74,56,0.1)] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono prose-pre:bg-[rgba(93,74,56,0.1)] prose-pre:p-4 prose-pre:rounded-lg prose-pre:my-2 prose-pre:overflow-x-auto prose-pre:code:bg-transparent prose-pre:code:p-0">
+                  ${selectedPersona.displayName} đang lắng nghe!
+                </div>
+              </div>
+              <div class="text-xs text-gray-500 ml-2 mt-1">${selectedPersona.displayName}</div>
+            </div>
+          `;
+        }
+      }
+      
+      // Reset lastMessageRef to prevent blocking new messages that might be identical to previous ones
+      lastMessageRef.current = null;
+      
+      console.log('DOM messages cleared for new chat');
+    }, 50);
+    
+    // Maintain hasUserSentMessage as true to keep the input visible
+    // but allow persona selection
+    setIsPersonaLocked(false);
+    
+    // Log that we've started a new chat
+    console.log('Started new chat, messages reset');
   };
 
   // Check if any bot message is currently streaming
@@ -300,85 +526,135 @@ function TailwindApp() {
             </div>
 
             {/* Scrollable chat area - takes remaining height */}
-            <div className={`flex-1 overflow-y-auto my-[10px] ${hasUserSentMessage ? 'pb-[80px]' : ''} relative`}>
-              <TailwindChatBox messages={messages} />
-              {messages.length <= 1 && (
-                <>
-                  <TailwindSampleQuestions 
-                    onQuestionClick={sendMessage} 
-                    socket={socket} 
-                    limit={questionsLimit}
-                  />
-                  {/* Only show the input inline when user hasn't sent a message and sample questions are visible */}
-                  {!hasUserSentMessage && (
-                    <div className="mt-4 w-full transition-all duration-300 ease-in-out">
-                      <TailwindMessageInput onSendMessage={sendMessage} disabled={!isConnected} />
-                    </div>
-                  )}
-                </>
+            <div className="flex-1 overflow-y-auto my-[10px] pb-[80px] relative bg-white/50 rounded-lg">
+              {/* Chat display */}
+              <div id="yitam-chat-container" className="flex flex-col p-2.5 bg-white rounded-[8px] shadow-[0_1px_3px_rgba(0,0,0,0.1)] chat-messages-container">
+                {messages.length === 0 ? (
+                  <div className="flex items-center justify-center h-[200px] text-[#3A2E22] opacity-60 text-[1.1rem]">
+                    Xin chào! {(AVAILABLE_PERSONAS.find(p => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0]).displayName} đang lắng nghe!
+                  </div>
+                ) : (
+                  (() => {
+                    // Sort messages by timestamp before rendering
+                    const sortedMessages = [...messages].sort((a, b) => {
+                      // Extract timestamps from IDs
+                      const getTimestamp = (id: string) => {
+                        const match = id.match(/-(\d+)-/);
+                        return match ? parseInt(match[1], 10) : 0;
+                      };
+                      
+                      // Welcome message always first
+                      if (a.id === 'welcome') return -1;
+                      if (b.id === 'welcome') return 1;
+                      
+                      // Compare by timestamp
+                      return getTimestamp(a.id) - getTimestamp(b.id);
+                    });
+                    
+                    console.log("Rendering sorted messages:", sortedMessages.map(m => ({
+                      id: m.id,
+                      isBot: m.isBot,
+                      textLength: m.text.length,
+                      isStreaming: m.isStreaming
+                    })));
+                    
+                    return sortedMessages.map((message) => (
+                      <div 
+                        key={message.id} 
+                        className={`mb-3 ${message.isBot ? 'self-start' : 'self-end'} max-w-[80%] ${!message.isBot ? 'ml-auto' : ''}`}
+                        style={{ display: 'block' }}
+                        data-message-id={message.id}
+                        data-message-type={message.isBot ? 'bot' : 'user'}
+                        data-is-streaming={message.isStreaming ? 'true' : 'false'}
+                      >
+                        <div 
+                          className={`p-[10px_14px] rounded-[8px] text-[0.95rem] leading-[1.5] ${
+                            message.isBot 
+                              ? 'bg-[#F2EEE5] text-[#3A2E22] rounded-[0_8px_8px_8px]' 
+                              : 'bg-[#5D4A38] text-white rounded-[8px_8px_0_8px]'
+                          }`}
+                        >
+                          {message.isBot ? (
+                            <div className="prose prose-sm max-w-none prose-headings:my-2 prose-headings:font-semibold prose-p:my-2 prose-ul:my-2 prose-ul:pl-6 prose-ol:my-2 prose-ol:pl-6 prose-li:my-1 prose-code:bg-[rgba(93,74,56,0.1)] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono prose-pre:bg-[rgba(93,74,56,0.1)] prose-pre:p-4 prose-pre:rounded-lg prose-pre:my-2 prose-pre:overflow-x-auto prose-pre:code:bg-transparent prose-pre:code:p-0">
+                              <TailwindToolCallParser text={message.text} />
+                              {message.isStreaming && (
+                                <span className="inline-flex items-center ml-1.5">
+                                  <span className="typing-dot"></span>
+                                  <span className="typing-dot"></span>
+                                  <span className="typing-dot"></span>
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="whitespace-pre-wrap text-white">{message.text}</div>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-500 ml-2 mt-1">
+                          {message.isBot 
+                            ? (AVAILABLE_PERSONAS.find(p => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0]).displayName
+                            : 'Bạn'
+                          }
+                        </div>
+                      </div>
+                    ));
+                  })()
+                )}
+              </div>
+              
+              {/* Show sample questions only when we have just the welcome message and no user interaction yet */}
+              {messages.length === 1 && messages[0].id === 'welcome' && !hasUserSentMessage && (
+                <TailwindSampleQuestions 
+                  onQuestionClick={sendMessage} 
+                  socket={socket} 
+                  limit={questionsLimit}
+                />
               )}
             </div>
 
-            {/* Message input - fixed at bottom after user sends message */}
-            {hasUserSentMessage && (
-              <div 
-                ref={inputRef} 
-                className="sticky bottom-0 bg-[#FDFBF6] pt-2 z-10 w-full transition-all duration-300 ease-in-out"
-              >
-                <TailwindMessageInput onSendMessage={sendMessage} disabled={!isConnected} />
-                
-                {/* Footer with the New Chat button added */}
-                <footer className="bg-[#F5EFE0] mt-2 py-2 px-3 flex flex-col border-t border-[#E6DFD1] rounded shadow-[0_-1px_1px_rgba(0,0,0,0.05)] min-h-[45px]">
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center flex-1">
-                      <div className={`text-sm font-medium px-2 py-1 rounded ${
-                        isConnected 
-                          ? 'bg-[rgba(120,161,97,0.2)] text-[#78A161]' 
-                          : 'bg-[rgba(188,71,73,0.2)] text-[#BC4749]'
-                      }`}>
-                        {isConnected ? 'Sẵn sàng' : 'Ngoại tuyến'}
-                      </div>
-                      
-                      {/* Bigger New Chat button in the footer */}
-                      {messages.length > 1 ? (
-                        <button
-                          onClick={startNewChat}
-                          disabled={isBotResponding}
-                          className={`ml-3 flex items-center text-sm font-medium py-1.5 px-3 rounded-md transition-all duration-200 ${
-                            isBotResponding 
-                              ? 'bg-[#E6DFD1] text-[#9E9689] cursor-not-allowed opacity-80' 
-                              : 'bg-[#78A161] text-white hover:bg-[#5D8A46] shadow-sm hover:shadow'
-                          }`}
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                          </svg>
-                          Cuộc trò chuyện mới
-                        </button>
-                      ) : (
-                        <div className="ml-3 py-1.5 px-3 invisible">Placeholder</div>
-                      )}
-                    </div>
-                    
-                    <a 
-                      href="https://github.com/sponsors/hadv" 
-                      target="_blank" 
-                      rel="noopener noreferrer" 
-                      className="flex items-center text-sm font-medium text-[#78A161] bg-[rgba(120,161,97,0.1)] hover:bg-[rgba(120,161,97,0.2)] px-2 py-1 rounded transition-all hover:scale-105 ml-2"
-                    >
-                      <span className="text-[#BC4749] mr-1.5 text-base">♥</span>
-                      <span className="leading-none">Hỗ trợ dự án</span>
-                    </a>
-                  </div>
-                  <div className="text-right text-xs text-[#5D4A38] opacity-70 mt-2">
-                    © {new Date().getFullYear()} Toàn bộ bản quyền thuộc Yitam
-                  </div>
-                </footer>
-              </div>
-            )}
+            {/* CSS for the dots animation */}
+            <style>{`
+              .typing-dot {
+                display: inline-block;
+                width: 6px;
+                height: 6px;
+                margin: 0 2px;
+                background-color: #777;
+                border-radius: 50%;
+                animation: typing-animation 1.4s infinite ease-in-out both;
+              }
+              
+              .typing-dot:nth-child(1) {
+                animation-delay: 0s;
+              }
+              
+              .typing-dot:nth-child(2) {
+                animation-delay: 0.2s;
+              }
+              
+              .typing-dot:nth-child(3) {
+                animation-delay: 0.4s;
+              }
+              
+              @keyframes typing-animation {
+                0%, 80%, 100% { 
+                  transform: scale(0.6);
+                  opacity: 0.6;
+                }
+                40% { 
+                  transform: scale(1);
+                  opacity: 1;
+                }
+              }
+            `}</style>
 
-            {/* Footer shown at the bottom initially */}
-            {!hasUserSentMessage && (
+            {/* Message input - fixed at bottom */}
+            <div 
+              ref={inputRef} 
+              className="sticky bottom-0 bg-[#FDFBF6] pt-2 z-10 w-full transition-all duration-300 ease-in-out"
+            >
+              <TailwindMessageInput onSendMessage={sendMessage} disabled={!isConnected} />
+              
+              {/* Footer with the New Chat button added */}
               <footer className="bg-[#F5EFE0] mt-2 py-2 px-3 flex flex-col border-t border-[#E6DFD1] rounded shadow-[0_-1px_1px_rgba(0,0,0,0.05)] min-h-[45px]">
                 <div className="flex justify-between items-center">
                   <div className="flex items-center flex-1">
@@ -389,9 +665,28 @@ function TailwindApp() {
                     }`}>
                       {isConnected ? 'Sẵn sàng' : 'Ngoại tuyến'}
                     </div>
-                    {/* Invisible placeholder to maintain consistent footer size */}
-                    <div className="ml-3 py-1.5 px-3 invisible">Placeholder</div>
+                    
+                    {/* Bigger New Chat button in the footer */}
+                    {messages.length > 1 ? (
+                      <button
+                        onClick={startNewChat}
+                        disabled={isBotResponding}
+                        className={`ml-3 flex items-center text-sm font-medium py-1.5 px-3 rounded-md transition-all duration-200 ${
+                          isBotResponding 
+                            ? 'bg-[#E6DFD1] text-[#9E9689] cursor-not-allowed opacity-80' 
+                            : 'bg-[#78A161] text-white hover:bg-[#5D8A46] shadow-sm hover:shadow'
+                        }`}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Cuộc trò chuyện mới
+                      </button>
+                    ) : (
+                      <div className="ml-3 py-1.5 px-3 invisible">Placeholder</div>
+                    )}
                   </div>
+                  
                   <a 
                     href="https://github.com/sponsors/hadv" 
                     target="_blank" 
@@ -406,7 +701,7 @@ function TailwindApp() {
                   © {new Date().getFullYear()} Toàn bộ bản quyền thuộc Yitam
                 </div>
               </footer>
-            )}
+            </div>
           </div>
         </div>
       </>
