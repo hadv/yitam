@@ -340,19 +340,34 @@ io.on('connection', (socket: Socket) => {
           console.error('Error with MCP client:', err);
           clearTimeout(toolCallTimeout);
           
-          // Send appropriate error message to client
-          let errorMessage = ERROR_MESSAGES.general_error.vi;
-          if (err instanceof Error && err.message.includes('overloaded')) {
-            errorMessage = ERROR_MESSAGES.overloaded.vi;
-          } else if (err instanceof Error && err.message.includes('rate limit')) {
-            errorMessage = ERROR_MESSAGES.rate_limit.vi;
-          }
+          // Check for rate limit errors
+          const isRateLimitError = err instanceof Error && 
+            (err.message.includes('rate limit') || 
+             (err as any)?.type === 'rate_limit_error' ||
+             err.message.includes('429'));
           
-          socket.emit('bot-response-end', { 
-            id: messageId,
-            error: true, 
-            errorMessage
-          });
+          if (isRateLimitError) {
+            // For rate limit errors, emit the specific error event
+            socket.emit('bot-response-error', { 
+              id: messageId,
+              error: {
+                type: 'rate_limit_error',
+                message: 'Rate limit exceeded'
+              }
+            });
+          } else {
+            // Send appropriate error message to client
+            let errorMessage = ERROR_MESSAGES.general_error.vi;
+            if (err instanceof Error && err.message.includes('overloaded')) {
+              errorMessage = ERROR_MESSAGES.overloaded.vi;
+            }
+            
+            socket.emit('bot-response-end', { 
+              id: messageId,
+              error: true, 
+              errorMessage
+            });
+          }
         }
       } else {
         try {
@@ -426,10 +441,7 @@ io.on('connection', (socket: Socket) => {
             }
           }
           
-          // Clear the timeout since we got a response
-          clearTimeout(toolCallTimeout);
-          
-          // If no safety error occurred, finalize the response
+          // If no safety error occurred, signal that the streaming has completed
           if (!safetyErrorOccurred) {
             socket.emit('bot-response-end', { 
               id: messageId,
@@ -437,30 +449,35 @@ io.on('connection', (socket: Socket) => {
               responseTime: Date.now() - startTime
             });
           }
-        } catch (err) {
-          console.error('Error with Anthropic API:', err);
+          
+          clearTimeout(toolCallTimeout);
+        } catch (error) {
+          console.error('Error processing stream through Anthropic API:', error);
           clearTimeout(toolCallTimeout);
           
-          // Send appropriate error message to client
-          let errorMessage = ERROR_MESSAGES.general_error.vi;
+          // Check for rate limit errors
+          const isRateLimitError = error instanceof Error && 
+            (error.message.includes('rate limit') || 
+             (error as any)?.type === 'rate_limit_error' ||
+             error.message.includes('429'));
           
-          if (err instanceof Error) {
-            if (err.message.includes('overloaded')) {
-              errorMessage = ERROR_MESSAGES.overloaded.vi;
-            } else if (err.message.includes('rate limit')) {
-              errorMessage = ERROR_MESSAGES.rate_limit.vi;
-            } else if (err.message.includes('auth')) {
-              errorMessage = ERROR_MESSAGES.auth_error.vi;
-            } else if (err.message.includes('bad request')) {
-              errorMessage = ERROR_MESSAGES.bad_request.vi;
-            }
+          if (isRateLimitError) {
+            // For rate limit errors, emit the specific error event
+            socket.emit('bot-response-error', { 
+              id: messageId,
+              error: {
+                type: 'rate_limit_error',
+                message: 'Rate limit exceeded'
+              }
+            });
+          } else {
+            // General error handling
+            socket.emit('bot-response-end', { 
+              id: messageId,
+              error: true, 
+              errorMessage: ERROR_MESSAGES.general_error.vi
+            });
           }
-          
-          socket.emit('bot-response-end', { 
-            id: messageId,
-            error: true, 
-            errorMessage
-          });
         }
       }
     } catch (error: any) {

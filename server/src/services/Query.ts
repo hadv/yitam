@@ -15,8 +15,13 @@ export class Query {
   private tool: Tool;
   private moderationService: ModerationService;
   private readonly RATE_LIMIT_WINDOW = 60000; // 1 minute
-  private readonly MAX_REQUESTS_PER_WINDOW = 10;
+  private readonly MAX_REQUESTS_PER_WINDOW = 6; // Reduced from 10 to 6 to avoid hitting API rate limits
   private requestTimestamps: number[] = [];
+  
+  // Static tracking of global API usage to prevent rate limits
+  private static globalRequestTimestamps: number[] = [];
+  private static readonly GLOBAL_RATE_LIMIT_WINDOW = 60000; // 1 minute
+  private static readonly GLOBAL_MAX_REQUESTS = 15; // Maximum requests per minute across all users
   
   constructor(
     apiKey: string,
@@ -61,19 +66,33 @@ export class Query {
   }
 
   /**
-   * Check rate limiting
+   * Check rate limiting for both user and global levels
    */
   private _checkRateLimit(): { allowed: boolean; reason?: string } {
     const now = Date.now();
+    
+    // Check user-level rate limit
     this.requestTimestamps = this.requestTimestamps.filter(
       timestamp => now - timestamp < this.RATE_LIMIT_WINDOW
     );
 
     if (this.requestTimestamps.length >= this.MAX_REQUESTS_PER_WINDOW) {
-      return { allowed: false, reason: "Rate limit exceeded" };
+      return { allowed: false, reason: "User rate limit exceeded" };
     }
 
+    // Check global rate limit
+    Query.globalRequestTimestamps = Query.globalRequestTimestamps.filter(
+      timestamp => now - timestamp < Query.GLOBAL_RATE_LIMIT_WINDOW
+    );
+
+    if (Query.globalRequestTimestamps.length >= Query.GLOBAL_MAX_REQUESTS) {
+      return { allowed: false, reason: "Global rate limit exceeded, please try again in a moment" };
+    }
+
+    // Update both rate limit counters
     this.requestTimestamps.push(now);
+    Query.globalRequestTimestamps.push(now);
+    
     return { allowed: true };
   }
   
@@ -169,6 +188,9 @@ export class Query {
       searchInfo
     );
 
+    // Add limit to the tool arguments
+    enrichedArgs.limit = 6;
+    
     // Set maximum result size limits
     const maxResultLength = 1000000; // 1MB max for tool results
     
@@ -317,12 +339,16 @@ export class Query {
           this.conversation.addToolUseMessage(content.id, content.name, content.input);
           this.conversation.addToolResultMessage(content.id, toolResult.content);
 
+          // Add delay before follow-up to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
+
           // Update system prompt for follow-up based on persona
           const personaFollowUpPrompt = getPersonaSystemPrompt(SystemPrompts.FOLLOW_UP, currentPersona);
           
           const followUpResponse = await this.anthropic.messages.create({
             model: config.model.name,
-            max_tokens: config.model.maxTokens,
+            // Reduce token limits for follow-up to avoid rate limits
+            max_tokens: Math.min(2000, config.model.maxTokens),
             system: personaFollowUpPrompt,
             messages: this.conversation.getConversationHistory(),
           });
@@ -497,6 +523,9 @@ export class Query {
                 // Always generate follow-up responses, regardless of tool type
                 console.time('follow-up-response');
                 
+                // Add delay before follow-up to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
+                
                 // Try up to 3 times to get a complete follow-up response
                 let retryCount = 0;
                 const maxRetries = 2;
@@ -519,7 +548,8 @@ export class Query {
                   try {
                     const followUpStream = await this.anthropic.messages.stream({
                       model: config.model.name,
-                      max_tokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000),
+                      // Reduce token limits for follow-up to avoid rate limits
+                      max_tokens: Math.min(2000, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 2000),
                       system: personaFollowUpPrompt,
                       messages: this.conversation.getConversationHistory(),
                     });
@@ -603,6 +633,16 @@ export class Query {
                       
                     } catch (streamError) {
                       console.error("Follow-up stream processing error:", streamError);
+                      
+                      // Check if it's a rate limit error and propagate it
+                      if (streamError instanceof Error && 
+                          (streamError.message.includes('rate limit') || 
+                           (streamError as any)?.type === 'rate_limit_error' ||
+                           streamError.message.includes('429'))) {
+                        // Rethrow rate limit errors to be handled at a higher level
+                        throw streamError;
+                      }
+                      
                       // Store this partial response if it's the best we have so far
                       if (currentResponseBuffer.length > bestResponseBuffer.length) {
                         bestResponseBuffer = currentResponseBuffer;
