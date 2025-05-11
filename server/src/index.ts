@@ -54,47 +54,25 @@ const io = new Server(server, {
 io.use((socket, next) => {
   const userEmail = socket.handshake.headers['x-user-email'] as string;
   const userName = socket.handshake.headers['x-user-name'] as string;
+  const apiKey = socket.handshake.headers['x-api-key'] as string;
   
   if (!userEmail || !userName) {
     return next(new Error('User authentication required'));
   }
-  
-  // Store the user data in the socket object for later use
+
+  // Allow connection without API key initially
   socket.data.user = { email: userEmail, name: userName };
+  
+  // If API key is provided, validate and store it
+  if (apiKey) {
+    socket.data.user.apiKey = apiKey;
+  }
+  
   next();
 });
 
 // Initialize services
 const legalService = LegalService.getInstance();
-
-// Initialize Anthropic client
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || '',
-});
-
-// Initialize MCP client
-let mcpClient: MCPClient | null = null;
-let mcpConnected = false;
-
-// Only try to connect to MCP if path is provided and not empty
-if (process.env.MCP_SERVER_PATH && process.env.MCP_SERVER_PATH.trim() !== '') {
-  mcpClient = new MCPClient(process.env.ANTHROPIC_API_KEY || '');
-  mcpClient.connectToServer(process.env.MCP_SERVER_PATH)
-    .then(connected => {
-      mcpConnected = connected;
-      if (connected) {
-        console.log('Successfully connected to MCP server');
-      } else {
-        console.log('Failed to connect to MCP server, falling back to direct Claude API');
-      }
-    })
-    .catch(err => {
-      console.error('Error connecting to MCP server:', err);
-      console.log('Falling back to direct Claude API');
-    });
-} else {
-  console.log('No MCP server path provided, using direct Claude API');
-}
 
 // Error messages for different languages
 const ERROR_MESSAGES = {
@@ -129,12 +107,56 @@ const ERROR_MESSAGES = {
   bad_request: {
     en: 'Sorry, there was an error processing your request. The input may be too long or contain unsupported content.',
     vi: 'Xin lỗi, đã xảy ra lỗi khi xử lý yêu cầu. Đầu vào có thể quá dài hoặc chứa nội dung không được hỗ trợ.'
+  },
+  credit_balance: {
+    en: 'Your Anthropic API credit balance is too low. Please visit Plans & Billing to upgrade or purchase more credits.',
+    vi: 'Số dư tín dụng API Anthropic của bạn quá thấp. Vui lòng truy cập Kế hoạch & Thanh toán để nâng cấp hoặc mua thêm tín dụng.'
   }
 };
 
 // Socket.IO connection handler
 io.on('connection', (socket: Socket) => {
   console.log('A user connected:', socket.id);
+
+  // Initialize Anthropic client only when API key is available
+  let anthropic: Anthropic | null = null;
+  if (socket.data.user.apiKey) {
+    anthropic = new Anthropic({
+      apiKey: socket.data.user.apiKey,
+    });
+  }
+
+  // Handle API key updates
+  socket.on('update-api-key', (apiKey: string) => {
+    socket.data.user.apiKey = apiKey;
+    anthropic = new Anthropic({
+      apiKey: apiKey,
+    });
+  });
+
+  // Initialize MCP client for this connection if needed
+  let mcpClient: MCPClient | null = null;
+  let mcpConnected = false;
+
+  // Only try to connect to MCP if path is provided and not empty and API key is available
+  if (process.env.MCP_SERVER_PATH && process.env.MCP_SERVER_PATH.trim() !== '' && socket.data.user.apiKey) {
+    mcpClient = new MCPClient(socket.data.user.apiKey);
+    mcpClient.connectToServer(process.env.MCP_SERVER_PATH)
+      .then(connected => {
+        mcpConnected = connected;
+        if (connected) {
+          console.log('Successfully connected to MCP server');
+        } else {
+          console.log('Failed to connect to MCP server, falling back to direct Claude API');
+        }
+      })
+      .catch(err => {
+        console.error('Error connecting to MCP server:', err);
+        console.log('Falling back to direct Claude API');
+      });
+  } else {
+    console.log('No MCP server path provided or API key not available, using direct Claude API when key is provided');
+  }
 
   // Handle legal document requests
   socket.on('get-legal-document', (documentType: string) => {
@@ -174,46 +196,72 @@ io.on('connection', (socket: Socket) => {
       if (personaId) {
         console.log('Using persona:', personaId);
       }
+
+      // Check if API key is available
+      if (!socket.data.user.apiKey) {
+        socket.emit('error', {
+          type: 'auth_error',
+          message: ERROR_MESSAGES.auth_error.vi
+        });
+        return;
+      }
+
+      // Initialize Anthropic client if not already initialized
+      if (!anthropic) {
+        anthropic = new Anthropic({
+          apiKey: socket.data.user.apiKey,
+        });
+      }
       
       const startTime = Date.now();
       
       // Only enable AI safety if explicitly turned on in environment
       const enableAiSafety = process.env.ENABLE_AI_CONTENT_SAFETY === 'true';
       
+      // Initialize content safety service with client's API key
+      if (enableAiSafety) {
+        contentSafetyService.initializeAiClient(socket.data.user.apiKey);
+        contentSafetyService.enableAiContentSafety(true);
+        console.log('AI-based content safety check enabled with client API key');
+      } else {
+        contentSafetyService.enableAiContentSafety(false);
+        console.log('AI-based content safety check disabled');
+      }
+
       // Validate and sanitize incoming message
       let sanitizedMessage = userMessage;
       try {
-        // Only do AI validation if explicitly enabled
-        if (enableAiSafety && !contentSafetyService.isAiContentSafetyEnabled()) {
-          contentSafetyService.enableAiContentSafety(true);
-          console.log('AI-based content safety check enabled');
-        } else if (!enableAiSafety && contentSafetyService.isAiContentSafetyEnabled()) {
-          contentSafetyService.enableAiContentSafety(false);
-          console.log('AI-based content safety check disabled');
-        }
-
         await contentSafetyService.validateContent(userMessage);
         sanitizedMessage = contentSafetyService.sanitizeContent(userMessage);
       } catch (error) {
-        if (error instanceof ContentSafetyError) {
-          console.log(`Content safety error detected in user input: ${error.message}, code: ${error.code}`);
-          
-          // Get appropriate error message based on the error code
-          let errorMessage = ERROR_MESSAGES.invalid_content[error.language];
-          
-          // Use more specific error messages when available
-          if (error.code === 'medical_advice' || error.code === 'financial_advice' || 
-              error.code === 'legal_advice' || error.code === 'product_marketing') {
-            errorMessage = ERROR_MESSAGES.restricted_content[error.language];
-          } else if (error.code === 'prompt_injection') {
-            errorMessage = ERROR_MESSAGES.prompt_injection[error.language];
+        if (error instanceof Error) {
+          if (error.message.includes('credit balance is too low')) {
+            socket.emit('error', {
+              type: 'credit_balance',
+              message: ERROR_MESSAGES.credit_balance.vi
+            });
+            return;
           }
-          
-          socket.emit('bot-response', {
-            text: errorMessage,
-            id: Date.now().toString(),
-          });
-          return;
+          if (error instanceof ContentSafetyError) {
+            console.log(`Content safety error detected in user input: ${error.message}, code: ${error.code}`);
+            
+            // Get appropriate error message based on the error code
+            let errorMessage = ERROR_MESSAGES.invalid_content[error.language];
+            
+            // Use more specific error messages when available
+            if (error.code === 'medical_advice' || error.code === 'financial_advice' || 
+                error.code === 'legal_advice' || error.code === 'product_marketing') {
+              errorMessage = ERROR_MESSAGES.restricted_content[error.language];
+            } else if (error.code === 'prompt_injection') {
+              errorMessage = ERROR_MESSAGES.prompt_injection[error.language];
+            }
+            
+            socket.emit('bot-response', {
+              text: errorMessage,
+              id: Date.now().toString(),
+            });
+            return;
+          }
         }
         throw error;
       }
