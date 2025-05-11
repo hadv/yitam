@@ -745,17 +745,48 @@ export class Query {
             }
           }
         }
-      } catch (streamProcessingError) {
+      } catch (streamProcessingError: any) {
         // Handle errors during stream processing
         console.error("Error processing stream:", streamProcessingError);
-        const errorMessage = "\n\nError while processing the response stream. The connection may have been interrupted.\n\n";
-        const shouldContinue = await callback(errorMessage);
-        if (!shouldContinue) return;
+        
+        // Check for credit balance error
+        if (streamProcessingError?.error?.error?.message?.toLowerCase().includes('credit balance') ||
+            streamProcessingError?.message?.toLowerCase().includes('credit balance')) {
+          const errorMessage = {
+            type: 'credit_balance',
+            message: 'Số dư tín dụng API Anthropic của bạn quá thấp. Vui lòng truy cập Kế hoạch & Thanh toán để nâng cấp hoặc mua thêm tín dụng.'
+          };
+          const shouldContinue = await callback(JSON.stringify(errorMessage));
+          if (!shouldContinue) return;
+        } 
+        // Check for rate limit error
+        else if (streamProcessingError?.message?.includes('rate limit') || 
+                 streamProcessingError?.type === 'rate_limit_error' ||
+                 streamProcessingError?.message?.includes('429')) {
+          const errorMessage = {
+            type: 'rate_limit',
+            message: 'Bạn đã gửi quá nhiều yêu cầu. Vui lòng đợi một lát rồi thử lại.'
+          };
+          const shouldContinue = await callback(JSON.stringify(errorMessage));
+          if (!shouldContinue) return;
+        }
+        // Default error message
+        else {
+          const errorMessage = {
+            type: 'other',
+            message: 'Xin lỗi, đã xảy ra lỗi khi xử lý phản hồi. Vui lòng thử lại.'
+          };
+          const shouldContinue = await callback(JSON.stringify(errorMessage));
+          if (!shouldContinue) return;
+        }
       }
     } catch (error: any) {
       console.error("Error processing query with streaming:", error);
-      const errorMessage = "Kính thưa quý khách, hệ thống đang gặp trục trặc kỹ thuật khi xử lý yêu cầu. Xin quý khách vui lòng thử lại sau. Chúng tôi chân thành xin lỗi vì sự bất tiện này.";
-      const shouldContinue = await callback(errorMessage);
+      const errorMessage = {
+        type: 'other',
+        message: "Kính thưa quý khách, hệ thống đang gặp trục trặc kỹ thuật khi xử lý yêu cầu. Xin quý khách vui lòng thử lại sau. Chúng tôi chân thành xin lỗi vì sự bất tiện này."
+      };
+      const shouldContinue = await callback(JSON.stringify(errorMessage));
       if (!shouldContinue) return;
     }
   }

@@ -28,7 +28,8 @@ export const config = {
         'X-Request-Signature', 
         'X-Request-Timestamp',
         'X-User-Email',
-        'X-User-Name'
+        'X-User-Name',
+        'x-api-key'
       ]
     }
   }
