@@ -139,22 +139,33 @@ export class ContentSafetyService {
 
   constructor(customConfig?: Partial<ContentSafetyConfig>) {
     this.config = { ...defaultConfig, ...customConfig };
-    this.initializeAiClient();
   }
 
   /**
-   * Initialize the AI client if AI content safety is enabled
+   * Initialize or update the AI client with a specific API key
    */
-  private initializeAiClient(): void {
-    if (this.config.useAiContentSafety) {
-      const apiKey = process.env.ANTHROPIC_API_KEY || '';
-      if (apiKey) {
-        this.aiClient = new Anthropic({ apiKey });
-      } else {
-        console.warn('ANTHROPIC_API_KEY not found. AI content safety check will be disabled.');
-        this.config.useAiContentSafety = false;
-      }
+  public initializeAiClient(apiKey: string): void {
+    if (this.config.useAiContentSafety && apiKey) {
+      this.aiClient = new Anthropic({ apiKey });
+    } else {
+      console.warn('No API key provided. AI content safety check will be disabled.');
+      this.config.useAiContentSafety = false;
     }
+  }
+
+  /**
+   * Enable or disable AI content safety
+   */
+  public enableAiContentSafety(enable: boolean = true): boolean {
+    this.config.useAiContentSafety = enable;
+    return this.config.useAiContentSafety;
+  }
+
+  /**
+   * Check if AI content safety is enabled
+   */
+  public isAiContentSafetyEnabled(): boolean {
+    return this.config.useAiContentSafety;
   }
 
   /**
@@ -212,31 +223,6 @@ export class ContentSafetyService {
         }
       }
     }
-  }
-
-  /**
-   * Enable or disable AI-based content safety checks
-   * @param enable Whether to enable AI content safety
-   * @returns True if successfully enabled, false otherwise
-   */
-  public enableAiContentSafety(enable: boolean = true): boolean {
-    console.log(`${enable ? 'Enabling' : 'Disabling'} AI content safety, previous state: ${this.config.useAiContentSafety}`);
-    
-    this.config.useAiContentSafety = enable;
-    
-    if (enable && !this.aiClient) {
-      this.initializeAiClient();
-    }
-    
-    console.log(`AI content safety is now ${this.config.useAiContentSafety ? 'enabled' : 'disabled'}`);
-    return this.config.useAiContentSafety === enable;
-  }
-
-  /**
-   * Check if AI-based content safety is enabled
-   */
-  public isAiContentSafetyEnabled(): boolean {
-    return this.config.useAiContentSafety && this.aiClient !== null;
   }
 
   /**
