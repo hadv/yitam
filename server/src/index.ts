@@ -50,36 +50,17 @@ const io = new Server(server, {
   connectTimeout: 45000 // Increase connection timeout to 45 seconds
 });
 
-// Add Socket.IO middleware for access code validation
+// Add Socket.IO middleware for Google authentication
 io.use((socket, next) => {
-  const accessCode = socket.handshake.headers['x-access-code'] as string;
+  const userEmail = socket.handshake.headers['x-user-email'] as string;
+  const userName = socket.handshake.headers['x-user-name'] as string;
   
-  if (!accessCode) {
-    return next(new Error('Access code is required'));
+  if (!userEmail || !userName) {
+    return next(new Error('User authentication required'));
   }
   
-  const validAccessCodes = process.env.VALID_ACCESS_CODES?.split(',') || [];
-  
-  if (!validAccessCodes.includes(accessCode)) {
-    return next(new Error('Invalid access code'));
-  }
-
-  // Verify request signature if enabled
-  if (process.env.ENABLE_SIGNATURE_VERIFICATION === 'true') {
-    const signature = socket.handshake.headers['x-request-signature'] as string;
-    const timestamp = socket.handshake.headers['x-request-timestamp'] as string;
-    
-    if (!signature || !timestamp) {
-      return next(new Error('Request signature required'));
-    }
-    
-    if (!verifyRequestSignature(accessCode, signature, timestamp)) {
-      return next(new Error('Invalid request signature'));
-    }
-  }
-  
-  // Store the access code in the socket object for later use
-  socket.data.accessCode = accessCode;
+  // Store the user data in the socket object for later use
+  socket.data.user = { email: userEmail, name: userName };
   next();
 });
 

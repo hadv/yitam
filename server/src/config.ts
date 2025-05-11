@@ -26,7 +26,9 @@ export const config = {
         'Authorization', 
         'X-Access-Code', 
         'X-Request-Signature', 
-        'X-Request-Timestamp'
+        'X-Request-Timestamp',
+        'X-User-Email',
+        'X-User-Name'
       ]
     }
   }
