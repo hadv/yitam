@@ -3,6 +3,7 @@ import { io, Socket } from 'socket.io-client';
 import { config } from '../../config';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { TailwindAuth } from './TailwindAuth';
+import { TailwindApiKeySettings } from './TailwindApiKeySettings';
 import TailwindChatBox from './TailwindChatBox';
 import TailwindMessageInput from './TailwindMessageInput';
 import TailwindSampleQuestions from './TailwindSampleQuestions';
@@ -12,6 +13,8 @@ import TailwindToolCallParser from './TailwindToolCallParser';
 import { ConsentProvider } from '../../contexts/ConsentContext';
 import { AVAILABLE_PERSONAS, Persona } from './TailwindPersonaSelector';
 import * as ReactDOM from 'react-dom';
+import { decryptApiKey } from '../../utils/encryption';
+import { DefaultEventsMap } from '@socket.io/component-emitter';
 
 interface AnthropicError {
   type: string;
@@ -36,7 +39,7 @@ interface Message {
   isBot: boolean;
   isStreaming?: boolean;
   error?: {
-    type: 'rate_limit' | 'other';
+    type: 'rate_limit' | 'credit_balance' | 'other';
     message: string;
     retryAfter?: number;
   };
@@ -53,6 +56,14 @@ interface AnthropicErrorResponse {
   };
 }
 
+interface ServerError {
+  type: 'rate_limit' | 'credit_balance' | 'other';
+  message: string;
+  details?: {
+    retryAfter?: number;
+  };
+}
+
 // Add UserData interface
 interface UserData {
   email: string;
@@ -61,7 +72,7 @@ interface UserData {
 }
 
 function TailwindApp() {
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const [socket, setSocket] = useState<Socket<DefaultEventsMap, DefaultEventsMap> | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [hasUserSentMessage, setHasUserSentMessage] = useState(false);
@@ -119,7 +130,8 @@ function TailwindApp() {
       ...config.server.socketOptions,
       extraHeaders: {
         'X-User-Email': userData.email,
-        'X-User-Name': userData.name
+        'X-User-Name': userData.name,
+        'X-Api-Key': decryptApiKey() || ''
       }
     });
 
@@ -155,14 +167,108 @@ function TailwindApp() {
         updateMessages(updatedMessages);
       });
 
-      newSocket.on('bot-response-end', (response: { id: string }) => {
+      newSocket.on('bot-response-error', (error: { id: string, error: AnthropicError }) => {
+        console.error('Bot response error:', error);
         const currentMessages = pendingMessagesRef.current;
-        const updatedMessages = currentMessages.map(msg => 
-          msg.id.includes(`-${response.id}`)
-            ? { ...msg, isStreaming: false }
-            : msg
-        );
+        
+        // Find the message that was being streamed
+        const updatedMessages = currentMessages.map(msg => {
+          if (msg.id.includes(`-${error.id}`)) {
+            // Check for credit balance error in the error message
+            const isCreditBalanceError = error.error?.error?.message?.toLowerCase().includes('credit balance') ||
+                                       error.error?.type?.toLowerCase().includes('credit_balance');
+            
+            return {
+              ...msg,
+              isStreaming: false,
+              error: {
+                type: isCreditBalanceError ? 'credit_balance' as const : 'other' as const,
+                message: isCreditBalanceError
+                  ? 'Số dư tín dụng API Anthropic của bạn quá thấp. Vui lòng truy cập Kế hoạch & Thanh toán để nâng cấp hoặc mua thêm tín dụng.'
+                  : error.error?.error?.message || 'Xin lỗi, đã xảy ra lỗi khi xử lý phản hồi. Vui lòng thử lại.'
+              }
+            };
+          }
+          return msg;
+        });
+        
         updateMessages(updatedMessages);
+      });
+
+      newSocket.on('bot-response-end', (response: { id: string, error?: boolean, errorMessage?: string }) => {
+        const currentMessages = pendingMessagesRef.current;
+        const updatedMessages = currentMessages.map(msg => {
+          if (msg.id.includes(`-${response.id}`)) {
+            if (response.error && response.errorMessage) {
+              // Try to parse error message if it's JSON
+              try {
+                const parsedError = JSON.parse(response.errorMessage);
+                return {
+                  ...msg,
+                  isStreaming: false,
+                  error: {
+                    type: parsedError.type as 'rate_limit' | 'credit_balance' | 'other',
+                    message: parsedError.message
+                  }
+                };
+              } catch (e) {
+                // If not JSON, handle as before
+                const isCreditBalanceError = response.errorMessage.toLowerCase().includes('credit balance');
+                return {
+                  ...msg,
+                  isStreaming: false,
+                  error: {
+                    type: isCreditBalanceError ? 'credit_balance' as const : 'other' as const,
+                    message: isCreditBalanceError
+                      ? 'Số dư tín dụng API Anthropic của bạn quá thấp. Vui lòng truy cập Kế hoạch & Thanh toán để nâng cấp hoặc mua thêm tín dụng.'
+                      : response.errorMessage
+                  }
+                };
+              }
+            }
+            return { ...msg, isStreaming: false };
+          }
+          return msg;
+        });
+        updateMessages(updatedMessages);
+      });
+
+      newSocket.on('error', (error: ServerError | string) => {
+        console.error('Server error:', error);
+        let errorObj: Message['error'];
+        
+        // Try to parse error if it's a JSON string
+        if (typeof error === 'string') {
+          try {
+            const parsedError = JSON.parse(error);
+            errorObj = {
+              type: parsedError.type as 'rate_limit' | 'credit_balance' | 'other',
+              message: parsedError.message
+            };
+          } catch (e) {
+            // If parsing fails, treat as a regular string error
+            errorObj = {
+              type: 'other' as const,
+              message: error
+            };
+          }
+        } else {
+          // Handle ServerError object
+          errorObj = {
+            type: error.type,
+            message: error.message
+          };
+        }
+
+        const errorMessage: Message = {
+          id: `error-${Date.now()}`,
+          text: '',
+          isBot: true,
+          error: errorObj
+        };
+        
+        const currentMessages = pendingMessagesRef.current;
+        updateMessages([...currentMessages, errorMessage]);
       });
 
       // ... other socket event listeners ...
@@ -181,7 +287,7 @@ function TailwindApp() {
 
   // Socket connection effect - separate from auth
   useEffect(() => {
-    let currentSocket: Socket | null = null;
+    let currentSocket: Socket<DefaultEventsMap, DefaultEventsMap> | null = null;
 
     if (user) {
       currentSocket = connectSocket(user);
@@ -232,8 +338,11 @@ function TailwindApp() {
     if (text.trim() === '' || !socket) return;
     
     if (lastMessageRef.current === text) {
+      console.log('Duplicate message prevented:', text);
       return;
     }
+    
+    console.log('Sending message:', text);
     
     lastMessageRef.current = text;
     const timestamp = Date.now();
@@ -244,13 +353,13 @@ function TailwindApp() {
       isBot: false
     };
     
-    const currentMessages = pendingMessagesRef.current;
-    updateMessages([...currentMessages, userMessage]);
+    // Update messages immediately
+    setMessages(prevMessages => [...prevMessages, userMessage]);
+    pendingMessagesRef.current = [...pendingMessagesRef.current, userMessage];
     
-    ReactDOM.unstable_batchedUpdates(() => {
-      setHasUserSentMessage(true);
-      setIsPersonaLocked(true);
-    });
+    // Update UI state
+    setHasUserSentMessage(true);
+    setIsPersonaLocked(true);
     
     const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
     socket.emit('chat-message', {
@@ -258,10 +367,49 @@ function TailwindApp() {
       personaId: selectedPersonaId,
       domains: selectedPersona.domains
     });
-  }, [socket, selectedPersonaId, updateMessages]);
+    
+    console.log('Message sent, current messages:', pendingMessagesRef.current.length);
+  }, [socket, selectedPersonaId, setMessages]);
+
+  // Function to start a new chat
+  const startNewChat = useCallback(() => {
+    console.log('Starting new chat...');
+    
+    // Find selected persona
+    const selectedPersona = AVAILABLE_PERSONAS.find((p: Persona) => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
+    
+    // Create welcome message
+    const welcomeMessage: Message = {
+      id: 'welcome',
+      text: user 
+        ? `Xin chào ${user.name}! ${selectedPersona.displayName} đang lắng nghe!`
+        : `Xin chào! ${selectedPersona.displayName} đang lắng nghe!`,
+      isBot: true
+    };
+
+    // Reset all states
+    lastMessageRef.current = null;
+    pendingMessagesRef.current = [welcomeMessage];
+    
+    // Update UI state
+    setMessages([welcomeMessage]);
+    setHasUserSentMessage(false);
+    setIsPersonaLocked(false);
+    
+    console.log('New chat started, states reset');
+  }, [selectedPersonaId, user]);
+
+  // Initialize messages when component mounts or user changes
+  useEffect(() => {
+    if (messages.length === 0 && user) {
+      console.log('Initializing welcome message...');
+      startNewChat();
+    }
+  }, [messages.length, user, startNewChat]);
 
   // Memoize sorted messages
   const sortedMessages = useMemo(() => {
+    console.log('Sorting messages, count:', messages.length);
     return [...messages].sort((a, b) => {
       // Welcome message always first
       if (a.id === 'welcome') return -1;
@@ -277,16 +425,10 @@ function TailwindApp() {
     });
   }, [messages]);
 
-  // Debug logging outside render cycle
+  // Debug logging for state changes
   useEffect(() => {
-    console.log("Messages state updated:", messages.map(m => ({
-      id: m.id,
-      isBot: m.isBot,
-      hasError: !!m.error,
-      errorType: m.error?.type,
-      isStreaming: m.isStreaming
-    })));
-  }, [messages]);
+    console.log('State update - Messages:', messages.length, 'HasUserSent:', hasUserSentMessage);
+  }, [messages, hasUserSentMessage]);
 
   // Scroll to bottom when new messages arrive
   useEffect(() => {
@@ -297,20 +439,45 @@ function TailwindApp() {
   }, [messages]);
 
   // Add user profile component in header
+  const [showApiSettings, setShowApiSettings] = useState(false);
+  
   const UserProfile = () => (
     user && (
-      <div className="flex items-center space-x-2 ml-4">
-        <img
-          src={user.picture}
-          alt={user.name}
-          className="w-8 h-8 rounded-full border-2 border-[#78A161]"
-        />
-        <div className="hidden md:block">
-          <p className="text-sm font-medium text-[#5D4A38]">{user.name}</p>
+      <div className="relative group">
+        <button className="flex items-center space-x-2 p-2 rounded-lg hover:bg-[#78A16115] transition-all">
+          <img
+            src={user.picture}
+            alt={user.name}
+            className="w-9 h-9 rounded-full border-2 border-[#78A161] group-hover:border-[#5D4A38] transition-colors"
+          />
+          <div className="hidden md:block text-left">
+            <p className="text-sm font-medium text-[#5D4A38] line-clamp-1">{user.name}</p>
+            <p className="text-xs text-[#5D4A38] opacity-70">Đã xác thực</p>
+          </div>
+          <svg className="w-4 h-4 text-[#78A161] group-hover:text-[#5D4A38] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {/* Dropdown menu */}
+        <div className="absolute right-0 top-full mt-1 w-48 py-1 bg-white rounded-lg shadow-lg border border-[#E6DFD1] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-20">
+          <button
+            onClick={() => setShowApiSettings(true)}
+            className="w-full flex items-center px-4 py-2 text-sm text-[#5D4A38] hover:bg-[#78A16115] transition-colors"
+          >
+            <svg className="w-4 h-4 mr-2 text-[#78A161]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            Cài đặt API Key
+          </button>
           <button
             onClick={handleLogout}
-            className="text-xs text-[#BC4749] hover:text-[#9A383A]"
+            className="w-full flex items-center px-4 py-2 text-sm text-[#BC4749] hover:bg-[#BC474915] transition-colors"
           >
+            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
             Đăng xuất
           </button>
         </div>
@@ -340,58 +507,6 @@ function TailwindApp() {
     console.log(`Selected persona: ${personaId}`, selectedPersona);
   };
 
-  // Function to start a new chat
-  const startNewChat = () => {
-    // Find selected persona
-    const selectedPersona = AVAILABLE_PERSONAS.find((p: Persona) => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
-    
-    // Reset message state with just the welcome message
-    updateMessages([
-      {
-        id: 'welcome',
-        text: `Xin chào! ${selectedPersona.displayName} đang lắng nghe!`,
-        isBot: true
-      }
-    ]);
-    
-    // Also clear any manually added messages in the DOM
-    setTimeout(() => {
-      const chatContainer = document.getElementById('yitam-chat-container');
-      if (chatContainer) {
-        // Get all messages except for the welcome message
-        const messagesToRemove = chatContainer.querySelectorAll('[data-message-id]:not([data-message-id="welcome"])');
-        messagesToRemove.forEach(element => element.remove());
-        
-        // Check if welcome message exists in DOM, if not add it
-        const welcomeMessage = chatContainer.querySelector('[data-message-id="welcome"]');
-        if (!welcomeMessage) {
-          chatContainer.innerHTML = `
-            <div data-message-id="welcome" data-message-type="bot" class="mb-3 self-start max-w-[80%]" style="display: block;">
-              <div class="p-[10px_14px] rounded-[8px] text-[0.95rem] leading-[1.5] bg-[#F2EEE5] text-[#3A2E22] rounded-[0_8px_8px_8px]">
-                <div class="prose prose-sm max-w-none prose-headings:my-2 prose-headings:font-semibold prose-p:my-2 prose-ul:my-2 prose-ul:pl-6 prose-ol:my-2 prose-ol:pl-6 prose-li:my-1 prose-code:bg-[rgba(93,74,56,0.1)] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono prose-pre:bg-[rgba(93,74,56,0.1)] prose-pre:p-4 prose-pre:rounded-lg prose-pre:my-2 prose-pre:overflow-x-auto prose-pre:code:bg-transparent prose-pre:code:p-0">
-                  ${selectedPersona.displayName} đang lắng nghe!
-                </div>
-              </div>
-              <div class="text-xs text-gray-500 ml-2 mt-1">${selectedPersona.displayName}</div>
-            </div>
-          `;
-        }
-      }
-      
-      // Reset lastMessageRef to prevent blocking new messages that might be identical to previous ones
-      lastMessageRef.current = null;
-      
-      console.log('DOM messages cleared for new chat');
-    }, 50);
-    
-    // Maintain hasUserSentMessage as true to keep the input visible
-    // but allow persona selection
-    setIsPersonaLocked(false);
-    
-    // Log that we've started a new chat
-    console.log('Started new chat, messages reset');
-  };
-
   // Check if any bot message is currently streaming
   const isBotResponding = messages.some(msg => msg.isBot && msg.isStreaming);
 
@@ -408,24 +523,43 @@ function TailwindApp() {
       <ConsentProvider>
         <div className="h-screen bg-[#FDFBF6] text-[#3A2E22] flex justify-center overflow-hidden">
           <div className="w-full max-w-[1000px] flex flex-col h-screen p-2 overflow-hidden">
-            <header className="flex flex-col md:flex-row justify-between items-center border-b border-[#E6DFD1] mb-0.5 bg-[#F5EFE0] rounded px-2 shadow-[0_1px_1px_rgba(0,0,0,0.05)] overflow-hidden relative sticky top-0 z-10">
-              <div className="flex-none flex items-center z-10 relative overflow-visible md:max-w-[35%] md:mr-1.5 pl-4 md:pl-8">
-                <img 
-                  src="/img/yitam-logo.png" 
-                  alt="Yitam Logo" 
-                  className="h-auto w-[160px] md:w-[280px] max-w-none md:-my-[15px] md:scale-[1.15] md:origin-center relative"
-                />
-              </div>
-              <div className="flex-1 md:py-1 md:pl-[60px] z-[3] relative md:ml-auto md:w-[65%] text-center md:text-left py-0.5 flex justify-between items-center">
-                <div>
-                  <h1 className="text-[1.3rem] md:text-[1.8rem] text-[#5D4A38] font-semibold m-0 mb-0 leading-[1.1] md:leading-[1.1]">
+            <header className="bg-[#F5EFE0] rounded-lg shadow-sm border border-[#E6DFD1]">
+              {/* Top section with logo and title */}
+              <div className="flex flex-col md:flex-row items-center gap-2 md:gap-4 p-3">
+                <div className="flex-none w-[140px] md:w-[200px]">
+                  <img 
+                    src="/img/yitam-logo.png" 
+                    alt="Yitam Logo" 
+                    className="h-auto w-full object-contain"
+                  />
+                </div>
+                
+                <div className="flex-1 text-center md:text-left">
+                  <h1 className="text-xl md:text-2xl font-semibold text-[#5D4A38] leading-tight">
                     Hỏi đáp về y học cổ truyền
                   </h1>
-                  <p className="text-[0.75rem] md:text-[0.9rem] text-[#5D4A38] opacity-80 m-0 leading-tight">
+                  <p className="text-sm md:text-base text-[#5D4A38] opacity-80">
                     Kết nối tri thức y học cổ truyền với công nghệ hiện đại
                   </p>
                 </div>
-                <UserProfile />
+
+                <div className="flex-none">
+                  <UserProfile />
+                </div>
+              </div>
+
+              {/* Mobile menu for API key settings */}
+              <div className="md:hidden flex items-center justify-center border-t border-[#E6DFD1] p-2">
+                <button
+                  onClick={() => setShowApiSettings(true)}
+                  className="flex items-center px-3 py-1.5 text-sm text-[#78A161] hover:text-[#5D4A38] hover:bg-[#78A16115] rounded-md transition-all"
+                >
+                  <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Cài đặt API Key
+                </button>
               </div>
             </header>
             
@@ -450,7 +584,8 @@ function TailwindApp() {
               <div id="yitam-chat-container" className="flex flex-col p-2.5 bg-white rounded-[8px] shadow-[0_1px_3px_rgba(0,0,0,0.1)] chat-messages-container">
                 {messages.length === 0 ? (
                   <div className="flex items-center justify-center h-[200px] text-[#3A2E22] opacity-60 text-[1.1rem]">
-                    Xin chào! {(AVAILABLE_PERSONAS.find(p => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0]).displayName} đang lắng nghe!
+                    {user ? `Xin chào ${user.name}! ` : 'Xin chào! '}
+                    {(AVAILABLE_PERSONAS.find(p => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0]).displayName} đang lắng nghe!
                   </div>
                 ) : (
                   sortedMessages.map((message) => (
@@ -471,7 +606,57 @@ function TailwindApp() {
                       >
                         {message.isBot ? (
                           <div className="prose prose-sm max-w-none prose-headings:my-2 prose-headings:font-semibold prose-p:my-2 prose-ul:my-2 prose-ul:pl-6 prose-ol:my-2 prose-ol:pl-6 prose-li:my-1 prose-code:bg-[rgba(93,74,56,0.1)] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono prose-pre:bg-[rgba(93,74,56,0.1)] prose-pre:p-4 prose-pre:rounded-lg prose-pre:my-2 prose-pre:overflow-x-auto prose-pre:code:bg-transparent prose-pre:code:p-0">
-                            <TailwindToolCallParser text={message.text} />
+                            {(() => {
+                              // Try to parse message text as JSON if it looks like JSON
+                              if (message.text.trim().startsWith('{')) {
+                                try {
+                                  const parsedError = JSON.parse(message.text);
+                                  if (parsedError.type && parsedError.message) {
+                                    return (
+                                      <div className={`flex items-start gap-3 ${
+                                        parsedError.type === 'credit_balance' 
+                                          ? 'text-red-700' 
+                                          : parsedError.type === 'rate_limit' 
+                                            ? 'text-orange-700' 
+                                            : 'text-[#3A2E22]'
+                                      }`}>
+                                        {parsedError.type === 'credit_balance' && (
+                                          <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h.01M11 15h.01M15 15h.01M19 15h.01M7 19h.01M11 19h.01M15 19h.01M19 19h.01M7 11h.01M11 11h.01M15 11h.01M19 11h.01M7 7h.01M11 7h.01M15 7h.01M19 7h.01" />
+                                          </svg>
+                                        )}
+                                        {parsedError.type === 'rate_limit' && (
+                                          <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                          </svg>
+                                        )}
+                                        <div className="flex-1">
+                                          <p className="m-0">{parsedError.message}</p>
+                                          {parsedError.type === 'credit_balance' && (
+                                            <a 
+                                              href="https://console.anthropic.com/account/billing" 
+                                              target="_blank" 
+                                              rel="noopener noreferrer" 
+                                              className="inline-flex items-center text-sm mt-2 text-red-700 hover:text-red-800 font-medium"
+                                            >
+                                              Đi đến trang thanh toán
+                                              <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                              </svg>
+                                            </a>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+                                } catch (e) {
+                                  // If parsing fails, fall back to regular message display
+                                }
+                              }
+                              
+                              // Default message display
+                              return <TailwindToolCallParser text={message.text} />;
+                            })()}
                             {message.isStreaming && (
                               <span className="inline-flex items-center ml-1.5">
                                 <span className="typing-dot"></span>
@@ -495,10 +680,13 @@ function TailwindApp() {
                 )}
               </div>
               
-              {/* Show sample questions only when we have just the welcome message */}
+              {/* Show sample questions when appropriate */}
               {messages.length === 1 && messages[0].id === 'welcome' && !hasUserSentMessage && (
                 <TailwindSampleQuestions 
-                  onQuestionClick={sendMessage} 
+                  onQuestionClick={(question) => {
+                    console.log('Sample question clicked:', question);
+                    sendMessage(question);
+                  }} 
                   socket={socket} 
                   limit={questionsLimit}
                 />
@@ -546,7 +734,13 @@ function TailwindApp() {
               ref={inputRef} 
               className="sticky bottom-0 bg-[#FDFBF6] pt-2 z-10 w-full transition-all duration-300 ease-in-out"
             >
-              <TailwindMessageInput onSendMessage={sendMessage} disabled={!isConnected} />
+              <TailwindMessageInput 
+                onSendMessage={(text) => {
+                  console.log('Message input:', text);
+                  sendMessage(text);
+                }} 
+                disabled={!isConnected} 
+              />
               
               {/* Footer with the New Chat button added */}
               <footer className="bg-[#F5EFE0] mt-2 py-2 px-3 flex flex-col border-t border-[#E6DFD1] rounded shadow-[0_-1px_1px_rgba(0,0,0,0.05)] min-h-[45px]">
@@ -597,6 +791,28 @@ function TailwindApp() {
               </footer>
             </div>
           </div>
+
+          {/* API Settings Modal */}
+          {showApiSettings && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="relative w-full max-w-xl animate-fade-in">
+                <button
+                  onClick={() => setShowApiSettings(false)}
+                  className="absolute -top-12 right-0 text-white hover:text-gray-300 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+                <TailwindApiKeySettings 
+                  onApiKeySet={() => {
+                    setShowApiSettings(false);
+                    window.location.reload();
+                  }} 
+                />
+              </div>
+            </div>
+          )}
         </div>
       </ConsentProvider>
     </GoogleOAuthProvider>
