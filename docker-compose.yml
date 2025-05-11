@@ -33,6 +33,7 @@ services:
       dockerfile: Dockerfile
       args:
         - VITE_SERVER_URL=https://yitam.org
+        - VITE_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
     ports:
       - "80:80"
       - "443:443"
@@ -42,6 +43,8 @@ services:
       - /etc/letsencrypt/live/yitam.org/fullchain.pem:/etc/nginx/ssl/yitam.org.crt:ro
       - /etc/letsencrypt/live/yitam.org/privkey.pem:/etc/nginx/ssl/yitam.org.key:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
+    env_file:
+      - prod.env
     depends_on:
       - server
     restart: unless-stopped
