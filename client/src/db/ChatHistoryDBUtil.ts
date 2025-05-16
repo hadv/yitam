@@ -1,11 +1,14 @@
 import db, { Topic, Message, WordIndex } from './ChatHistoryDB';
 
-// Stop words for search index filtering
+// Stop words for search index filtering (Vietnamese)
 const STOP_WORDS = new Set([
-  'a', 'an', 'the', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'be', 'been',
-  'have', 'has', 'had', 'do', 'does', 'did', 'to', 'at', 'in', 'on', 'by', 'with',
-  'about', 'from', 'for', 'of', 'that', 'this', 'these', 'those', 'it', 'its',
-  'not', 'no', 'can', 'will', 'should', 'would', 'could', 'as', 'so', 'then'
+  // Common Vietnamese stop words
+  'và', 'hoặc', 'là', 'của', 'có', 'không', 'được', 'các', 'những', 'một', 'trong',
+  'để', 'từ', 'với', 'cho', 'bởi', 'tại', 'về', 'theo', 'trên', 'khi', 'như', 'nếu',
+  'này', 'đã', 'đó', 'vì', 'sẽ', 'đến', 'phải', 'còn', 'bị', 'thì', 'cũng', 'nên', 
+  'rằng', 'tôi', 'bạn', 'họ', 'chúng', 'ta', 'mình', 'ai', 'mà', 'nhưng', 'hay',
+  'làm', 'rất', 'thế', 'đang', 'lại', 'sau', 'trước', 'vậy', 'đây', 'kia', 'thật',
+  'quá', 'cần', 'chỉ', 'đều', 'mới', 'cứ', 'lên', 'xuống', 'ra', 'vào', 'ngoài', 'qua'
 ]);
 
 /**
