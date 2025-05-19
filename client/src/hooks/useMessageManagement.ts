@@ -45,7 +45,7 @@ export const useMessageManagement = ({ topicId }: UseMessageManagementProps): Us
       // Get messages sorted by timestamp (oldest first)
       const topicMessages = await db.messages
         .where('[topicId+timestamp]')
-        .between([topicId, Dexie.minKey], [topicId, Dexie.maxKey])
+        .between([topicId, -Infinity], [topicId, Infinity])
         .offset(offset)
         .limit(limit)
         .toArray();
