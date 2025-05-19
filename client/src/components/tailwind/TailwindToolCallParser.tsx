@@ -1,9 +1,21 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import TailwindToolCall from './TailwindToolCall';
 
+// Robust normalization for LLM output
+function robustNormalizeBlockquotes(text: string): string {
+  // Convert all \\n to \n
+  let normalized = text.replace(/\\n/g, '\n');
+  // Convert &gt; to >
+  normalized = normalized.replace(/&gt;/g, '>');
+  // Normalize blockquotes: convert lines starting with optional whitespace + > to just >
+  normalized = normalized.replace(/^[ \t]*>[ \t]?/gm, '> ');
+  return normalized;
+}
+
 // Custom renderers for markdown elements
-const renderers = {
+const customRenderers = {
   // Make heading styles more consistent
   h1: (props: any) => <h1 className="text-2xl font-bold my-4" {...props} />,
   h2: (props: any) => <h2 className="text-xl font-bold my-3" {...props} />,
@@ -33,8 +45,12 @@ const renderers = {
     );
   },
   
-  // Style blockquotes
-  blockquote: (props: any) => <blockquote className="border-l-4 border-gray-300 pl-4 italic my-3" {...props} />,
+  // Style blockquotes with visible left border
+  blockquote: (props: any) => (
+    <blockquote className="my-3 border-l-4 border-[#5D4A38] bg-[#F7F5F0] pl-4 pr-3 py-2 rounded-r-md text-[#3A2E22] italic">
+      {props.children}
+    </blockquote>
+  ),
 };
 
 interface ToolCallParserProps {
@@ -42,8 +58,11 @@ interface ToolCallParserProps {
 }
 
 const TailwindToolCallParser: React.FC<ToolCallParserProps> = ({ text }) => {
+  // Normalize blockquotes in the text
+  const normalizedText = robustNormalizeBlockquotes(text);
+
   // Check if message contains any tool call tags
-  if (text.includes('<tool-call')) {
+  if (normalizedText.includes('<tool-call')) {
     try {
       // Create a more robust parsing method
       const parsedContent: React.ReactNode[] = [];
@@ -53,14 +72,14 @@ const TailwindToolCallParser: React.FC<ToolCallParserProps> = ({ text }) => {
       const toolCallRegex = /<tool-call[^>]*>([\s\S]*?)<\/tool-call>/g;
       let match;
       
-      while ((match = toolCallRegex.exec(text)) !== null) {
+      while ((match = toolCallRegex.exec(normalizedText)) !== null) {
         // Add text before the match
         if (match.index > lastIndex) {
-          const beforeText = text.substring(lastIndex, match.index);
+          const beforeText = normalizedText.substring(lastIndex, match.index);
           if (beforeText.trim()) {
             parsedContent.push(
               <div key={`text-${lastIndex}`} className="prose max-w-none">
-                <ReactMarkdown components={renderers}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={customRenderers}>
                   {beforeText}
                 </ReactMarkdown>
               </div>
@@ -101,12 +120,12 @@ const TailwindToolCallParser: React.FC<ToolCallParserProps> = ({ text }) => {
       }
       
       // Add any remaining text after the last match
-      if (lastIndex < text.length) {
-        const afterText = text.substring(lastIndex);
+      if (lastIndex < normalizedText.length) {
+        const afterText = normalizedText.substring(lastIndex);
         if (afterText.trim()) {
           parsedContent.push(
             <div key="text-end" className="prose max-w-none">
-              <ReactMarkdown components={renderers}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={customRenderers}>
                 {afterText}
               </ReactMarkdown>
             </div>
@@ -120,8 +139,8 @@ const TailwindToolCallParser: React.FC<ToolCallParserProps> = ({ text }) => {
       // Fallback to regular markdown if parsing fails
       return (
         <div className="prose max-w-none">
-          <ReactMarkdown components={renderers}>
-            {text}
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={customRenderers}>
+            {normalizedText}
           </ReactMarkdown>
         </div>
       );
@@ -131,8 +150,8 @@ const TailwindToolCallParser: React.FC<ToolCallParserProps> = ({ text }) => {
   // Regular message without tool calls
   return (
     <div className="prose max-w-none">
-      <ReactMarkdown components={renderers}>
-        {text}
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={customRenderers}>
+        {normalizedText}
       </ReactMarkdown>
     </div>
   );
