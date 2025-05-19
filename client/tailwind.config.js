@@ -19,10 +19,7 @@ export default {
               color: '#3A2E22',
               fontStyle: 'normal',
               position: 'relative',
-              quotes: '"\\201C""\\201D""\\2018""\\2019"',
               '&::before': {
-                content: 'open-quote',
-                fontSize: '2em',
                 position: 'absolute',
                 left: '0.25rem',
                 top: '-0.5rem',
