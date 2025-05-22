@@ -1,6 +1,211 @@
 import db, { Topic, Message, WordIndex } from './ChatHistoryDB';
 import Dexie from 'dexie';
 
+// Debug IndexedDB
+export async function debugIndexedDB(): Promise<boolean> {
+  console.log("Starting IndexedDB debug check");
+  try {
+    // Check if IndexedDB is available
+    if (!window.indexedDB) {
+      console.error("IndexedDB is not available in this browser");
+      return false;
+    }
+    
+    // Check if we can open a test database
+    const testDBName = "testDB";
+    const request = window.indexedDB.open(testDBName, 1);
+    
+    return new Promise((resolve) => {
+      request.onerror = (event) => {
+        console.error("Error opening test IndexedDB:", event);
+        console.error("IndexedDB error:", (event.target as IDBOpenDBRequest).error);
+        resolve(false);
+      };
+      
+      request.onsuccess = (event) => {
+        console.log("Successfully opened test IndexedDB");
+        const db = (event.target as IDBOpenDBRequest).result;
+        db.close();
+        
+        // Clean up test database
+        window.indexedDB.deleteDatabase(testDBName);
+        
+        resolve(true);
+      };
+      
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        console.log("Creating test store in IndexedDB");
+        db.createObjectStore("testStore", { keyPath: "id" });
+      };
+    });
+  } catch (error) {
+    console.error("Error during IndexedDB debug check:", error);
+    return false;
+  }
+}
+
+// Direct database write function bypassing Dexie
+export async function enhancedDirectDBWrite(topicId: number, message: { role: 'user' | 'assistant'; content: string; timestamp: number }): Promise<boolean> {
+  try {
+    console.log(`[DB UTIL] Starting direct write for ${message.role} message in topic ${topicId}`);
+    
+    // First check if database is open
+    if (!db.isOpen()) {
+      console.log('[DB UTIL] Database not open, opening now');
+      await db.open();
+    }
+    
+    // Check if topic exists
+    const topic = await db.topics.get(topicId);
+    if (!topic) {
+      console.error(`[DB UTIL] Topic ${topicId} not found for direct write`);
+      return false;
+    }
+    
+    // Try both methods: direct IndexedDB and Dexie API
+    try {
+      // Method 1: Using Dexie API
+      // Create message record
+      const messageData = {
+        topicId,
+        timestamp: message.timestamp,
+        role: message.role,
+        content: message.content,
+        type: 'text',
+        tokens: Math.ceil(message.content.length / 4)
+      };
+      
+      // Add message directly
+      const messageId = await db.messages.add(messageData);
+      console.log(`[DB UTIL] Added ${message.role} message with ID ${messageId} using Dexie API`);
+      
+      // Update topic statistics
+      await db.topics.update(topicId, {
+        lastActive: message.timestamp,
+        messageCnt: (topic.messageCnt || 0) + 1,
+        ...(message.role === 'user' 
+          ? { userMessageCnt: (topic.userMessageCnt || 0) + 1 }
+          : { assistantMessageCnt: (topic.assistantMessageCnt || 0) + 1 }),
+        totalTokens: (topic.totalTokens || 0) + Math.ceil(message.content.length / 4)
+      });
+      
+      console.log(`[DB UTIL] Updated topic ${topicId} statistics for ${message.role} message`);
+      return true;
+    } catch (dexieError) {
+      console.error(`[DB UTIL] Dexie API error:`, dexieError);
+      
+      // Method 2: Fallback to direct IndexedDB
+      console.log(`[DB UTIL] Attempting direct IndexedDB write as fallback`);
+      
+      // Open the database directly
+      const dbName = "ChatHistoryDB";
+      const request = window.indexedDB.open(dbName);
+      
+      return new Promise((resolve) => {
+        request.onerror = (event) => {
+          console.error("[DB UTIL] Error opening IndexedDB directly:", event);
+          resolve(false);
+        };
+        
+        request.onsuccess = (event) => {
+          const directDb = (event.target as IDBOpenDBRequest).result;
+          try {
+            const tx = directDb.transaction("messages", "readwrite");
+            const store = tx.objectStore("messages");
+            
+            const messageToAdd = {
+              topicId,
+              role: message.role,
+              content: message.content,
+              timestamp: message.timestamp,
+              type: "text",
+              tokens: Math.ceil(message.content.length / 4)
+            };
+            
+            const addRequest = store.add(messageToAdd);
+            
+            addRequest.onsuccess = () => {
+              console.log(`[DB UTIL] Successfully wrote message directly to IndexedDB for topic ${topicId}`);
+              
+              // Try to update topic stats
+              try {
+                const topicTx = directDb.transaction("topics", "readwrite");
+                const topicStore = topicTx.objectStore("topics");
+                
+                // Get current topic
+                const getRequest = topicStore.get(topicId);
+                getRequest.onsuccess = () => {
+                  const currentTopic = getRequest.result;
+                  if (currentTopic) {
+                    // Update stats
+                    currentTopic.lastActive = message.timestamp;
+                    currentTopic.messageCnt = (currentTopic.messageCnt || 0) + 1;
+                    
+                    if (message.role === 'user') {
+                      currentTopic.userMessageCnt = (currentTopic.userMessageCnt || 0) + 1;
+                    } else {
+                      currentTopic.assistantMessageCnt = (currentTopic.assistantMessageCnt || 0) + 1;
+                    }
+                    
+                    currentTopic.totalTokens = (currentTopic.totalTokens || 0) + Math.ceil(message.content.length / 4);
+                    
+                    // Put updated topic
+                    topicStore.put(currentTopic);
+                  }
+                };
+              } catch (statsError) {
+                console.error("[DB UTIL] Error updating topic stats in direct mode:", statsError);
+              }
+              
+              directDb.close();
+              resolve(true);
+            };
+            
+            addRequest.onerror = (e) => {
+              console.error("[DB UTIL] Error adding message directly:", e);
+              directDb.close();
+              resolve(false);
+            };
+          } catch (error) {
+            console.error("[DB UTIL] Error in direct IndexedDB transaction:", error);
+            directDb.close();
+            resolve(false);
+          }
+        };
+      });
+    }
+  } catch (error) {
+    console.error(`[DB UTIL] Error in direct database write:`, error);
+    return false;
+  }
+}
+
+// Reinitialize database
+export async function reinitializeDatabase(): Promise<boolean> {
+  try {
+    console.log("Attempting to reinitialize database");
+    
+    // Close current database connection
+    db.close();
+    
+    // Wait a moment for connections to close
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Reopen database
+    await db.open();
+    
+    // Test connection
+    const isConnected = await db.checkConnection();
+    console.log("Database reinitialized, connection status:", isConnected);
+    
+    return isConnected;
+  } catch (error) {
+    console.error("Error reinitializing database:", error);
+    return false;
+  }
+}
+
 // Stop words for search index filtering (Vietnamese)
 const STOP_WORDS = new Set([
   // Common Vietnamese stop words
@@ -52,10 +257,29 @@ export async function indexMessageContent(content: string, topicId: number, mess
  */
 export async function ensureDatabaseReady(): Promise<boolean> {
   try {
+    console.log("Starting database initialization check");
+    
+    // First debug IndexedDB
+    const isIDBAvailable = await debugIndexedDB();
+    if (!isIDBAvailable) {
+      console.error("IndexedDB check failed");
+      return false;
+    }
+    
+    // Check connection
     const isConnected = await db.checkConnection();
     
     if (!isConnected) {
       console.warn('Database connection failed, attempting recovery');
+      
+      // Try reinitializing first
+      const isReinitialized = await reinitializeDatabase();
+      if (isReinitialized) {
+        console.log("Database successfully reinitialized");
+        return true;
+      }
+      
+      // If reinitialization fails, try recovery
       return await db.attemptRecovery();
     }
     
@@ -66,6 +290,7 @@ export async function ensureDatabaseReady(): Promise<boolean> {
       // Implement graceful degradation or notify user
     }
     
+    console.log("Database is ready");
     return true;
   } catch (error) {
     console.error('Database setup failed:', error);
@@ -668,6 +893,135 @@ export async function reindexTopic(topicId: number): Promise<boolean> {
     return true;
   } catch (error) {
     console.error('Error re-indexing topic:', error);
+    return false;
+  }
+}
+
+/**
+ * Verify database functionality by attempting to add and read a test message,
+ * then remove it afterward. This is a diagnostic function to check database access.
+ */
+export async function verifyDatabaseFunctionality(): Promise<boolean> {
+  console.log("Starting database functionality verification test");
+  try {
+    // Check if database is open
+    if (!db.isOpen()) {
+      console.error("Database is not open, attempting to open");
+      await db.open();
+    }
+
+    // Create a test topic
+    const testTopicId = await db.topics.add({
+      userId: 'test-verification-user',
+      title: "TEST TOPIC - WILL BE DELETED",
+      createdAt: Date.now(),
+      lastActive: Date.now(),
+      messageCnt: 0,
+      userMessageCnt: 0,
+      assistantMessageCnt: 0,
+      totalTokens: 0,
+      model: 'test-model',
+      systemPrompt: '',
+      pinnedState: false
+    });
+    
+    console.log(`Created test topic with ID: ${testTopicId}`);
+
+    // Add a test message
+    const messageData = {
+      topicId: testTopicId,
+      timestamp: Date.now(),
+      role: 'user' as const,
+      content: 'This is a test message to verify database functionality',
+      type: 'text',
+      tokens: 10
+    };
+    
+    const messageId = await db.messages.add(messageData);
+    console.log(`Added test message with ID: ${messageId}`);
+
+    // Verify we can read the message back
+    const savedMessage = await db.messages.get(messageId);
+    if (!savedMessage) {
+      console.error("Test message not found after saving - database read failed");
+      return false;
+    }
+
+    console.log(`Successfully read back test message: ${savedMessage.content.substring(0, 20)}...`);
+
+    // Delete the test topic and all its messages
+    await db.messages.where('topicId').equals(testTopicId).delete();
+    await db.topics.delete(testTopicId);
+    console.log(`Cleaned up test topic and messages`);
+
+    console.log("Database verification completed successfully");
+    return true;
+  } catch (error) {
+    console.error("Database verification failed:", error);
+    return false;
+  }
+}
+
+// Add back the original directDBWrite function declaration
+export async function directDBWrite(topicId: number, message: { role: 'user' | 'assistant'; content: string; timestamp: number }): Promise<boolean> {
+  try {
+    console.log(`Attempting direct IndexedDB write for topic ${topicId}`);
+    
+    // Open the database directly
+    const dbName = "ChatHistoryDB";
+    const request = window.indexedDB.open(dbName);
+    
+    return new Promise((resolve) => {
+      request.onerror = (event) => {
+        console.error("Error opening IndexedDB directly:", event);
+        resolve(false);
+      };
+      
+      request.onsuccess = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        try {
+          const tx = db.transaction("messages", "readwrite");
+          const store = tx.objectStore("messages");
+          
+          const messageToAdd = {
+            topicId,
+            role: message.role,
+            content: message.content,
+            timestamp: message.timestamp,
+            type: "text",
+            tokens: Math.ceil(message.content.length / 4)
+          };
+          
+          const addRequest = store.add(messageToAdd);
+          
+          addRequest.onsuccess = () => {
+            console.log(`Successfully wrote message directly to IndexedDB for topic ${topicId}`);
+            db.close();
+            resolve(true);
+          };
+          
+          addRequest.onerror = (e) => {
+            console.error("Error adding message directly:", e);
+            db.close();
+            resolve(false);
+          };
+          
+          tx.oncomplete = () => {
+            console.log("Transaction completed");
+          };
+          
+          tx.onerror = (e) => {
+            console.error("Transaction error:", e);
+          };
+        } catch (error) {
+          console.error("Error in direct IndexedDB transaction:", error);
+          db.close();
+          resolve(false);
+        }
+      };
+    });
+  } catch (error) {
+    console.error("Error in directDBWrite:", error);
     return false;
   }
 } 

@@ -537,6 +537,118 @@ io.on('connection', (socket: Socket) => {
     }
   });
 
+  // Handle title generation request
+  socket.on('generate-title', async (data: { conversation: string; topicId: number }) => {
+    try {
+      console.log(`Title generation requested for topic ${data.topicId}`);
+      
+      // Check if API key is available
+      if (!socket.data.user.apiKey || !anthropic) {
+        console.error('Cannot generate title: API key missing or Anthropic client not initialized');
+        socket.emit('title-generation-error', { 
+          message: 'API key missing or not initialized',
+          topicId: data.topicId 
+        });
+        return;
+      }
+      
+      // Check if conversation is too short
+      if (!data.conversation || data.conversation.length < 20) {
+        console.error('Conversation too short for title generation');
+        socket.emit('title-generation-error', { 
+          message: 'Conversation too short for title generation',
+          topicId: data.topicId 
+        });
+        return;
+      }
+      
+      // Prepare the prompt for title generation
+      const prompt = `Dưới đây là một đoạn hội thoại. Hãy tạo một tiêu đề ngắn gọn (không quá 50 ký tự) mô tả nội dung chính của cuộc trò chuyện này. Tiêu đề phải bằng tiếng Việt, có ý nghĩa và dễ hiểu.
+
+Hội thoại:
+${data.conversation}
+
+Tiêu đề:`;
+      
+      // Use Anthropic API to generate the title
+      try {
+        console.log(`Sending title generation request to Claude API for topic ${data.topicId}`);
+        const response = await anthropic.messages.create({
+          model: config.model.name,
+          max_tokens: 100,
+          messages: [
+            { role: 'user', content: prompt }
+          ],
+        });
+        
+        // Extract and clean up the generated title
+        let title = "";
+        if (response.content && response.content.length > 0) {
+          const contentBlock = response.content[0];
+          if (contentBlock.type === 'text') {
+            title = contentBlock.text.trim();
+          }
+        }
+        
+        // Handle empty response
+        if (!title) {
+          console.error('Claude returned empty title content');
+          socket.emit('title-generation-error', { 
+            message: 'Empty title generated',
+            topicId: data.topicId 
+          });
+          // Use a fallback title
+          socket.emit('title-generation-success', {
+            title: "New Conversation",
+            topicId: data.topicId
+          });
+          return;
+        }
+        
+        // Remove quotes if present
+        if (title.startsWith('"') && title.endsWith('"')) {
+          title = title.substring(1, title.length - 1);
+        }
+        
+        // Limit title length if necessary
+        if (title.length > 100) {
+          title = title.substring(0, 97) + '...';
+        }
+        
+        console.log(`Generated title: "${title}" for topic ${data.topicId}`);
+        
+        // Emit success event with the generated title
+        socket.emit('title-generation-success', {
+          title,
+          topicId: data.topicId
+        });
+      } catch (error) {
+        console.error('Error generating title with Claude API:', error);
+        socket.emit('title-generation-error', { 
+          message: 'Error generating title with API',
+          topicId: data.topicId,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+        // Use a fallback title
+        socket.emit('title-generation-success', {
+          title: "New Conversation",
+          topicId: data.topicId
+        });
+      }
+    } catch (error) {
+      console.error('Error in title generation handler:', error);
+      socket.emit('title-generation-error', { 
+        message: 'Server error in title generation',
+        topicId: data.topicId 
+      });
+      // Use a fallback title
+      socket.emit('title-generation-success', {
+        title: "New Conversation",
+        topicId: data.topicId
+      });
+    }
+  });
+
   // Handle user disconnection
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
