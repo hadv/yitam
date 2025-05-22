@@ -7,7 +7,10 @@ const router = Router();
 // Helper function to read legal documents
 async function readLegalDocument(filename: string, documentType: string) {
   try {
-    const filePath = path.join(__dirname, '../data/legal', filename);
+    // Use process.cwd to reliably locate the data directory when running from
+    // the transpiled `dist` folder. Relying on `__dirname` breaks in production
+    // because the markdown files are not copied to `dist`.
+    const filePath = path.resolve(process.cwd(), 'src/data/legal', filename);
     const content = await fs.readFile(filePath, 'utf-8');
     return { success: true, data: { content }, documentType };
   } catch (error) {
