@@ -206,4 +206,4 @@ For issues or questions:
 1. Check the troubleshooting section
 2. Review system logs
 3. Submit an issue in the project repository
-4. Contact the development team 
+4. Contact the development team
