@@ -12,7 +12,7 @@ describe('ContentSafetyService', () => {
   });
 
   describe('validateResponse', () => {
-    it('should allow medical and health-related content in Vietnamese', () => {
+    it('should allow medical and health-related content in Vietnamese', async () => {
       const healthQueries = [
         // Medical advice queries
         'Tôi bị đau đầu thường xuyên, có cách nào chữa theo YHCT không?',
@@ -37,9 +37,9 @@ describe('ContentSafetyService', () => {
         'Mua 1 tặng 1 cho tất cả các mặt hàng'
       ];
 
-      healthQueries.forEach(query => {
-        expect(() => safetyService.validateResponse(query, 'vi')).not.toThrow();
-      });
+      for (const query of healthQueries) {
+        await expect(safetyService.validateResponse(query, 'vi')).resolves.not.toThrow();
+      }
     });
 
     it('has basic content safety functionality', () => {
