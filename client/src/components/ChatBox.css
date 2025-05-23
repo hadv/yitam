@@ -275,3 +275,59 @@
   margin-bottom: 10px;
   border-radius: 4px;
 }
+.message .delete-btn {
+  background: none;
+  border: none;
+  color: #888;
+  margin-left: 4px;
+  cursor: pointer;
+}
+
+.message .delete-btn:hover {
+  color: #e53935;
+}
+
+.delete-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.delete-modal {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  max-width: 300px;
+  width: 100%;
+}
+
+.delete-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.delete-modal-actions button {
+  margin-left: 8px;
+}
+
+.delete-modal-actions button:first-child {
+  border: 1px solid #ccc;
+  background: #fff;
+  color: #3A2E22;
+}
+
+.delete-modal-actions button:last-child {
+  background: #e53935;
+  color: #fff;
+  border: none;
+}
+
+.delete-modal-actions button:last-child:hover {
+  background: #b71c1c;
+}
+
