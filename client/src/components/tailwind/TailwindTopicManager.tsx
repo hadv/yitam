@@ -8,12 +8,14 @@ interface TopicManagerProps {
   userId: string;
   currentTopicId?: number;
   onSelectTopic: (topicId: number) => void;
+  onLocalTopicSelect?: (topicId: number) => void;
 }
 
 const TailwindTopicManager: React.FC<TopicManagerProps> = ({
   userId,
   currentTopicId,
-  onSelectTopic
+  onSelectTopic,
+  onLocalTopicSelect
 }) => {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -21,6 +23,25 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
   const [selectedTopicDetails, setSelectedTopicDetails] = useState<Topic | null>(null);
   const [showConfirmDelete, setShowConfirmDelete] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Function to locally select a topic without calling the parent callback
+  const handleLocalTopicSelect = async (topicId: number) => {
+    try {
+      // Update the local selected topic state
+      const topic = await db.topics.get(topicId);
+      if (topic) {
+        setSelectedTopicDetails(topic);
+        
+        // If the parent provided a way to update its state without closing the modal,
+        // call that function
+        if (onLocalTopicSelect) {
+          onLocalTopicSelect(topicId);
+        }
+      }
+    } catch (error) {
+      console.error('Error locally selecting topic:', error);
+    }
+  };
 
   // Load topics from database
   const loadTopics = async () => {
@@ -114,10 +135,11 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
         await db.topics.delete(showConfirmDelete);
 
         // If we deleted the current topic, select a different one
-        if (showConfirmDelete === currentTopicId) {
+        if (showConfirmDelete === currentTopicId || showConfirmDelete === selectedTopicDetails?.id) {
           const firstTopic = topics.find(t => t.id !== showConfirmDelete);
           if (firstTopic && firstTopic.id) {
-            onSelectTopic(firstTopic.id);
+            // Use local selection instead of calling parent callback to avoid closing the modal
+            await handleLocalTopicSelect(firstTopic.id);
           }
         }
 
@@ -141,6 +163,8 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
         <TailwindTopicList
           userId={userId}
           onSelectTopic={(topicId) => {
+            // For regular selection (not during deletion), use the local handler
+            // which also updates the parent but potentially closes the modal
             onSelectTopic(topicId);
             // Also update local state for immediate display
             db.topics.get(topicId).then(topic => {

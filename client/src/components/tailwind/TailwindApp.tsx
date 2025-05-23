@@ -1306,13 +1306,13 @@ function TailwindApp() {
       handleMessageStorage();
       
       // Send the message to the server (do this after UI update for responsiveness)
-      const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
-      socket.emit('chat-message', {
-        message: text,
-        personaId: selectedPersonaId,
-        domains: selectedPersona.domains
-      });
-      
+    const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
+    socket.emit('chat-message', {
+      message: text,
+      personaId: selectedPersonaId,
+      domains: selectedPersona.domains
+    });
+    
       console.log('[TOPIC DEBUG] Message sent, current messages:', pendingMessagesRef.current.length);
     }).catch(error => {
       console.error('[TOPIC DEBUG] Error ensuring topic exists:', error);
@@ -1382,26 +1382,26 @@ function TailwindApp() {
         }
       })();
     } else {
-      // Find selected persona
-      const selectedPersona = AVAILABLE_PERSONAS.find((p: Persona) => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
-      
+    // Find selected persona
+    const selectedPersona = AVAILABLE_PERSONAS.find((p: Persona) => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
+    
       // Create welcome message WITHOUT creating a new topic
       const timestamp = Date.now();
-      const welcomeMessage: Message = {
-        id: 'welcome',
-        text: user 
-          ? `Xin chào ${user.name}! ${selectedPersona.displayName} đang lắng nghe!`
-          : `Xin chào! ${selectedPersona.displayName} đang lắng nghe!`,
+    const welcomeMessage: Message = {
+      id: 'welcome',
+      text: user 
+        ? `Xin chào ${user.name}! ${selectedPersona.displayName} đang lắng nghe!`
+        : `Xin chào! ${selectedPersona.displayName} đang lắng nghe!`,
           isBot: true,
           timestamp
-      };
+    };
 
-      // Reset all states
-      lastMessageRef.current = null;
-      pendingMessagesRef.current = [welcomeMessage];
-      
-      // Update UI state
-      setMessages([welcomeMessage]);
+    // Reset all states
+    lastMessageRef.current = null;
+    pendingMessagesRef.current = [welcomeMessage];
+    
+    // Update UI state
+    setMessages([welcomeMessage]);
       
       // Clear current topic reference on new chat without DB (important)
       setCurrentTopicId(undefined);
@@ -2199,6 +2199,11 @@ function TailwindApp() {
                         onSelectTopic={(topicId: number) => {
                           handleTopicSelect(topicId);
                           setShowTopicManager(false);
+                        }}
+                        onLocalTopicSelect={(topicId: number) => {
+                          // Update the selected topic ID without closing the modal
+                          setCurrentTopicId(topicId);
+                          currentTopicRef.current = topicId;
                         }}
                       />
                     </div>
