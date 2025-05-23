@@ -113,11 +113,22 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
         // Then delete the topic itself
         await db.topics.delete(showConfirmDelete);
 
-        // If we deleted the current topic, select a different one
-        if (showConfirmDelete === currentTopicId) {
-          const firstTopic = topics.find(t => t.id !== showConfirmDelete);
-          if (firstTopic && firstTopic.id) {
-            onSelectTopic(firstTopic.id);
+        // Don't call onSelectTopic which would close the modal
+        // Just update local state if needed
+        if (showConfirmDelete === currentTopicId || showConfirmDelete === selectedTopicDetails?.id) {
+          // Find another topic to select locally
+          const otherTopics = topics.filter(t => t.id !== showConfirmDelete);
+          if (otherTopics.length > 0) {
+            // Sort by most recently active
+            const sortedTopics = [...otherTopics].sort((a, b) => b.lastActive - a.lastActive);
+            const newTopicToSelect = sortedTopics[0];
+            if (newTopicToSelect) {
+              setSelectedTopicDetails(newTopicToSelect);
+            } else {
+              setSelectedTopicDetails(null);
+            }
+          } else {
+            setSelectedTopicDetails(null);
           }
         }
 
