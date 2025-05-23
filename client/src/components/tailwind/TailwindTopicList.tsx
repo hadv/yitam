@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import db, { Topic } from '../../db/ChatHistoryDB';
 import TailwindTopicCreateButton from './TailwindTopicCreateButton';
 
@@ -9,6 +9,7 @@ interface TopicListProps {
   onDeleteTopic: (topicId: number) => void;
   onEditTopic: (topic: Topic) => void;
   currentTopicId?: number;
+  refreshTrigger?: number; // Optional prop to trigger refresh
 }
 
 const TailwindTopicList: React.FC<TopicListProps> = ({
@@ -17,33 +18,39 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
   onCreateTopic,
   onDeleteTopic,
   onEditTopic,
-  currentTopicId
+  currentTopicId,
+  refreshTrigger
 }) => {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [sortOption, setSortOption] = useState<'lastActive' | 'createdAt' | 'title'>('lastActive');
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const loadTopics = async () => {
-      try {
-        setIsLoading(true);
+  // Memoize loadTopics to use it in both useEffect and as a public method
+  const loadTopics = useCallback(async () => {
+    console.log('Loading topics for user:', userId);
+    try {
+      setIsLoading(true);
+      
+      // Get all topics for this user
+      const userTopics = await db.topics
+        .where('userId')
+        .equals(userId)
+        .toArray();
         
-        // Get all topics for this user
-        const userTopics = await db.topics
-          .where('userId')
-          .equals(userId)
-          .toArray();
-          
-        setTopics(userTopics);
-      } catch (error) {
-        console.error('Error loading topics:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadTopics();
+      console.log(`Loaded ${userTopics.length} topics`);
+      setTopics(userTopics);
+    } catch (error) {
+      console.error('Error loading topics:', error);
+    } finally {
+      setIsLoading(false);
+    }
   }, [userId]);
+
+  // Add currentTopicId and refreshTrigger as dependencies to force refresh
+  useEffect(() => {
+    console.log('Topic list effect triggered, refreshing...');
+    loadTopics();
+  }, [userId, currentTopicId, refreshTrigger, loadTopics]);
 
   const sortTopics = (topicsToSort: Topic[]) => {
     const sorted = [...topicsToSort];
@@ -163,7 +170,10 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
-                      topic.id && onDeleteTopic(topic.id);
+                      if (topic.id) {
+                        console.log(`Requesting deletion of topic: ${topic.id}`);
+                        onDeleteTopic(topic.id);
+                      }
                     }}
                     className="p-1 text-gray-500 hover:text-red-500 focus:outline-none"
                   >

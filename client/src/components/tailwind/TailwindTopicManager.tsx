@@ -23,6 +23,12 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
   const [selectedTopicDetails, setSelectedTopicDetails] = useState<Topic | null>(null);
   const [showConfirmDelete, setShowConfirmDelete] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Function to force a refresh of the topics list
+  const forceRefreshTopics = () => {
+    setRefreshTrigger(prev => prev + 1);
+  };
 
   // Function to locally select a topic without calling the parent callback
   const handleLocalTopicSelect = async (topicId: number) => {
@@ -109,6 +115,7 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
 
       // Reload topics and switch to the saved topic
       await loadTopics();
+      forceRefreshTopics();
       onSelectTopic(topicId);
       setIsEditorOpen(false);
     } catch (error) {
@@ -125,26 +132,50 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
   const confirmDeleteTopic = async () => {
     if (showConfirmDelete) {
       try {
+        console.log(`Deleting topic ID: ${showConfirmDelete}`);
+        
         // First delete all messages for this topic
         await db.messages
           .where('topicId')
           .equals(showConfirmDelete)
           .delete();
+        
+        console.log(`Deleted messages for topic ${showConfirmDelete}`);
 
         // Then delete the topic itself
         await db.topics.delete(showConfirmDelete);
+        console.log(`Deleted topic ${showConfirmDelete}`);
 
+        // Remove the deleted topic from the local state immediately
+        setTopics(prevTopics => prevTopics.filter(t => t.id !== showConfirmDelete));
+        
         // If we deleted the current topic, select a different one
         if (showConfirmDelete === currentTopicId || showConfirmDelete === selectedTopicDetails?.id) {
-          const firstTopic = topics.find(t => t.id !== showConfirmDelete);
-          if (firstTopic && firstTopic.id) {
+          // Find another topic to select
+          const remainingTopics = topics.filter(t => t.id !== showConfirmDelete);
+          
+          if (remainingTopics.length > 0) {
+            const firstTopic = remainingTopics[0];
+            console.log(`Selecting new topic after deletion: ${firstTopic.id}`);
+            
             // Use local selection instead of calling parent callback to avoid closing the modal
-            await handleLocalTopicSelect(firstTopic.id);
+            if (firstTopic.id !== undefined) {
+              await handleLocalTopicSelect(firstTopic.id);
+            }
+          } else {
+            // No topics left
+            setSelectedTopicDetails(null);
+            console.log('No topics left after deletion');
           }
         }
 
-        // Reload topics
+        // Reload topics to ensure we have the latest data from the database
+        console.log('Reloading topics after deletion');
         await loadTopics();
+        
+        // Force a refresh of the topic list component
+        forceRefreshTopics();
+        
       } catch (error) {
         console.error('Error deleting topic:', error);
       }
@@ -175,6 +206,7 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
           onDeleteTopic={handleDeleteTopic}
           onEditTopic={handleEditTopic}
           currentTopicId={selectedTopicDetails?.id || currentTopicId}
+          refreshTrigger={refreshTrigger}
         />
       </div>
       
