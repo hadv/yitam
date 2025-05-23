@@ -2179,7 +2179,7 @@ function TailwindApp() {
               {/* Topic Manager Modal */}
               {showTopicManager && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                  <div className="relative w-full max-w-4xl bg-white rounded-lg shadow-xl animate-fade-in">
+                  <div className="relative w-full max-w-5xl bg-white rounded-lg shadow-xl animate-fade-in h-[80vh] flex flex-col">
                     <div className="flex justify-between items-center p-6 border-b border-[#E6DFD1]">
                       <h2 className="text-2xl font-semibold text-[#3A2E22]">Quản lý cuộc trò chuyện</h2>
                       <button
@@ -2192,7 +2192,7 @@ function TailwindApp() {
                       </button>
         </div>
                     
-                    <div className="p-6 max-h-[70vh] overflow-auto">
+                    <div className="flex-1 overflow-auto p-6">
                       <TailwindTopicManager
                         userId={user.email}
                         currentTopicId={currentTopicId}
@@ -2204,7 +2204,7 @@ function TailwindApp() {
                     </div>
                     
                     {storageUsage && storageUsage.percentage > 0 && (
-                      <div className="p-4 border-t border-[#E6DFD1]">
+                      <div className="p-5 border-t border-[#E6DFD1]">
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-sm text-[#5D4A38]">
                             Dung lượng lưu trữ: {(storageUsage.usage / (1024 * 1024)).toFixed(1)} MB / {(storageUsage.quota / (1024 * 1024)).toFixed(1)} MB

@@ -38,6 +38,13 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
         if (currentTopic) {
           setSelectedTopicDetails(currentTopic);
         }
+      } else if (userTopics.length > 0) {
+        // Auto-select the most recent topic by default if no topic is selected
+        const sortedTopics = [...userTopics].sort((a, b) => b.lastActive - a.lastActive);
+        const mostRecentTopic = sortedTopics[0];
+        if (mostRecentTopic && mostRecentTopic.id) {
+          setSelectedTopicDetails(mostRecentTopic);
+        }
       } else {
         setSelectedTopicDetails(null);
       }
@@ -129,19 +136,25 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 h-full">
-      <div className="md:col-span-2">
+    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 p-4 h-full">
+      <div className="md:col-span-3">
         <TailwindTopicList
           userId={userId}
-          onSelectTopic={onSelectTopic}
+          onSelectTopic={(topicId) => {
+            onSelectTopic(topicId);
+            // Also update local state for immediate display
+            db.topics.get(topicId).then(topic => {
+              if (topic) setSelectedTopicDetails(topic);
+            });
+          }}
           onCreateTopic={handleCreateTopic}
           onDeleteTopic={handleDeleteTopic}
           onEditTopic={handleEditTopic}
-          currentTopicId={currentTopicId}
+          currentTopicId={selectedTopicDetails?.id || currentTopicId}
         />
       </div>
       
-      <div className="md:col-span-1">
+      <div className="md:col-span-2">
         {selectedTopicDetails ? (
           <TailwindTopicMetadata 
             topic={selectedTopicDetails} 
