@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode, useRef } from 'react';
 import db, { Topic, Message } from '../db/ChatHistoryDB';
 import { ensureDatabaseReady, cleanupOldData } from '../db/ChatHistoryDBUtil';
 
@@ -30,16 +30,14 @@ export const ChatHistoryProvider = ({ children }: ChatHistoryProviderProps) => {
   const [isDBReady, setIsDBReady] = useState(false);
   const [dbError, setDBError] = useState<Error | null>(null);
   const [storageUsage, setStorageUsage] = useState<{ usage: number; quota: number; percentage: number } | null>(null);
-  const [initAttempts, setInitAttempts] = useState(0);
+  const initAttemptsRef = useRef(0);
   
   // Function to initialize the database
   const initDatabase = useCallback(async () => {
-    console.log('[CONTEXT DEBUG] Initializing database...');
-      try {
+    try {
       // Ensure database is open
       if (!db.isOpen()) {
         await db.open();
-        console.log('[CONTEXT DEBUG] Database opened');
       }
       
       // Verify database connection
@@ -51,40 +49,34 @@ export const ChatHistoryProvider = ({ children }: ChatHistoryProviderProps) => {
       // Try a simple read operation
       await db.topics.count();
       
-      console.log('[CONTEXT DEBUG] Database successfully initialized');
       setIsDBReady(true);
       setDBError(null);
       return true;
-      } catch (error) {
+    } catch (error) {
       console.error('[CONTEXT DEBUG] Database initialization error:', error);
       setDBError(error instanceof Error ? error : new Error('Unknown database error'));
       
       // Try recovery if multiple init attempts fail
-      if (initAttempts >= 2) {
-        console.log('[CONTEXT DEBUG] Multiple init failures. Attempting recovery...');
+      if (initAttemptsRef.current >= 2) {
         try {
           const recovered = await db.attemptRecovery();
           if (recovered) {
-            console.log('[CONTEXT DEBUG] Database recovery successful');
             setIsDBReady(true);
             setDBError(null);
             return true;
-          } else {
-            console.error('[CONTEXT DEBUG] Database recovery failed');
           }
         } catch (recoveryError) {
           console.error('[CONTEXT DEBUG] Database recovery error:', recoveryError);
-      }
+        }
       }
       
       return false;
     }
-  }, [initAttempts]);
+  }, []);
 
   // Function to force database initialization - can be called from components
   const forceDBInit = useCallback(async () => {
-    console.log('[CONTEXT DEBUG] Force database initialization requested');
-    setInitAttempts(prev => prev + 1);
+    initAttemptsRef.current += 1;
     return await initDatabase();
   }, [initDatabase]);
   
@@ -96,17 +88,15 @@ export const ChatHistoryProvider = ({ children }: ChatHistoryProviderProps) => {
       
       // Warn if storage is getting full
       if (usage.percentage > 80) {
-        console.warn(`[CONTEXT DEBUG] Storage usage high: ${usage.percentage.toFixed(1)}%`);
+        console.warn(`Storage usage high: ${usage.percentage.toFixed(1)}%`);
       }
     } catch (error) {
-      console.error('[CONTEXT DEBUG] Storage usage check error:', error);
+      console.error('Storage usage check error:', error);
     }
   }, []);
 
   // Initialize database when component mounts
   useEffect(() => {
-    console.log('[CONTEXT DEBUG] ChatHistoryProvider mounted');
-    
     // Function to handle initialization with retries
     const initWithRetries = async () => {
       let success = false;
@@ -115,7 +105,6 @@ export const ChatHistoryProvider = ({ children }: ChatHistoryProviderProps) => {
       
       while (!success && attempts < maxAttempts) {
         attempts++;
-        console.log(`[CONTEXT DEBUG] Database init attempt ${attempts} of ${maxAttempts}`);
         success = await initDatabase();
         
         if (!success && attempts < maxAttempts) {
@@ -124,10 +113,7 @@ export const ChatHistoryProvider = ({ children }: ChatHistoryProviderProps) => {
         }
       }
       
-      if (!success) {
-        console.error(`[CONTEXT DEBUG] Failed to initialize database after ${maxAttempts} attempts`);
-      } else {
-        console.log('[CONTEXT DEBUG] Database initialized successfully');
+      if (success) {
         // Check storage usage after successful initialization
         await checkStorageUsage();
       }
@@ -146,12 +132,10 @@ export const ChatHistoryProvider = ({ children }: ChatHistoryProviderProps) => {
   // Listen for database open/close events
   useEffect(() => {
     const handleDBOpened = () => {
-      console.log('[CONTEXT DEBUG] Database opened event detected');
       setIsDBReady(true);
     };
     
     const handleDBClosed = () => {
-      console.log('[CONTEXT DEBUG] Database closed event detected');
       setIsDBReady(false);
     };
     
