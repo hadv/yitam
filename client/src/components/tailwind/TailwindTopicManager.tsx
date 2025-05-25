@@ -113,26 +113,26 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
         // Then delete the topic itself
         await db.topics.delete(showConfirmDelete);
 
-        // Don't call onSelectTopic which would close the modal
-        // Just update local state if needed
-        if (showConfirmDelete === currentTopicId || showConfirmDelete === selectedTopicDetails?.id) {
-          // Find another topic to select locally
-          const otherTopics = topics.filter(t => t.id !== showConfirmDelete);
-          if (otherTopics.length > 0) {
-            // Sort by most recently active
-            const sortedTopics = [...otherTopics].sort((a, b) => b.lastActive - a.lastActive);
-            const newTopicToSelect = sortedTopics[0];
-            if (newTopicToSelect) {
-              setSelectedTopicDetails(newTopicToSelect);
-            } else {
-              setSelectedTopicDetails(null);
-            }
+        // Find another topic to select
+        const otherTopics = topics.filter(t => t.id !== showConfirmDelete);
+        if (otherTopics.length > 0) {
+          // Sort by most recently active
+          const sortedTopics = [...otherTopics].sort((a, b) => b.lastActive - a.lastActive);
+          const newTopicToSelect = sortedTopics[0];
+          if (newTopicToSelect && newTopicToSelect.id) {
+            setSelectedTopicDetails(newTopicToSelect);
+            onSelectTopic(newTopicToSelect.id);
           } else {
             setSelectedTopicDetails(null);
           }
+        } else {
+          // No topics left, just reset the UI without creating a new topic
+          setSelectedTopicDetails(null);
+          // Use -1 as a special value to indicate no topics
+          onSelectTopic(-1);
         }
 
-        // Reload topics
+        // Reload topics to update the list
         await loadTopics();
       } catch (error) {
         console.error('Error deleting topic:', error);

@@ -1,3 +1,19 @@
+// Add this at the top of the file, before the imports
+
+// Extend Window interface to include our debugging functions
+declare global {
+  interface Window {
+    getCurrentPersonaId?: () => string;
+    absoluteForcePersona?: (personaId: string) => void;
+    debugPersonaSystem?: () => Promise<any>;
+    checkTopicPersonaConsistency?: () => Promise<any>;
+    fixTopicPersonas?: (defaultPersona?: string) => Promise<any>;
+    exportTopic?: (topicId: number) => Promise<any>;
+    testTitleExtraction?: (text: string) => string;
+    lastUsedPersona?: string;
+  }
+}
+
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { config } from '../../config';
@@ -22,6 +38,9 @@ import db from '../../db/ChatHistoryDB';
 import { debugIndexedDB, directDBWrite, ensureDatabaseReady, reinitializeDatabase } from '../../db/ChatHistoryDBUtil';
 import { checkDatabaseVersionMismatch, updateStoredDatabaseVersion, getSystemInfo } from '../../utils/version';
 import { forceSaveMessage, enhancedDirectDBWrite } from '../../db/DBHelpers';
+// Import the persona context
+import { usePersona } from '../../contexts/PersonaContext';
+// Remove persona debugger import
 
 interface AnthropicError {
   type: string;
@@ -51,6 +70,7 @@ interface Message {
     message: string;
     retryAfter?: number;
   };
+  personaId?: string;
 }
 
 interface AnthropicErrorResponse {
@@ -91,16 +111,147 @@ const isDBMessage = (msg: any): msg is import('./../../db/ChatHistoryDB').Messag
 // Type for any kind of message object (union type)
 type AnyMessage = Message | import('./../../db/ChatHistoryDB').Message | Record<string, any>;
 
+// First, improve the title extraction function to better handle tool calls
+const extractTitleFromBotText = (botText: string): string => {
+  if (!botText || botText.trim() === '') {
+    return "New Conversation";
+  }
+  
+  console.log(`[TITLE EXTRACT] Starting title extraction on text of length ${botText.length}`);
+  
+  // First, remove any tool calls from the bot text
+  let cleanedText = botText;
+  
+  // Match and remove tool calls
+  const toolCallPatterns = [
+    /<function_calls>[\s\S]*?<\/antml:function_calls>/gi,
+    /<function_call>[\s\S]*?<\/function_call>/gi,
+    /<tool_call>[\s\S]*?<\/tool_call>/gi
+  ];
+  
+  for (const pattern of toolCallPatterns) {
+    cleanedText = cleanedText.replace(pattern, '');
+  }
+  
+  // Clean up any remaining XML/HTML-like tags that might be left
+  cleanedText = cleanedText.replace(/<[^>]*>/g, '');
+  
+  // Log the first part of cleaned text
+  const previewLength = Math.min(cleanedText.length, 200);
+  console.log(`[TITLE EXTRACT] Cleaned text (first ${previewLength} chars): "${cleanedText.substring(0, previewLength)}..."`);
+  
+  // Split into lines for better processing
+  const lines = cleanedText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+  
+  // Look for markdown headers with priority:
+  // 1. First # header (most important - this is what we want)
+  // 2. First ## header (secondary)
+  // 3. Any other header
+  
+  // First, try to find # headers (h1)
+  const h1Lines = lines.filter(line => /^#\s+\S+/.test(line));
+  if (h1Lines.length > 0) {
+    const h1Text = h1Lines[0].replace(/^#\s+/, '').trim()
+      .replace(/^\*\*|\*\*$|^\*|\*$/g, '') // Remove bold/italic
+      .replace(/^`|`$/g, '') // Remove code ticks
+      .replace(/^[📜🌿💊🔍📚📋🧪⚗️🏷️]+\s*/, ''); // Remove emojis
+    
+    console.log(`[TITLE EXTRACT] Using H1 header as title: "${h1Text}"`);
+    return h1Text;
+  }
+  
+  // If no h1, try h2
+  const h2Lines = lines.filter(line => /^##\s+\S+/.test(line));
+  if (h2Lines.length > 0) {
+    const h2Text = h2Lines[0].replace(/^##\s+/, '').trim()
+      .replace(/^\*\*|\*\*$|^\*|\*$/g, '')
+      .replace(/^`|`$/g, '')
+      .replace(/^[📜🌿💊🔍📚📋🧪⚗️🏷️]+\s*/, '');
+    
+    console.log(`[TITLE EXTRACT] Using H2 header as title: "${h2Text}"`);
+    return h2Text;
+  }
+  
+  // If no h1 or h2, try any header (h3-h6)
+  const anyHeaderLines = lines.filter(line => /^#{3,6}\s+\S+/.test(line));
+  if (anyHeaderLines.length > 0) {
+    const headerText = anyHeaderLines[0].replace(/^#{3,6}\s+/, '').trim()
+      .replace(/^\*\*|\*\*$|^\*|\*$/g, '')
+      .replace(/^`|`$/g, '')
+      .replace(/^[📜🌿💊🔍📚📋🧪⚗️🏷️]+\s*/, '');
+    
+    console.log(`[TITLE EXTRACT] Using other header as title: "${headerText}"`);
+    return headerText;
+  }
+  
+  // If no headers at all, use the first line that's not a list item or details
+  // Exclude lines that look like list items, code blocks, or other non-title content
+  const nonListLines = lines.filter(line => 
+    !line.startsWith('- ') && 
+    !line.startsWith('* ') && 
+    !line.startsWith('+ ') && 
+    !line.match(/^\d+\.\s/) &&
+    !line.startsWith('```') &&
+    !line.startsWith('&gt;') &&
+    !line.startsWith('>') &&
+    !line.startsWith('|')
+  );
+  
+  if (nonListLines.length > 0) {
+    // Get the first non-list line and clean it
+    const firstLine = nonListLines[0]
+      .replace(/^\*\*|\*\*$|^\*|\*$/g, '')
+      .replace(/^`|`$/g, '')
+      .replace(/^[📜🌿💊🔍📚📋🧪⚗️🏷️]+\s*/, '');
+    
+    // Truncate if needed
+    const title = firstLine.length > 100 ? firstLine.substring(0, 100) + '...' : firstLine;
+    console.log(`[TITLE EXTRACT] Using first non-list line as title: "${title}"`);
+    return title;
+  }
+  
+  // Absolute fallback - use the first line no matter what
+  if (lines.length > 0) {
+    const fallbackTitle = lines[0].substring(0, 100).trim();
+    console.log(`[TITLE EXTRACT] Using fallback first line as title: "${fallbackTitle}"`);
+    return fallbackTitle;
+  }
+  
+  return "New Conversation";
+};
+
+// Add a global test function to check title extraction
+(window as any).testTitleExtraction = (text: string) => {
+  console.log("Test Title Extraction for:", text.substring(0, 50) + "...");
+  return extractTitleFromBotText(text);
+};
+
+// Add this before the component declaration
+const debugLogger = (category: string, message: string, data?: any) => {
+  const timestamp = new Date().toISOString();
+  console.log(`[${category} ${timestamp}] ${message}${data !== undefined ? ': ' + JSON.stringify(data) : ''}`);
+};
+
 function TailwindApp() {
   const [socket, setSocket] = useState<Socket<DefaultEventsMap, DefaultEventsMap> | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [hasUserSentMessage, setHasUserSentMessage] = useState(false);
   const [questionsLimit] = useState(6);
-  const [selectedPersonaId, setSelectedPersonaId] = useState('yitam');
-  const [isPersonaLocked, setIsPersonaLocked] = useState(false);
-  const [currentTopicId, setCurrentTopicId] = useState<number | undefined>(undefined);
+  
+  // CRITICAL FIX: Use the PersonaContext with forceSetPersona
+  const { 
+    currentPersonaId,
+    setCurrentPersonaId,
+    isPersonaLocked,
+    setIsPersonaLocked,
+    resetPersona,
+    forceSetPersona,
+    absoluteForcePersona
+  } = usePersona();
+  
   const [showTopicManager, setShowTopicManager] = useState(false);
+  const [currentTopicId, setCurrentTopicId] = useState<number | undefined>(undefined);
   const inputRef = useRef<HTMLDivElement>(null);
   const lastMessageRef = useRef<string | null>(null);
   const currentTopicRef = useRef<number | undefined>(undefined);
@@ -143,10 +294,33 @@ function TailwindApp() {
     }
   }, []);
 
+  // Add an effect to monitor and log persona changes
+  useEffect(() => {
+    console.log(`[PERSONA MONITOR] Current persona changed to: ${currentPersonaId}`);
+    
+    // If we have messages, update the first message to reflect the current persona
+    if (messages.length === 1 && messages[0].id === 'welcome' && !hasUserSentMessage && !isPersonaLocked) {
+      const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0];
+      const welcomeText = user ? 
+        `Xin chào ${user.name}! ${selectedPersona.displayName} đang lắng nghe!` : 
+        `Xin chào! ${selectedPersona.displayName} đang lắng nghe!`;
+      
+      // Only update if the text is different to prevent loops
+      if (messages[0].text !== welcomeText) {
+        updateMessages([{
+          id: 'welcome',
+          text: welcomeText,
+          isBot: true,
+          timestamp: Date.now()
+        }]);
+      }
+    }
+  }, [currentPersonaId]);
+
   // Effect for welcome message - separate from socket effect
   useEffect(() => {
     if (messages.length === 1 && messages[0].id === 'welcome' && !hasUserSentMessage) {
-      const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
+      const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0];
       if (user && messages[0].text !== `Xin chào ${user.name}! ${selectedPersona.displayName} đang lắng nghe!`) {
         updateMessages([{
           id: 'welcome',
@@ -155,137 +329,147 @@ function TailwindApp() {
         }]);
       }
     }
-  }, [selectedPersonaId, user, hasUserSentMessage]);
+  }, [currentPersonaId, user, hasUserSentMessage]);
 
-  // Generate a title for a topic based on conversation content
-  const generateTopicTitle = useCallback(async (topicId: number) => {
-    if (!socket || !isDBReady) {
-      console.error('Cannot generate title: socket or DB not ready');
-      return;
+  // Fix issue #1: Topic title extraction logic
+  // Modify the title extraction in the generateTopicTitle function
+  const generateTopicTitle = useCallback(async (topicId: number, conversationText?: string) => {
+    if (!isDBReady) {
+      console.error('[TITLE GEN] Cannot generate title: DB not ready');
+      return "New Conversation";
     }
     
     try {
-      console.log(`Starting title generation for topic ${topicId}`);
+      console.log(`[TITLE GEN] Starting title generation for topic ${topicId}`);
       
-      // Get the topic to check if it already has a custom title
-      const topic = await db.topics.get(topicId);
-      if (!topic) {
-        console.error(`Cannot generate title: Topic ${topicId} not found in database`);
-        return;
-      }
+      // If specific conversation text was provided, use it, otherwise get messages for the topic
+      let finalConversationText = conversationText;
       
-      if (topic.title !== "New Conversation") {
-        console.log(`Topic ${topicId} already has a title: "${topic.title}". Skipping title generation.`);
-        return;
-      }
-      
-      // Get messages for this topic
-      const messages = await db.messages
-        .where('topicId')
-        .equals(topicId)
-        .toArray();
-      
-      console.log(`Found ${messages.length} messages for topic ${topicId}`);
-      
-      // Only generate a title if we have at least 2 messages (1 user, 1 assistant)
-      if (messages.length < 2) {
-        console.log(`Not enough messages (${messages.length}) to generate a title. Skipping.`);
-        return;
-      }
-      
-      // Extract the conversation content
-      const conversation = messages
-        .sort((a, b) => a.timestamp - b.timestamp)
-        .map((msg: AnyMessage) => {
-          // Handle message content based on object structure
-          // Checking for type to determine how to extract role and content
-          let role: string;
-          let content: string;
+      if (!finalConversationText) {
+        // Get the topic to check if it already has a custom title
+        const topic = await db.topics.get(topicId);
+        if (!topic) {
+          console.error(`[TITLE GEN] Cannot generate title: Topic ${topicId} not found in database`);
+          return "New Conversation";
+        }
+        
+        if (topic.title !== "New Conversation") {
+          console.log(`[TITLE GEN] Topic ${topicId} already has a title: "${topic.title}". Skipping title generation.`);
+          return topic.title;
+        }
+        
+        // Get messages for this topic
+        const messages = await db.messages
+          .where('topicId')
+          .equals(topicId)
+          .toArray();
+        
+        console.log(`[TITLE GEN] Found ${messages.length} messages for topic ${topicId}`);
+        
+        // Only generate a title if we have at least 2 messages (1 user, 1 assistant)
+        if (messages.length < 2) {
+          console.log(`[TITLE GEN] Not enough messages (${messages.length}) to generate a title. Skipping.`);
+          return "New Conversation";
+        }
+        
+        // Extract the conversation content
+        finalConversationText = messages
+          .sort((a, b) => a.timestamp - b.timestamp)
+          .map((msg: AnyMessage) => {
+            // Handle message content based on object structure
+            // Checking for type to determine how to extract role and content
+            let role: string;
+            let content: string;
 
-          if (isDBMessage(msg)) {
-            role = msg.role;
-            content = msg.content;
-          } else if (isUIMessage(msg)) {
-            role = msg.isBot ? 'assistant' : 'user';
-            content = msg.text;
-          } else {
-            // Fallback with safer access
-            const msgObj = msg as Record<string, any>;
-            role = msgObj.role === 'user' || msgObj.role === 'assistant' ? msgObj.role : 'user';
-            content = typeof msgObj.content === 'string' ? msgObj.content : 
-                     typeof msgObj.text === 'string' ? msgObj.text : 
-                     'No content available';
-          }
-          
-          return `${role === 'user' ? 'User' : 'Assistant'}: ${content}`;
-        })
-        .join('\n\n');
+            if (isDBMessage(msg)) {
+              role = msg.role;
+              content = msg.content;
+            } else if (isUIMessage(msg)) {
+              role = msg.isBot ? 'assistant' : 'user';
+              content = msg.text;
+            } else {
+              // Fallback with safer access
+              const msgObj = msg as Record<string, any>;
+              role = msgObj.role === 'user' || msgObj.role === 'assistant' ? msgObj.role : 'user';
+              content = typeof msgObj.content === 'string' ? msgObj.content : 
+                       typeof msgObj.text === 'string' ? msgObj.text : 
+                       'No content available';
+            }
+            
+            return `${role === 'user' ? 'User' : 'Assistant'}: ${content}`;
+          })
+          .join('\n\n');
+      }
       
-      console.log(`Sending title generation request to server for topic ${topicId}`);
-      console.log(`Conversation sample: ${conversation.substring(0, 100)}...`);
+      if (!finalConversationText || finalConversationText.trim().length < 10) {
+        console.log(`[TITLE GEN] Conversation text too short or empty for title generation`);
+        return "New Conversation";
+      }
       
-      // Return a promise to allow better error handling
-      return new Promise((resolve, reject) => {
-        // Set a timeout for the title generation request
-        const timeoutId = setTimeout(() => {
-          console.error(`Title generation request timed out for topic ${topicId}`);
-          reject(new Error('Title generation timed out'));
-        }, 15000); // 15 second timeout
+      // Local title extraction instead of server request
+      // First look for the first assistant message
+      const lines = finalConversationText.split('\n\n');
+      let assistantResponses = lines.filter(line => line.startsWith('Assistant:'));
       
-        // Define a title callback handler
-        const handleTitleGenerated = (title: string) => {
-          clearTimeout(timeoutId); // Clear the timeout
-          
-          if (!title) {
-            console.error('Server returned empty title');
-            reject(new Error('Empty title received'));
-            return;
-          }
-          
-          console.log(`Received title from server: "${title}"`);
-          
-          try {
-            // Update the topic title in the database
-            db.topics.update(topicId, { title })
-              .then(() => {
-                console.log(`Updated topic title in database to: "${title}"`);
-                resolve(title);
-              })
-              .catch((error) => {
-                console.error('Error updating topic title in database:', error);
-                reject(error);
-              });
-          } catch (error) {
-            console.error('Error updating topic title in database:', error);
-            reject(error);
-          }
-        };
+      if (assistantResponses.length === 0) {
+        console.log(`[TITLE GEN] No assistant responses found, using default title`);
+        return "New Conversation";
+      }
+      
+      // Get the first assistant response
+      const firstResponse = assistantResponses[0].replace('Assistant:', '').trim();
+      
+      // First priority: Look for markdown headers
+      const headerMatches = firstResponse.match(/^(#+)\s+(.+)$/m);
+      if (headerMatches && headerMatches[2]) {
+        // Clean the header text
+        let headerText = headerMatches[2].trim();
+        // Remove formatting
+        headerText = headerText.replace(/^\*\*|\*\*$|^\*|\*$/g, ''); // Remove bold/italic
+        headerText = headerText.replace(/^`|`$/g, ''); // Remove code ticks
+        headerText = headerText.replace(/^[📜🌿💊🔍📚📋🧪⚗️🏷️]+\s*/, ''); // Remove emojis
         
-        // Listen for title generation success event
-        socket.once('title-generation-success', (data) => {
-          if (data.topicId === topicId) {
-            handleTitleGenerated(data.title);
-          }
-        });
-      
-        // Generate a summary title using the socket
-        socket.emit('generate-title', {
-          conversation,
-          topicId
-        });
+        console.log(`[TITLE GEN] Using markdown header as title: "${headerText}"`);
         
-        // Add a separate error handler for socket errors
-        socket.once('title-generation-error', (error) => {
-          clearTimeout(timeoutId);
-          console.error('Title generation error from server:', error);
-          reject(new Error(error.message || 'Unknown title generation error'));
-        });
-      });
+        // Update the topic title in the database
+        if (topicId > 0) {
+          await db.topics.update(topicId, { title: headerText });
+          console.log(`[TITLE GEN] Updated topic title in database to: "${headerText}"`);
+        }
+        
+        return headerText;
+      }
+      
+      // Second priority: Use the first line of the response
+      const responseLines = firstResponse.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+      if (responseLines.length > 0) {
+        let firstLine = responseLines[0];
+        // Clean the first line
+        firstLine = firstLine.replace(/^\*\*|\*\*$|^\*|\*$/g, ''); // Remove bold/italic
+        firstLine = firstLine.replace(/^`|`$/g, ''); // Remove code ticks
+        firstLine = firstLine.replace(/^[📜🌿💊🔍📚📋🧪⚗️🏷️]+\s*/, ''); // Remove emojis
+        
+        // Truncate if necessary
+        const title = firstLine.length > 100 ? firstLine.substring(0, 100) + '...' : firstLine;
+        console.log(`[TITLE GEN] Using first line as title: "${title}"`);
+        
+        // Update the topic title in the database
+        if (topicId > 0) {
+          await db.topics.update(topicId, { title: title });
+          console.log(`[TITLE GEN] Updated topic title in database to: "${title}"`);
+        }
+        
+        return title;
+      }
+      
+      // Default title
+      return "New Conversation";
+      
     } catch (error) {
-      console.error('Error generating topic title:', error);
-      throw error; // Re-throw to allow handling by caller
+      console.error('[TITLE GEN] Error generating topic title:', error);
+      return "New Conversation";
     }
-  }, [socket, isDBReady]);
+  }, [isDBReady]);
 
   // Function to explicitly trigger title generation for a topic
   const triggerTitleGeneration = useCallback((topicId: number) => {
@@ -370,7 +554,8 @@ function TailwindApp() {
     checkDbVersion();
   }, []);
 
-  // Update the ensureTopicExists function with better validation and retries
+  // Fix issue #2: Prevent empty topics
+  // Update the ensureTopicExists function to be more strict
   const ensureTopicExists = useCallback(async (): Promise<number | undefined> => {
     // Use existing topic if available
     let topicId = currentTopicRef.current;
@@ -386,89 +571,19 @@ function TailwindApp() {
           return topicId;
         } else {
           console.warn(`[TOPIC DEBUG] Topic ${topicId} not found in database despite being in current state`);
-          // Fall through to create a new topic
+          // We won't create a new topic here anymore - will create after bot response
+          return undefined;
         }
       } catch (error) {
         console.error(`[TOPIC DEBUG] Error verifying topic ${topicId}:`, error);
-        // Fall through to create a new topic
-      }
-    }
-    
-    // Create a new topic if database is ready and user is logged in
-    if (isDBReady && user) {
-      try {
-        console.log('[TOPIC DEBUG] Creating new topic for conversation...');
-        const timestamp = Date.now();
-        
-        // First check if DB is actually ready
-        if (!db.isOpen()) {
-          console.log('[TOPIC DEBUG] Database not open, attempting to open');
-          await db.open();
-        }
-        
-        // Create the new topic with retry logic
-        let newTopicId: number | undefined;
-        let attempts = 0;
-        const maxAttempts = 3;
-        
-        while (!newTopicId && attempts < maxAttempts) {
-          attempts++;
-          try {
-            console.log(`[TOPIC DEBUG] Topic creation attempt ${attempts} of ${maxAttempts}`);
-            
-            newTopicId = await db.topics.add({
-              userId: user.email,
-              title: "New Conversation",
-              createdAt: timestamp,
-              lastActive: timestamp,
-              messageCnt: 0,
-              userMessageCnt: 0,
-              assistantMessageCnt: 0,
-              totalTokens: 0,
-              model: 'claude-3',
-              systemPrompt: '',
-              pinnedState: false
-            });
-            
-            console.log(`[TOPIC DEBUG] Created new topic with ID: ${newTopicId}`);
-          } catch (addError) {
-            console.error(`[TOPIC DEBUG] Error in topic creation attempt ${attempts}:`, addError);
-            await new Promise(resolve => setTimeout(resolve, 500));
-          }
-        }
-        
-        if (!newTopicId) {
-          console.error('[TOPIC DEBUG] Failed to create topic after multiple attempts');
-          return undefined;
-        }
-        
-        // Verify the topic was actually created
-        try {
-          const createdTopic = await db.topics.get(newTopicId);
-          if (!createdTopic) {
-            console.error(`[TOPIC DEBUG] Topic ${newTopicId} not found after creation`);
-            return undefined;
-          }
-          console.log(`[TOPIC DEBUG] Verified new topic ${newTopicId} exists in database`);
-        } catch (verifyError) {
-          console.error(`[TOPIC DEBUG] Error verifying new topic ${newTopicId}:`, verifyError);
-          return undefined;
-        }
-        
-        // Update both the state and ref to ensure consistency
-        setCurrentTopicId(newTopicId);
-        currentTopicRef.current = newTopicId;
-        
-        return newTopicId;
-      } catch (error) {
-        console.error('[TOPIC DEBUG] Error creating new topic:', error);
         return undefined;
       }
     }
     
-    console.error('[TOPIC DEBUG] Cannot create topic - DB not ready or user not logged in');
+    // Return undefined - topics will be created after bot response
+    console.log('[TOPIC DEBUG] No topic exists yet, will create after bot response');
     return undefined;
-  }, [isDBReady, user]);
+  }, []);
 
   // Socket connection handler
   const connectSocket = useCallback((userData: UserData) => {
@@ -632,16 +747,16 @@ function TailwindApp() {
         updateMessages(updatedMessages);
       });
 
-      newSocket.on('bot-response-end', (response: { id: string, error?: boolean, errorMessage?: string }) => {
+      newSocket.on('bot-response-end', async (response: { id: string, error?: boolean, errorMessage?: string }) => {
         console.log(`[SOCKET DEBUG] Bot response end received for ID: ${response.id}`);
         
         try {
-        const currentMessages = pendingMessagesRef.current;
+          const currentMessages = pendingMessagesRef.current;
           let botMessage: Message | null = null;
           
           // Find the bot message that was streaming
           for (const msg of currentMessages) {
-          if (msg.id.includes(`-${response.id}`)) {
+            if (msg.id.includes(`-${response.id}`)) {
               botMessage = msg;
               break;
             }
@@ -664,7 +779,7 @@ function TailwindApp() {
           updateMessages(updatedMessages);
           
           // Handle error case
-            if (response.error && response.errorMessage) {
+          if (response.error && response.errorMessage) {
             console.error(`[SOCKET DEBUG] Bot response error: ${response.errorMessage}`);
             botMessage.error = {
               type: 'other',
@@ -673,302 +788,207 @@ function TailwindApp() {
             return;
           }
           
-          // Log current state
-          console.log(`[SOCKET DEBUG] DB ready: ${isDBReady}, message length: ${botMessage.text.length}`);
-          
-          // Check if message is valid and should be saved
-          if (botMessage.text.length > 0) {
-            // SIMPLER DIRECT APPROACH - Try an immediate direct save
-            (async () => {
-              try {
-                console.log(`[DIRECT SAVE] Starting direct save for bot message of length ${botMessage.text.length}`);
-                
-                // Get or create topic
-                let topicId = currentTopicRef.current;
-                if (!topicId) {
-                  // Create a new topic directly
-                  console.log(`[DIRECT SAVE] No topic ID found, creating a new one`);
-                  if (!user) {
-                    console.error(`[DIRECT SAVE] Cannot create topic - no user data`);
-                    return;
-                  }
-                  
-                  try {
-                    const timestamp = Date.now();
-                    topicId = await db.topics.add({
-                      userId: user.email,
-                      title: "New Conversation",
-                      createdAt: timestamp,
-                      lastActive: timestamp,
-                      messageCnt: 0,
-                      userMessageCnt: 0,
-                      assistantMessageCnt: 0,
-                      totalTokens: 0,
-                      model: 'claude-3',
-                      systemPrompt: '',
-                      pinnedState: false
-                    });
-                    
-                    console.log(`[DIRECT SAVE] Created new topic with ID: ${topicId}`);
-                    setCurrentTopicId(topicId);
-                    currentTopicRef.current = topicId;
-                  } catch (err) {
-                    console.error(`[DIRECT SAVE] Failed to create topic:`, err);
-                    return;
-                  }
-                }
-                
-                if (!topicId) {
-                  console.error(`[DIRECT SAVE] Failed to obtain valid topic ID`);
-                  return;
-                }
-                
-                // Use a try-catch for each step to isolate failures
-                try {
-                  // 1. First verify topic exists
-                  const topic = await db.topics.get(topicId);
-                  if (!topic) {
-                    console.error(`[DIRECT SAVE] Topic ${topicId} not found in database`);
-                    return;
-                  }
-                  console.log(`[DIRECT SAVE] Verified topic ${topicId} exists: ${topic.title}`);
-                  
-                  // 2. Direct database insert - skipping all abstraction layers
-                  const messageId = await db.messages.add({
-                    topicId,
-                    timestamp: Date.now(),
-                    role: 'assistant',
-                    content: botMessage.text,
-                    type: 'text',
-                    tokens: Math.ceil(botMessage.text.length / 4),
-                    modelVersion: 'claude-3'
-                  });
-                  
-                  console.log(`[DIRECT SAVE] Successfully added bot message with ID: ${messageId}`);
-                  
-                  // 3. Update topic statistics
-                  try {
-                    await db.topics.update(topicId, {
-                      lastActive: Date.now(),
-                      messageCnt: (topic.messageCnt || 0) + 1,
-                      assistantMessageCnt: (topic.assistantMessageCnt || 0) + 1,
-                      totalTokens: (topic.totalTokens || 0) + Math.ceil(botMessage.text.length / 4)
-                    });
-                    console.log(`[DIRECT SAVE] Updated topic statistics`);
-                  } catch (statsErr) {
-                    console.error(`[DIRECT SAVE] Failed to update topic statistics:`, statsErr);
-                    // Non-critical error, continue
-                  }
-                  
-                  // 4. Verify message was saved
-                  const savedMessage = await db.messages.get(messageId);
-                  if (!savedMessage) {
-                    console.error(`[DIRECT SAVE] Failed to verify message save - ID ${messageId} not found`);
-                  } else {
-                    console.log(`[DIRECT SAVE] Verified message with ID ${messageId} was saved: ${savedMessage.content.substring(0, 30)}...`);
-                  }
-                } catch (dbErr) {
-                  console.error(`[DIRECT SAVE] Database operation failed:`, dbErr);
-                  // Try one more approach - the forceSave method
-                  if (user) {
-                    console.log(`[DIRECT SAVE] Attempting force save as last resort`);
-                    try {
-                      const success = await forceSaveMessage(
-                        user.email,
-                        'assistant',
-                        botMessage.text
-                      );
-                      if (success) {
-                        console.log(`[DIRECT SAVE] Force save succeeded`);
-                      } else {
-                        console.error(`[DIRECT SAVE] Force save failed`);
-                      }
-                    } catch (forceSaveErr) {
-                      console.error(`[DIRECT SAVE] Force save error:`, forceSaveErr);
-                    }
-                  }
-                }
-              } catch (outerErr) {
-                console.error(`[DIRECT SAVE] Outer error in direct save:`, outerErr);
-              }
-            })();
-            
-            // Original logic continues below...
-            (async () => {
-              try {
-                // Get current topic or verify it exists
-                let topicId = currentTopicRef.current;
-                
-                if (!topicId) {
-                  console.log(`[TOPIC DEBUG] No topic ID for bot message, attempting to create one`);
-                  topicId = await ensureTopicExists();
-                } else {
-                  // Verify topic exists
-                  const topic = await db.topics.get(topicId);
-                  if (!topic) {
-                    console.log(`[TOPIC DEBUG] Topic ${topicId} not found, creating new one for bot message`);
-                    topicId = await ensureTopicExists();
-                  }
-                }
-                
-                if (!topicId) {
-                  console.error(`[TOPIC DEBUG] Failed to get or create valid topic for bot message`);
-                  return;
-                }
-                
-                console.log(`[TOPIC DEBUG] Using topic ${topicId} for bot message`);
-                
-                // From here on, topicId is guaranteed to be a number and not undefined
-                const finalTopicId: number = topicId; // Create a non-nullable version
-                
-                // If DB is ready, save immediately, otherwise queue for later
-                if (isDBReady) {
-                  console.log(`[TOPIC DEBUG] Preparing to save assistant message to topic ${finalTopicId}, length: ${botMessage.text.length}`);
-                  
-                  // Use a self-executing async function to handle the database operations
-                  let saveAttemptCount = 0;
-                  const MAX_SAVE_ATTEMPTS = 3;
-                  let savedSuccessfully = false;
-                  
-                  while (saveAttemptCount < MAX_SAVE_ATTEMPTS && !savedSuccessfully) {
-                    saveAttemptCount++;
-                    console.log(`[TOPIC DEBUG] Bot message save attempt ${saveAttemptCount} of ${MAX_SAVE_ATTEMPTS}`);
-                    
-                    try {
-                      // Double-check topic exists before saving
-                      const topicExists = await db.topics.get(finalTopicId);
-                      if (!topicExists) {
-                        console.error(`[TOPIC DEBUG] Topic ${finalTopicId} not found before bot message save attempt ${saveAttemptCount}`);
-                        
-                        if (saveAttemptCount < MAX_SAVE_ATTEMPTS) {
-                          // Try to recreate the topic
-                          console.log(`[TOPIC DEBUG] Attempting to recreate missing topic for bot message`);
-                          const newTopicId = await ensureTopicExists();
-                          if (!newTopicId) {
-                            console.error(`[TOPIC DEBUG] Failed to recreate topic for bot message`);
-                            continue;
-                          }
-                          // Update our non-nullable topic ID with the new valid ID
-                          topicId = newTopicId;
-                        } else {
-                          throw new Error(`Topic ${finalTopicId} not found`);
-                        }
-                      }
-                      
-                      // Prepare message data with unique ID
-                      const uniqueId = Date.now() + Math.floor(Math.random() * 1000);
-                      console.log(`[TOPIC DEBUG] Generated unique ID for assistant message: ${uniqueId}`);
-                      
-                      const messageData = {
-                        id: uniqueId,
-                        topicId: finalTopicId,
-                        timestamp: botMessage.timestamp || Date.now(),
-                        role: 'assistant' as const,
-                        content: botMessage.text,
-                        type: 'text',
-                        tokens: Math.ceil(botMessage.text.length / 4),
-                        modelVersion: 'claude-3'
-                      };
-                      
-                      // Choose method based on attempt number
-                      let messageId = -1;
-                      
-                      if (saveAttemptCount === 1) {
-                        // First try context saveMessage
-                        console.log(`[TOPIC DEBUG] Method 1: Using context saveMessage for bot response, topic: ${finalTopicId}`);
-                        messageId = await saveMessage(finalTopicId, {
-                          timestamp: messageData.timestamp,
-                          role: 'assistant',
-                          content: botMessage.text,
-                          type: 'text',
-                          tokens: messageData.tokens,
-                          modelVersion: 'claude-3'
-                        });
-                      } else if (saveAttemptCount === 2) {
-                        // Then try safePutMessage
-                        console.log(`[TOPIC DEBUG] Method 2: Using db.safePutMessage for bot response, topic: ${finalTopicId}`);
-                        messageId = await db.safePutMessage(messageData);
-                      } else {
-                        // Last try direct write
-                        console.log(`[TOPIC DEBUG] Method 3: Using direct write for bot response, topic: ${finalTopicId}`);
-                        const success = await enhancedDirectDBWrite(
-                          finalTopicId,
-                          {
-                            role: 'assistant',
-                            content: botMessage.text,
-                            timestamp: messageData.timestamp
-                          }
-                        );
-                        
-                        if (success) {
-                          console.log(`[TOPIC DEBUG] Direct write succeeded for bot response`);
-                          savedSuccessfully = true;
-                          
-                          // Update topic statistics manually
-                          try {
-                            const topic = await db.topics.get(finalTopicId);
-                            if (topic) {
-                              await db.topics.update(finalTopicId, {
-                                lastActive: messageData.timestamp,
-                                messageCnt: (topic.messageCnt || 0) + 1,
-                                assistantMessageCnt: (topic.assistantMessageCnt || 0) + 1,
-                                totalTokens: (topic.totalTokens || 0) + messageData.tokens
-                              });
-                              console.log(`[TOPIC DEBUG] Updated statistics for topic ${finalTopicId} after bot message save`);
-                            }
-                          } catch (statsError) {
-                            console.error('[TOPIC DEBUG] Failed to update topic stats:', statsError);
-                          }
-                        } else {
-                          console.error('[TOPIC DEBUG] Direct write failed for bot response');
-                        }
-                      }
-                      
-                      if (messageId > 0) {
-                        console.log(`[TOPIC DEBUG] Bot response saved successfully with ID: ${messageId}`);
-                        savedSuccessfully = true;
-                        
-                        // Try to trigger title generation
-                        try {
-                          console.log(`[TOPIC DEBUG] Triggering title generation for topic ${finalTopicId}`);
-                          triggerTitleGeneration(finalTopicId);
-                        } catch (titleError) {
-                          console.error('[TOPIC DEBUG] Error triggering title generation:', titleError);
-                        }
-                      } else if (messageId <= 0 && saveAttemptCount < MAX_SAVE_ATTEMPTS) {
-                        console.error(`[TOPIC DEBUG] Invalid message ID: ${messageId}, trying next method`);
-                      }
-                    } catch (saveError) {
-                      console.error(`[TOPIC DEBUG] Error in bot response save attempt ${saveAttemptCount}:`, saveError);
-                      
-                      // On final attempt, add to queue if all direct saves fail
-                      if (saveAttemptCount >= MAX_SAVE_ATTEMPTS) {
-                        console.log(`[TOPIC DEBUG] All save attempts failed for bot message, adding to queue`);
-                        pendingBotMessagesQueue.current.push({
-                          message: botMessage,
-                          topicId: finalTopicId
-                        });
-                      }
-                    }
-                  }
-                } else {
-                  // Queue the message for when DB becomes ready
-                  console.log(`[TOPIC DEBUG] Database not ready. Queueing bot message for later processing.`);
-                  pendingBotMessagesQueue.current.push({
-                    message: botMessage,
-                    topicId: finalTopicId
-                  });
-                  console.log(`[TOPIC DEBUG] Bot message queued. Queue size: ${pendingBotMessagesQueue.current.length}`);
-                }
-              } catch (error) {
-                console.error('[TOPIC DEBUG] Unexpected error handling bot message:', error);
-              }
-            })();
-          } else {
-            console.log(`[TOPIC DEBUG] Skipping message save - Empty message`);
+          // CRITICAL FIX: Add direct topic creation here - only proceed if we have a user
+          if (!user) {
+            console.log('[TOPIC DEBUG] No user available, skipping topic creation');
+            return;
           }
+          
+          console.log('[TOPIC DEBUG] Starting direct topic creation after bot response');
+          
+          // CRITICAL FIX: Find the actual persona that was selected when the user sent the message
+          // We need to find the user message that came before this bot response
+          const allMessages = pendingMessagesRef.current;
+          const messageIndex = allMessages.findIndex(msg => msg.id === botMessage?.id);
+          const precedingMessages = messageIndex > 0 ? allMessages.slice(0, messageIndex) : [];
+          const lastUserMessage = [...precedingMessages].reverse().find(msg => !msg.isBot);
+          
+          if (!lastUserMessage) {
+            console.log('[TOPIC DEBUG] No user message found, skipping topic creation');
+            return;
+          }
+          
+          // Get the persona ID to use for the topic
+          // 1. First check if we already have a topic with a persona
+          let personaIdForTopic = currentPersonaId;
+          
+          // Check if the user message has a stored personaId
+          if ((lastUserMessage as any).personaId) {
+            const msgPersonaId = (lastUserMessage as any).personaId;
+            console.log(`[TOPIC DEBUG] Found persona ID stored in message: ${msgPersonaId}`);
+            
+            // Verify it's valid
+            const isMsgPersonaValid = AVAILABLE_PERSONAS.some(p => p.id === msgPersonaId);
+            if (isMsgPersonaValid) {
+              console.log(`[TOPIC DEBUG] Using persona from message: ${msgPersonaId}`);
+              personaIdForTopic = msgPersonaId;
+            } else {
+              console.log(`[TOPIC DEBUG] Persona ID in message is invalid: ${msgPersonaId}`);
+            }
+          }
+          
+          // 2. Check if we have an existing topic with a persona
+          if (currentTopicRef.current) {
+            try {
+              const existingTopic = await db.topics.get(currentTopicRef.current);
+              if (existingTopic && existingTopic.personaId) {
+                // If topic already exists, use its persona
+                personaIdForTopic = existingTopic.personaId;
+                console.log(`[TOPIC DEBUG] Using existing topic's persona: ${personaIdForTopic}`);
+              }
+            } catch (e) {
+              console.error('[TOPIC DEBUG] Error checking existing topic:', e);
+            }
+          }
+          
+          // Verify the persona ID is valid
+          const isValidPersonaId = AVAILABLE_PERSONAS.some(p => p.id === personaIdForTopic);
+          if (!isValidPersonaId) {
+            console.error(`[TOPIC DEBUG] Invalid persona ID: ${personaIdForTopic}, falling back to yitam`);
+            personaIdForTopic = 'yitam';
+          }
+          
+          // CRITICAL FIX: Check if we already have a topic - we should NOT create a new one
+          if (currentTopicRef.current) {
+            console.log(`[TOPIC DEBUG] Topic already exists (${currentTopicRef.current}), updating with message`);
+            
+            try {
+              // Get the existing topic
+              const existingTopic = await db.topics.get(currentTopicRef.current);
+              
+              if (existingTopic) {
+                // CRITICAL: Use the topic's existing persona ID, NOT the current UI persona
+                // This ensures we don't override the topic's persona
+                const topicPersona = existingTopic.personaId || personaIdForTopic;
+                
+                console.log(`[TOPIC DEBUG] Existing topic has persona: ${topicPersona}`);
+                
+                // Update the existing topic with current values
+                await db.topics.update(currentTopicRef.current, {
+                  lastActive: Date.now(),
+                  messageCnt: (existingTopic.messageCnt || 0) + 1,
+                  assistantMessageCnt: (existingTopic.assistantMessageCnt || 0) + 1,
+                  totalTokens: (existingTopic.totalTokens || 0) + Math.ceil(botMessage.text.length / 4)
+                });
+                
+                // Save the bot message to the existing topic
+                await db.messages.put({
+                  id: Date.now(),
+                  topicId: currentTopicRef.current,
+                  timestamp: botMessage.timestamp || Date.now(),
+                  role: 'assistant',
+                  content: botMessage.text,
+                  type: 'text',
+                  tokens: Math.ceil(botMessage.text.length / 4),
+                  modelVersion: 'claude-3'
+                });
+                
+                console.log(`[TOPIC DEBUG] Added message to existing topic ${currentTopicRef.current}`);
+                
+                // CRITICAL: Make sure the UI shows the correct persona for this topic
+                absoluteForcePersona(topicPersona);
+                setIsPersonaLocked(true);
+                
+                return;
+              }
+            } catch (error) {
+              console.error('[TOPIC DEBUG] Error accessing existing topic:', error);
+              // Continue with creating a new topic as fallback
+            }
+          }
+          
+          // Extract title from bot message
+          const extractedTitle = extractTitleFromBotText(botMessage.text);
+          console.log(`[TOPIC DEBUG] Extracted title: "${extractedTitle}"`);
+          
+          // Use a timestamp for all operations
+          const timestamp = Date.now();
+          
+          // CRITICAL FIX: Final verification to ensure we have a valid persona
+          // This is the LAST check before creating the topic
+          const finalPersonaId = isValidPersonaId ? personaIdForTopic : 'yitam';
+          console.log(`[TOPIC DEBUG] Creating new topic with persona: ${finalPersonaId}`);
+          
+          // Create topic with PUT instead of ADD
+          await db.topics.put({
+            id: timestamp,
+            userId: user.email,
+            title: extractedTitle,
+            createdAt: timestamp,
+            lastActive: timestamp,
+            messageCnt: 2,
+            userMessageCnt: 1,
+            assistantMessageCnt: 1,
+            totalTokens: Math.ceil(lastUserMessage.text.length / 4) + Math.ceil(botMessage.text.length / 4),
+            model: 'claude-3',
+            systemPrompt: '',
+            pinnedState: false,
+            personaId: finalPersonaId // CRITICAL: Use the final verified persona ID
+          });
+          
+          const topicId = timestamp;
+          console.log(`[TOPIC DEBUG] Successfully created topic with forced ID: ${topicId} and persona: ${finalPersonaId}`);
+          
+          // CRITICAL: Verify the topic was created with the correct persona
+          const createdTopic = await db.topics.get(topicId);
+          if (createdTopic) {
+            if (createdTopic.personaId !== finalPersonaId) {
+              console.error(`[TOPIC DEBUG] PERSONA MISMATCH: Expected ${finalPersonaId}, got ${createdTopic.personaId}`);
+              
+              // Fix the persona ID if it doesn't match
+              await db.topics.update(topicId, { personaId: finalPersonaId });
+              console.log(`[TOPIC DEBUG] Forced persona update to: ${finalPersonaId}`);
+            } else {
+              console.log(`[TOPIC DEBUG] Verified topic ${topicId} created with correct persona: ${createdTopic.personaId}`);
+            }
+          }
+          
+          // CRITICAL: Update both state and ref immediately
+          ReactDOM.unstable_batchedUpdates(() => {
+            setCurrentTopicId(topicId);
+            currentTopicRef.current = topicId;
+            // Make sure we lock the persona since we now have a topic
+            setIsPersonaLocked(true);
+            // CRITICAL: Force the persona to be correct
+            absoluteForcePersona(finalPersonaId);
+          });
+          
+          // Save user message with put
+          await db.messages.put({
+            id: timestamp + 1,
+            topicId: topicId,
+            timestamp: lastUserMessage.timestamp || timestamp - 1000,
+            role: 'user',
+            content: lastUserMessage.text,
+            type: 'text',
+            tokens: Math.ceil(lastUserMessage.text.length / 4)
+          });
+          
+          // Save bot message with put
+          await db.messages.put({
+            id: timestamp + 2,
+            topicId: topicId,
+            timestamp: botMessage.timestamp || timestamp,
+            role: 'assistant',
+            content: botMessage.text,
+            type: 'text',
+            tokens: Math.ceil(botMessage.text.length / 4),
+            modelVersion: 'claude-3'
+          });
+          
+          console.log(`[TOPIC DEBUG] Successfully saved both messages to topic ${topicId}`);
+          
+          // FINAL verification that the correct persona is set
+          setTimeout(() => {
+            if (currentPersonaId !== finalPersonaId) {
+              console.error(`[PERSONA DEBUG] Final verification failed. Expected: ${finalPersonaId}, got: ${currentPersonaId}`);
+              absoluteForcePersona(finalPersonaId);
+            } else {
+              console.log('[PERSONA DEBUG] Final verification passed: Persona is correctly set');
+            }
+          }, 200);
         } catch (error) {
-          console.error('[SOCKET DEBUG] Error processing bot-response-end:', error);
+          console.error('[TOPIC DEBUG] Error in DIRECT topic creation:', error);
         }
       });
 
@@ -1072,7 +1092,8 @@ function TailwindApp() {
       setMessages([]);
       setHasUserSentMessage(false);
       setIsPersonaLocked(false);
-      setSelectedPersonaId('yitam');
+      // Don't reset the persona to default - preserve user's selection
+      // setCurrentPersonaId('yitam');
     });
   }, [socket]);
 
@@ -1137,283 +1158,143 @@ function TailwindApp() {
     lastMessageRef.current = text;
     const timestamp = Date.now();
     const randomId = Math.random().toString(36).substring(2, 10);
+    
+    // Capture the current UI-selected persona
+    const capturedPersonaId = currentPersonaId;
+    console.log(`[PERSONA DEBUG] Captured persona ID at message send time: ${capturedPersonaId}`);
+    
     const userMessage: Message = {
       id: `user-${timestamp}-${randomId}`,
       text,
       isBot: false,
-      timestamp
-    };
+      timestamp,
+      // Add the persona ID as a non-enumerable property to prevent JSON issues
+      personaId: capturedPersonaId
+    } as Message & { personaId: string };
     
     // Update UI state
     setHasUserSentMessage(true);
+    // Lock the persona using context
     setIsPersonaLocked(true);
     setMessages(prevMessages => [...prevMessages, userMessage]);
     pendingMessagesRef.current = [...pendingMessagesRef.current, userMessage];
     
-    // First ensure we have a topic, then send the message and save it
-    ensureTopicExists().then(topicId => {
-      if (!topicId) {
-        console.error('[TOPIC DEBUG] Failed to get or create a topic for message');
-        // Show error to user
-        const errorMessage: Message = {
-          id: `error-${Date.now()}`,
-          text: 'Không thể lưu trữ tin nhắn. Vui lòng tải lại trang.',
-          isBot: true,
-          error: {
-            type: 'other',
-            message: 'Topic creation failed'
-          }
-        };
-        
-        setMessages(prevMessages => [...prevMessages, errorMessage]);
-        return;
-      }
+    // CRITICAL FIX: Check if we're in an existing topic and save the message to the database
+    if (currentTopicRef.current) {
+      const topicId = currentTopicRef.current;
       
-      console.log(`[TOPIC DEBUG] Using topic ${topicId} for message`);
-      
-      // Create a new topic if none exists or store message in current topic
-      const handleMessageStorage = async () => {
-        try {
-          console.log(`[TOPIC DEBUG] Saving user message to DB for topic: ${topicId}, content: "${text.substring(0, 30)}..."`);
-          
-          // Try each storage method in sequence
-          const storeMessage = async () => {
-            let saveAttemptCount = 0;
-            const MAX_SAVE_ATTEMPTS = 3;
-            let savedSuccessfully = false;
-
-            while (saveAttemptCount < MAX_SAVE_ATTEMPTS && !savedSuccessfully) {
-              saveAttemptCount++;
-              console.log(`[TOPIC DEBUG] Save attempt ${saveAttemptCount} of ${MAX_SAVE_ATTEMPTS}`);
-              
-              try {
-                let messageId = -1;
-                
-                // Double-check topic exists before each save attempt
-                const topicExists = await db.topics.get(topicId);
-                if (!topicExists) {
-                  console.error(`[TOPIC DEBUG] Topic ${topicId} no longer exists before save attempt ${saveAttemptCount}`);
-                  throw new Error(`Topic ${topicId} not found before save`);
-                }
-                
-                // Prepare message data with pre-assigned ID to avoid auto-increment issues
-                const messageData = {
-                  id: Date.now() + Math.floor(Math.random() * 1000),
-                  topicId: topicId,
-                  timestamp,
-                  role: 'user' as const,
-                  content: text,
-                  type: 'text',
-                  tokens: Math.ceil(text.length / 4)
-                };
-
-                // Choose method based on attempt number
-                if (saveAttemptCount === 1) {
-                  // Method 1: Try the context saveMessage
-                  console.log('[TOPIC DEBUG] Method 1: Using context saveMessage');
-                  messageId = await saveMessage(topicId, {
-                    timestamp,
-                    role: 'user',
-                    content: text,
-                    type: 'text',
-                    tokens: Math.ceil(text.length / 4)
-                  });
-                } else if (saveAttemptCount === 2) {
-                  // Method 2: Try safePutMessage
-                  console.log('[TOPIC DEBUG] Method 2: Using db.safePutMessage');
-                  messageId = await db.safePutMessage(messageData);
-                } else {
-                  // Method 3: Try direct IndexedDB write
-                  console.log('[TOPIC DEBUG] Method 3: Using directDBWrite');
-                  const success = await directDBWrite(
-                    topicId,
-                    {
-                      role: 'user',
-                      content: text,
-                      timestamp
-                    }
-                  );
-                  
-                  if (success) {
-                    console.log('[TOPIC DEBUG] Direct IndexedDB write succeeded');
-                    savedSuccessfully = true;
-                    
-                    // Update topic statistics manually since directDBWrite doesn't do this
-                    try {
-                      const topic = await db.topics.get(topicId);
-                      if (topic) {
-                        await db.topics.update(topicId, {
-                          lastActive: timestamp,
-                          messageCnt: (topic.messageCnt || 0) + 1,
-                          userMessageCnt: (topic.userMessageCnt || 0) + 1,
-                          totalTokens: (topic.totalTokens || 0) + messageData.tokens
-                        });
-                        console.log(`[TOPIC DEBUG] Updated statistics for topic ${topicId}`);
-                      }
-                    } catch (statsError) {
-                      console.error('[TOPIC DEBUG] Failed to update topic stats:', statsError);
-                    }
-                    
-                    return true;
-                  } else {
-                    console.error('[TOPIC DEBUG] Direct IndexedDB write failed');
-                    // If all attempts failed, suggest database reset
-                    if (saveAttemptCount >= MAX_SAVE_ATTEMPTS) {
-                      console.error('[TOPIC DEBUG] All save attempts failed, suggesting database reset');
-                      setTimeout(() => {
-                        resetDatabase();
-                      }, 1000);
-                    }
-                    continue;
-                  }
-                }
-                
-                if (messageId > 0) {
-                  console.log(`[TOPIC DEBUG] Message saved successfully with ID: ${messageId}`);
-                  savedSuccessfully = true;
-                  return true;
-                } else {
-                  console.error(`[TOPIC DEBUG] Failed with method ${saveAttemptCount}, returned ID: ${messageId}`);
-                }
-              } catch (error) {
-                console.error(`[TOPIC DEBUG] Error in save attempt ${saveAttemptCount}:`, error);
-              }
-            }
-            
-            // If all attempts failed and not handled above
-            if (!savedSuccessfully && saveAttemptCount >= MAX_SAVE_ATTEMPTS) {
-              console.error('[TOPIC DEBUG] All save methods failed after maximum attempts');
-              // Suggest database reset as a last resort
-              setTimeout(() => {
-                resetDatabase();
-              }, 1000);
-              return false;
-            }
-            
-            return savedSuccessfully;
-          };
-          
-          const result = await storeMessage();
-          if (!result) {
-            console.error('[TOPIC DEBUG] Failed to save message after all attempts');
-          }
-        } catch (error) {
-          console.error('[TOPIC DEBUG] Error saving message to database:', error);
-        }
-      };
-      
-      // Execute message persistence
-      handleMessageStorage();
-      
-      // Send the message to the server (do this after UI update for responsiveness)
-      const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
-      socket.emit('chat-message', {
-        message: text,
-        personaId: selectedPersonaId,
-        domains: selectedPersona.domains
-      });
-      
-      console.log('[TOPIC DEBUG] Message sent, current messages:', pendingMessagesRef.current.length);
-    }).catch(error => {
-      console.error('[TOPIC DEBUG] Error ensuring topic exists:', error);
-      // Add error message to chat
-      const errorMessage: Message = {
-        id: `error-${Date.now()}`,
-        text: 'Không thể lưu trữ tin nhắn. Vui lòng tải lại trang.',
-        isBot: true,
-        error: {
-          type: 'other',
-          message: 'Topic creation failed'
-        }
-      };
-      
-      setMessages(prevMessages => [...prevMessages, errorMessage]);
-    });
-  }, [socket, selectedPersonaId, setMessages, isDBReady, user, saveMessage, ensureTopicExists]);
-
-  // Function to start a new chat
-  const startNewChat = useCallback(() => {
-    console.log('Starting new chat...');
-    
-    // Create a new topic if database is ready AND this was explicitly requested (not just initial load)
-    if (isDBReady && user) {
-      // Implement topic creation logic directly instead of calling createNewTopic
+      // Immediately save the user message to the database
       (async () => {
         try {
-          // Create a new topic
-          const topicId = await db.topics.add({
-            userId: user.email,
-            title: "New Conversation",
-            createdAt: Date.now(),
-            lastActive: Date.now(),
-            messageCnt: 0,
-            userMessageCnt: 0,
-            assistantMessageCnt: 0,
-            totalTokens: 0,
-            model: 'claude-3',
-            systemPrompt: '',
-            pinnedState: false
+          // Verify the topic exists and get its details
+          const topic = await db.topics.get(topicId);
+          
+          if (!topic) {
+            console.error(`[TOPIC DEBUG] Cannot save message - topic ${topicId} not found`);
+            return;
+          }
+          
+          // CRITICAL: Check if the topic has a persona ID
+          if (!topic.personaId) {
+            // Set the topic's persona to the current UI persona
+            console.log(`[PERSONA DEBUG] Topic ${topicId} has no persona ID, setting to current: ${currentPersonaId}`);
+            await db.topics.update(topicId, { personaId: currentPersonaId });
+          } else if (topic.personaId !== currentPersonaId) {
+            // CRITICAL FIX: If the topic's persona differs from the current UI persona,
+            // update the UI to match the topic's persona
+            console.log(`[PERSONA DEBUG] Topic persona (${topic.personaId}) differs from UI persona (${currentPersonaId}), correcting UI...`);
+            absoluteForcePersona(topic.personaId);
+            
+            // Verify the correction worked
+            setTimeout(() => {
+              if (currentPersonaId !== topic.personaId) {
+                console.error(`[PERSONA DEBUG] Failed to sync UI persona with topic persona. UI: ${currentPersonaId}, Topic: ${topic.personaId}`);
+                // Try one more time
+                absoluteForcePersona(topic.personaId!);
+              } else {
+                console.log(`[PERSONA DEBUG] Successfully synced UI persona with topic persona: ${currentPersonaId}`);
+              }
+            }, 50);
+          }
+          
+          // Save the user message
+          await db.messages.put({
+            id: timestamp,
+            topicId: topicId,
+            timestamp: timestamp,
+            role: 'user',
+            content: text,
+            type: 'text',
+            tokens: Math.ceil(text.length / 4)
           });
           
-          // Set as current topic
-          setCurrentTopicId(topicId);
-          currentTopicRef.current = topicId;
+          // Update topic statistics
+          await db.topics.update(topicId, {
+            lastActive: timestamp,
+            messageCnt: (topic.messageCnt || 0) + 1,
+            userMessageCnt: (topic.userMessageCnt || 0) + 1,
+            totalTokens: (topic.totalTokens || 0) + Math.ceil(text.length / 4)
+          });
           
-          // Create welcome message
-          const timestamp = Date.now();
-          const selectedPersona = AVAILABLE_PERSONAS.find((p: Persona) => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
-          const welcomeMessage: Message = {
-            id: 'welcome',
-            text: user 
-              ? `Xin chào ${user.name}! ${selectedPersona.displayName} đang lắng nghe!`
-              : `Xin chào! ${selectedPersona.displayName} đang lắng nghe!`,
-            isBot: true,
-            timestamp
-          };
-          
-          // Reset all states
-          lastMessageRef.current = null;
-          pendingMessagesRef.current = [welcomeMessage];
-          
-          // Update UI state
-          setMessages([welcomeMessage]);
+          console.log(`[TOPIC DEBUG] Saved user message to existing topic ${topicId}`);
         } catch (error) {
-          console.error('Error creating new topic:', error);
+          console.error('[TOPIC DEBUG] Error saving user message to database:', error);
         }
       })();
     } else {
-      // Find selected persona
-      const selectedPersona = AVAILABLE_PERSONAS.find((p: Persona) => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
-      
-      // Create welcome message WITHOUT creating a new topic
-      const timestamp = Date.now();
-      const welcomeMessage: Message = {
-        id: 'welcome',
-        text: user 
-          ? `Xin chào ${user.name}! ${selectedPersona.displayName} đang lắng nghe!`
-          : `Xin chào! ${selectedPersona.displayName} đang lắng nghe!`,
-          isBot: true,
-          timestamp
-      };
-
-      // Reset all states
-      lastMessageRef.current = null;
-      pendingMessagesRef.current = [welcomeMessage];
-      
-      // Update UI state
-      setMessages([welcomeMessage]);
-      
-      // Clear current topic reference on new chat without DB (important)
-      setCurrentTopicId(undefined);
-      currentTopicRef.current = undefined;
+      console.log('[TOPIC DEBUG] No existing topic, message will be saved after bot response');
     }
     
-    // Always reset these states
-    setHasUserSentMessage(false);
-    setIsPersonaLocked(false);
+    // CRITICAL FIX: Store the ACTUAL current persona for the request
+    // This ensures we capture the exact persona the user has selected
+    // We MUST create a local variable and print it to ensure it's correct
+    const actualCurrentPersona = capturedPersonaId;
+    console.log(`[PERSONA DEBUG] CRITICAL: Captured actual current persona: ${actualCurrentPersona}`);
     
-    console.log('New chat started, states reset');
-  }, [selectedPersonaId, user, isDBReady]);
+    // Find the selected persona for domains
+    const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === actualCurrentPersona) || AVAILABLE_PERSONAS[0];
+    console.log(`[PERSONA DEBUG] Selected persona: ${selectedPersona.displayName} (${actualCurrentPersona})`);
+    
+    // Send the message to the server with the current persona ID
+    socket.emit('chat-message', {
+      message: text,
+      personaId: actualCurrentPersona,
+      domains: selectedPersona.domains
+    });
+    
+    console.log(`[PERSONA DEBUG] Message sent with persona: ${actualCurrentPersona}`);
+  }, [socket, setMessages, currentPersonaId, setIsPersonaLocked, absoluteForcePersona]);
+
+  // Function to start a new chat
+  const startNewChat = useCallback(() => {
+    // Clear current topic
+    setCurrentTopicId(undefined);
+    currentTopicRef.current = undefined;
+    
+    // Reset the persona state - this will load the default from localStorage
+    resetPersona();
+    
+    // Find selected persona using the now-reset persona ID
+    const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0];
+    
+    // Create welcome message
+    const welcomeMessage: Message = {
+      id: 'welcome',
+      text: user 
+        ? `Xin chào ${user.name}! ${selectedPersona.displayName} đang lắng nghe!`
+        : `Xin chào! ${selectedPersona.displayName} đang lắng nghe!`,
+      isBot: true,
+      timestamp: Date.now()
+    };
+    
+    // Reset message state
+    lastMessageRef.current = null;
+    pendingMessagesRef.current = [welcomeMessage];
+    setMessages([welcomeMessage]);
+    setHasUserSentMessage(false);
+    
+    console.log(`[PERSONA DEBUG] New chat started with default persona: ${currentPersonaId}`);
+  }, [currentPersonaId, resetPersona, user]);
 
   // Initialize messages when component mounts or user changes - SHOW WELCOME WITHOUT CREATING TOPIC
   useEffect(() => {
@@ -1421,7 +1302,7 @@ function TailwindApp() {
       console.log('Initializing welcome message without creating topic...');
       
       // Create welcome message only (no topic creation)
-      const selectedPersona = AVAILABLE_PERSONAS.find((p: Persona) => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
+      const selectedPersona = AVAILABLE_PERSONAS.find((p: Persona) => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0];
       const welcomeMessage: Message = {
         id: 'welcome',
         text: `Xin chào ${user.name}! ${selectedPersona.displayName} đang lắng nghe!`,
@@ -1437,8 +1318,10 @@ function TailwindApp() {
       // Reset states
       setHasUserSentMessage(false);
       setIsPersonaLocked(false);
+      
+      console.log(`[PERSONA DEBUG] Initialized with persona: ${currentPersonaId}, display name: ${selectedPersona.displayName}`);
     }
-  }, [messages.length, user, selectedPersonaId]);
+  }, [messages.length, user, currentPersonaId]);
 
   // Memoize sorted messages
   const sortedMessages = useMemo(() => {
@@ -1537,26 +1420,11 @@ function TailwindApp() {
     )
   );
 
-  // Modify sendMessage to use debounced updates
+  // Modify onSelectPersona to use the PersonaContext
   const onSelectPersona = (personaId: string) => {
-    if (isPersonaLocked) return; // Don't allow changes if locked
-    
-    // Update the selected persona
-    setSelectedPersonaId(personaId);
-    
-    // Find the newly selected persona
-    const selectedPersona = AVAILABLE_PERSONAS.find((p: Persona) => p.id === personaId) || AVAILABLE_PERSONAS[0];
-    
-    // Update the welcome message with the new persona
-    updateMessages([
-      {
-        id: 'welcome',
-        text: `Xin chào! ${selectedPersona.displayName} đang lắng nghe!`,
-        isBot: true
-      }
-    ]);
-    
-    console.log(`Selected persona: ${personaId}`, selectedPersona);
+    console.log(`Selected persona: ${personaId}`);
+    // This already checks if locked inside the context
+    setCurrentPersonaId(personaId);
   };
 
   // Check if any bot message is currently streaming
@@ -1568,11 +1436,166 @@ function TailwindApp() {
     return !!apiKey;
   };
 
-  // Create a new topic
+  // Fix issue #3: Fix persona for topics
+  // Update the handleTopicSelect function to properly handle persona selection
+  const handleTopicSelect = useCallback(async (topicId: number) => {
+    try {
+      // Handle special case when no topics exist (-1)
+      if (topicId === -1) {
+        console.log('[PERSONA DEBUG] No topics exist, resetting chat to fresh state');
+        // Clear current topic
+        setCurrentTopicId(undefined);
+        currentTopicRef.current = undefined;
+        
+        // Reset to default persona from localStorage
+        resetPersona();
+        
+        const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0];
+        const welcomeMessage = {
+          id: 'welcome',
+          text: user ? `Xin chào ${user.name}! ${selectedPersona.displayName} đang lắng nghe!` : 
+                    `Xin chào! ${selectedPersona.displayName} đang lắng nghe!`,
+          isBot: true,
+          timestamp: Date.now()
+        };
+        
+        updateMessages([welcomeMessage]);
+        setHasUserSentMessage(false);
+        return;
+      }
+      
+      console.log('[PERSONA DEBUG] Loading topic:', topicId);
+      
+      try {
+        // Get the topic synchronously - CRITICAL: this needs to be loaded first
+        // and we need to wait for it before proceeding
+        const topic = await db.topics.get(topicId);
+        
+        if (!topic) {
+          console.error(`[PERSONA DEBUG] Topic ${topicId} not found`);
+          return;
+        }
+        
+        console.log(`[PERSONA DEBUG] Found topic: ${topic.title} (ID: ${topicId})`);
+        
+        // CRITICAL FIX: Verify topic has a persona ID
+        if (!topic.personaId) {
+          console.warn(`[PERSONA DEBUG] Topic ${topicId} has no persona ID, will assign current UI persona: ${currentPersonaId}`);
+          
+          // Update the topic with the current persona
+          await db.topics.update(topicId, { 
+            personaId: currentPersonaId,
+            lastActive: Date.now() 
+          });
+          
+          // Re-fetch the topic to ensure we have the updated version
+          const updatedTopic = await db.topics.get(topicId);
+          if (updatedTopic && updatedTopic.personaId) {
+            console.log(`[PERSONA DEBUG] Topic ${topicId} now has persona ID: ${updatedTopic.personaId}`);
+            topic.personaId = updatedTopic.personaId;
+          }
+        } else {
+          console.log(`[PERSONA DEBUG] Topic ${topicId} has persona ID: ${topic.personaId}`);
+          
+          // Just update the last active timestamp
+          await db.topics.update(topicId, { lastActive: Date.now() });
+        }
+        
+        // CRITICAL: This must be BEFORE loading messages or setting any UI elements
+        // First set the topic ID so it's updated before we do anything else
+        setCurrentTopicId(topicId);
+        currentTopicRef.current = topicId;
+        
+        // CRITICAL FIX: Get the topic's persona ID
+        const topicPersonaId = topic.personaId || currentPersonaId;
+        console.log(`[PERSONA DEBUG] Setting persona from topic: ${topicPersonaId}`);
+        
+        // CRITICAL FIX: Use the new absoluteForcePersona method which bypasses all restrictions
+        // This ensures the UI always shows the correct persona for this topic
+        absoluteForcePersona(topicPersonaId);
+        
+        // Set the lock AFTER setting the persona
+        setIsPersonaLocked(true);
+        
+        // Extra verification to make sure the persona was set correctly
+        setTimeout(() => {
+          if (currentPersonaId !== topicPersonaId) {
+            console.error(`[PERSONA DEBUG] CRITICAL ERROR: Persona not set correctly. Expected: ${topicPersonaId}, actual: ${currentPersonaId}`);
+            // Try one more time with forced setter
+            absoluteForcePersona(topicPersonaId);
+          } else {
+            console.log(`[PERSONA DEBUG] Verified persona is set correctly to: ${currentPersonaId}`);
+          }
+        }, 100);
+        
+        // Now load messages for this topic
+        const topicMessages = await db.messages
+          .where('topicId')
+          .equals(topicId)
+          .sortBy('timestamp');
+        
+        console.log(`[PERSONA DEBUG] Loaded ${topicMessages.length} messages for topic ${topicId}`);
+        
+        // Get the persona to use for display - MUST use the topic's persona ID
+        const persona = AVAILABLE_PERSONAS.find(p => p.id === topicPersonaId) || AVAILABLE_PERSONAS[0];
+        console.log(`[PERSONA DEBUG] Using persona: ${topicPersonaId}, display name: ${persona.displayName}`);
+        
+        // Convert DB messages to UI format
+        const uiMessages = topicMessages.map(dbMsg => ({
+          id: `msg-${dbMsg.id || 'unknown'}-${dbMsg.timestamp}`,
+          text: dbMsg.content,
+          isBot: dbMsg.role === 'assistant',
+          timestamp: dbMsg.timestamp
+        }));
+        
+        // If there are no messages, add a welcome message
+        if (uiMessages.length === 0) {
+          uiMessages.push({
+            id: 'welcome',
+            text: user ? `Xin chào ${user.name}! ${persona.displayName} đang lắng nghe!` : 
+                        `Xin chào! ${persona.displayName} đang lắng nghe!`,
+            isBot: true,
+            timestamp: Date.now()
+          });
+        }
+        
+        // Update the UI with the messages
+        updateMessages(uiMessages);
+        
+        // Set user sent message to avoid showing sample questions
+        setHasUserSentMessage(true);
+        
+        console.log(`[PERSONA DEBUG] Topic ${topicId} fully loaded with persona "${topicPersonaId}"`);
+      } catch (dbError) {
+        console.error('[PERSONA DEBUG] Database error:', dbError);
+        
+        // Show an error message to the user
+        const errorMessage = {
+          id: `error-${Date.now()}`,
+          text: 'Không thể tải cuộc trò chuyện. Vui lòng thử lại.',
+          isBot: true,
+          error: {
+            type: 'other' as const,
+            message: 'Failed to load conversation'
+          }
+        };
+        
+        updateMessages([errorMessage]);
+      }
+    } catch (error) {
+      console.error('[PERSONA DEBUG] Fatal error in handleTopicSelect:', error);
+    }
+  }, [user, updateMessages, currentPersonaId, absoluteForcePersona, resetPersona, setIsPersonaLocked]);
+
+  // Ensure each topic saves the selected persona in any other relevant places
+  // Fix the createNewTopic function
   const createNewTopic = useCallback(async (title: string) => {
     if (!user || !isDBReady) return;
     
     try {
+      // Use currentPersonaId directly from context 
+      console.log(`[TOPIC DEBUG] Creating new topic with persona: ${currentPersonaId}`);
+      
       // Create a new topic
       const topicId = await db.topics.add({
         userId: user.email,
@@ -1585,14 +1608,16 @@ function TailwindApp() {
         totalTokens: 0,
         model: 'claude-3',
         systemPrompt: '',
-        pinnedState: false
+        pinnedState: false,
+        personaId: currentPersonaId // Ensure we use the current persona
       });
       
       // Set as current topic
       setCurrentTopicId(topicId);
+      currentTopicRef.current = topicId;
       
       // Reset message state with welcome message
-      const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
+      const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0];
       const welcomeMessage = {
         id: 'welcome',
         text: user ? `Xin chào ${user.name}! ${selectedPersona.displayName} đang lắng nghe!` : 
@@ -1604,109 +1629,10 @@ function TailwindApp() {
       
       return topicId;
     } catch (error) {
-      console.error('Error creating new topic:', error);
+      console.error('[TOPIC DEBUG] Error creating new topic:', error);
       return undefined;
     }
-  }, [user, isDBReady, selectedPersonaId, updateMessages]);
-
-  // Load messages for a topic
-  const loadTopicMessages = useCallback(async (topicId: number) => {
-    try {
-      console.log(`Loading messages for topic ${topicId}...`);
-      
-      // First, get the topic details for personalization
-      const topic = await db.topics.get(topicId);
-      if (!topic) {
-        console.error(`Topic ${topicId} not found`);
-        return;
-      }
-      
-      console.log(`Found topic: ${topic.title}`);
-      
-      // Load all messages for this topic, ordered by timestamp
-      const topicMessages = await db.messages
-        .where('topicId')
-        .equals(topicId)
-        .sortBy('timestamp');
-      
-      console.log(`Loaded ${topicMessages.length} messages for topic ${topicId}`);
-      
-      // Convert from DB format to UI format with proper IDs
-      const uiMessages = topicMessages.map(dbMsg => ({
-        id: `msg-${dbMsg.id || 'unknown'}-${dbMsg.timestamp}`,
-        text: dbMsg.content,
-        isBot: dbMsg.role === 'assistant',
-        timestamp: dbMsg.timestamp
-      }));
-      
-      // If there are no messages, add a welcome message
-      if (uiMessages.length === 0) {
-        const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
-        uiMessages.push({
-          id: 'welcome',
-          text: user ? `Xin chào ${user.name}! ${selectedPersona.displayName} đang lắng nghe!` : 
-                      `Xin chào! ${selectedPersona.displayName} đang lắng nghe!`,
-          isBot: true,
-          timestamp: Date.now()
-        });
-        console.log('No messages found, added welcome message');
-      } else {
-        console.log(`Converted ${uiMessages.length} messages to UI format`);
-      }
-      
-      // Sort messages by timestamp to ensure proper order
-      uiMessages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-      
-      // Update the UI with the messages
-      updateMessages(uiMessages);
-      console.log('Messages updated in UI');
-      
-      // Scroll to the bottom after messages are loaded
-      setTimeout(() => {
-        const chatContainer = document.getElementById('yitam-chat-container');
-        if (chatContainer) {
-          chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
-      }, 100);
-    } catch (error) {
-      console.error('Error loading topic messages:', error);
-    }
-  }, [selectedPersonaId, user, updateMessages]);
-
-  // Handle selecting a topic
-  const handleTopicSelect = useCallback(async (topicId: number) => {
-    try {
-      console.log(`Selecting topic ${topicId}...`);
-      
-      // Update state and ref
-      setCurrentTopicId(topicId);
-      currentTopicRef.current = topicId;
-      
-      // Mark topic as active
-      await db.topics.update(topicId, { lastActive: Date.now() });
-      console.log(`Updated lastActive for topic ${topicId}`);
-      
-      // Get the topic
-      const topic = await db.topics.get(topicId);
-      
-      // If topic still has default title, try to generate one
-      if (topic && topic.title === "New Conversation") {
-        console.log(`Topic ${topicId} has default title, attempting to generate a better one`);
-        triggerTitleGeneration(topicId);
-      }
-      
-      // Load messages for this topic
-      await loadTopicMessages(topicId);
-      
-      // Reset message state
-      setHasUserSentMessage(true); // Avoid showing sample questions
-      setIsPersonaLocked(true); // Lock persona selection
-      
-      console.log(`Topic ${topicId} loaded with messages`);
-    } catch (error) {
-      console.error('Error selecting topic:', error);
-    }
-  }, [loadTopicMessages, triggerTitleGeneration]);
+  }, [user, isDBReady, updateMessages, currentPersonaId]);
 
   // Reset database function
   const resetDatabase = async () => {
@@ -1835,6 +1761,309 @@ function TailwindApp() {
     });
   }, [ensureDatabaseReady]);
 
+  // Add a standalone function to handle topic creation after bot response
+  const handleBotResponseTopicCreation = useCallback(async (botMessage: Message | null) => {
+    if (!botMessage || !isDBReady || !user) {
+      console.log('[TOPIC DEBUG] Skipping topic creation - conditions not met:', {
+        hasBotMessage: !!botMessage,
+        isDBReady,
+        hasUser: !!user
+      });
+      return;
+    }
+    
+    console.log('[TOPIC DEBUG] Starting topic creation process for bot response');
+    
+    try {
+      // CRITICAL FIX: Get current persona directly from context
+      debugPersona("Current persona for topic creation", currentPersonaId);
+      
+      // Find the user message that preceded this bot message
+      const allMessages = pendingMessagesRef.current;
+      const messageIndex = allMessages.findIndex(msg => msg.id === botMessage.id);
+      const precedingMessages = messageIndex > 0 ? allMessages.slice(0, messageIndex) : [];
+      const lastUserMessage = [...precedingMessages].reverse().find(msg => !msg.isBot);
+      
+      if (!lastUserMessage) {
+        console.log('[TOPIC DEBUG] No user message found before bot response, skipping topic creation');
+        return;
+      }
+      
+      console.log(`[TOPIC DEBUG] Found user message before bot response: "${lastUserMessage.text.substring(0, 30)}..."`);
+      
+      // Check if we already have a topic
+      let topicId = currentTopicRef.current;
+      
+      // If no topic exists yet, create one
+      if (!topicId) {
+        console.log('[TOPIC DEBUG] No existing topic, creating new one');
+        
+        // EXTRACT TITLE from bot message
+        const extractedTitle = extractTitleFromBotText(botMessage.text);
+        console.log(`[TOPIC DEBUG] Extracted title: "${extractedTitle}"`);
+        
+        // Make sure DB is definitely open
+        if (!db.isOpen()) {
+          console.log('[TOPIC DEBUG] Forcibly opening database');
+          await db.open();
+        }
+        
+        // Create the topic
+        try {
+          console.log('[TOPIC DEBUG] Creating topic in database');
+          const timestamp = Date.now();
+          
+          // First check if DB is accessible
+          let isDBAccessible = false;
+          try {
+            const count = await db.topics.count();
+            console.log(`[TOPIC DEBUG] Database check: ${count} existing topics`);
+            isDBAccessible = true;
+          } catch (dbCheckError) {
+            console.error('[TOPIC DEBUG] Database check failed:', dbCheckError);
+            // Try reopening
+            try {
+              await db.close();
+              await db.open();
+              isDBAccessible = true;
+              console.log('[TOPIC DEBUG] Database reopened successfully');
+            } catch (reopenError) {
+              console.error('[TOPIC DEBUG] Database reopen failed:', reopenError);
+            }
+          }
+          
+          if (!isDBAccessible) {
+            console.error('[TOPIC DEBUG] Database is not accessible, cannot create topic');
+            return;
+          }
+          
+          // Prepare topic data
+          const topicData = {
+            userId: user.email,
+            title: extractedTitle,
+            createdAt: timestamp,
+            lastActive: timestamp,
+            messageCnt: 2, // Both messages
+            userMessageCnt: 1,
+            assistantMessageCnt: 1,
+            totalTokens: Math.ceil(lastUserMessage.text.length / 4) + Math.ceil(botMessage.text.length / 4),
+            model: 'claude-3',
+            systemPrompt: '',
+            pinnedState: false,
+            personaId: currentPersonaId // CRITICAL FIX: Use the current persona ID from context
+          };
+          
+          // Try to add the topic with multiple approaches
+          
+          // Approach 1: Standard add
+          console.log('[TOPIC DEBUG] Attempting to create topic - Approach 1: Standard add');
+          topicId = await db.topics.add(topicData);
+          console.log(`[TOPIC DEBUG] Topic created with ID: ${topicId} (Approach 1)`);
+          
+          // Verify topic exists
+          const createdTopic = await db.topics.get(topicId);
+          if (!createdTopic) {
+            console.error(`[TOPIC DEBUG] Topic verification failed, ID: ${topicId}`);
+            throw new Error('Topic verification failed');
+          }
+          
+          console.log(`[TOPIC DEBUG] Topic verified: ${topicId}, title: "${createdTopic.title}"`);
+          
+          // Update state and ref
+          setCurrentTopicId(topicId);
+          currentTopicRef.current = topicId;
+          
+          // Now save the messages
+          console.log('[TOPIC DEBUG] Saving messages to new topic');
+          
+          // User message first
+          const userMessageData = {
+            topicId,
+            timestamp: lastUserMessage.timestamp || timestamp - 1000,
+            role: 'user' as const,
+            content: lastUserMessage.text,
+            type: 'text',
+            tokens: Math.ceil(lastUserMessage.text.length / 4)
+          };
+          
+          console.log('[TOPIC DEBUG] Saving user message');
+          const userMessageId = await db.safePutMessage(userMessageData);
+          console.log(`[TOPIC DEBUG] User message saved with ID: ${userMessageId}`);
+          
+          // Bot message second
+          const botMessageData = {
+            topicId,
+            timestamp: botMessage.timestamp || timestamp,
+            role: 'assistant' as const,
+            content: botMessage.text,
+            type: 'text',
+            tokens: Math.ceil(botMessage.text.length / 4),
+            modelVersion: 'claude-3'
+          };
+          
+          console.log('[TOPIC DEBUG] Saving bot message');
+          const botMessageId = await db.safePutMessage(botMessageData);
+          console.log(`[TOPIC DEBUG] Bot message saved with ID: ${botMessageId}`);
+          
+          console.log('[TOPIC DEBUG] Topic creation and message saving complete');
+          
+        } catch (error) {
+          console.error('[TOPIC DEBUG] Error creating topic:', error);
+          
+          // Fallback approach if the first approach failed
+          try {
+            console.log('[TOPIC DEBUG] Attempting fallback approach for topic creation');
+            
+            // Create topic with direct transaction
+            await db.transaction('rw', db.topics, async () => {
+              const timestamp = Date.now();
+              
+              const fallbackTopicData = {
+                id: Date.now() + 1000, // Force an ID
+                userId: user.email,
+                title: extractedTitle,
+                createdAt: timestamp,
+                lastActive: timestamp,
+                messageCnt: 2,
+                userMessageCnt: 1,
+                assistantMessageCnt: 1,
+                totalTokens: Math.ceil(lastUserMessage.text.length / 4) + Math.ceil(botMessage.text.length / 4),
+                model: 'claude-3',
+                systemPrompt: '',
+                pinnedState: false,
+                personaId: currentPersonaId // CRITICAL FIX: Use the current persona ID from context
+              };
+              
+              topicId = await db.topics.put(fallbackTopicData);
+              console.log(`[TOPIC DEBUG] Fallback topic created with ID: ${topicId}`);
+              
+              // Update state and ref
+              setCurrentTopicId(topicId);
+              currentTopicRef.current = topicId;
+              
+              // User message
+              await db.messages.put({
+                id: Date.now() + 2000,
+                topicId,
+                timestamp: lastUserMessage.timestamp || timestamp - 1000,
+                role: 'user',
+                content: lastUserMessage.text,
+                type: 'text',
+                tokens: Math.ceil(lastUserMessage.text.length / 4)
+              });
+              
+              // Bot message
+              await db.messages.put({
+                id: Date.now() + 3000,
+                topicId,
+                timestamp: botMessage.timestamp || timestamp,
+                role: 'assistant',
+                content: botMessage.text,
+                type: 'text',
+                tokens: Math.ceil(botMessage.text.length / 4),
+                modelVersion: 'claude-3'
+              });
+            });
+            
+            console.log('[TOPIC DEBUG] Fallback approach completed successfully');
+          } catch (fallbackError) {
+            console.error('[TOPIC DEBUG] Fallback approach also failed:', fallbackError);
+          }
+        }
+      } else {
+        // Topic already exists, just save the bot message
+        console.log(`[TOPIC DEBUG] Using existing topic ${topicId}`);
+        
+        try {
+          // Verify topic exists
+          const topic = await db.topics.get(topicId);
+          if (!topic) {
+            console.error(`[TOPIC DEBUG] Existing topic ${topicId} not found, cannot save message`);
+            return;
+          }
+          
+          // CRITICAL FIX: If the topic doesn't have a persona, save the current one
+          if (!topic.personaId) {
+            console.log(`[TOPIC DEBUG] Topic has no persona, setting to current: ${currentPersonaId}`);
+            await db.topics.update(topicId, { personaId: currentPersonaId });
+          } else {
+            console.log(`[TOPIC DEBUG] Topic already has persona: ${topic.personaId}`);
+          }
+          
+          // Save bot message with put
+          await db.messages.put({
+            id: Date.now(),
+            topicId,
+            timestamp: botMessage.timestamp || Date.now(),
+            role: 'assistant',
+            content: botMessage.text,
+            type: 'text',
+            tokens: Math.ceil(botMessage.text.length / 4),
+            modelVersion: 'claude-3'
+          });
+          
+          // Update topic statistics
+          await db.topics.update(topicId, {
+            lastActive: Date.now(),
+            messageCnt: (topic.messageCnt || 0) + 1,
+            assistantMessageCnt: (topic.assistantMessageCnt || 0) + 1,
+            totalTokens: (topic.totalTokens || 0) + Math.ceil(botMessage.text.length / 4)
+          });
+          
+          // If topic still has default title, extract a new one from the bot message
+          if (topic.title === "New Conversation") {
+            console.log(`[TOPIC DEBUG] Topic has default title, extracting new title from bot message`);
+            const newTitle = extractTitleFromBotText(botMessage.text);
+            
+            // Update topic title
+            await db.topics.update(topicId, { title: newTitle });
+            console.log(`[TOPIC DEBUG] Updated topic title to: "${newTitle}"`);
+          }
+        } catch (error) {
+          console.error('[TOPIC DEBUG] Error saving bot message to existing topic:', error);
+        }
+      }
+    } catch (outerError) {
+      console.error('[TOPIC DEBUG] Critical error in topic creation process:', outerError);
+    }
+  }, [isDBReady, user, currentPersonaId]); // Add currentPersonaId to dependency array
+
+  // CRITICAL FIX: Add debug methods inside the component to have access to state
+  const debugPersona = (message: string, personaId: string) => {
+    debugLogger('PERSONA DEBUG', message, personaId);
+  };
+
+  // EMERGENCY FIX: Method to directly get the current persona ID from context
+  const getCurrentPersonaId = () => {
+    // Return the current persona directly from context state
+    debugLogger('PERSONA DEBUG', "Getting current persona ID", currentPersonaId);
+    return currentPersonaId;
+  };
+
+  // Expose debugging functions to the window object
+  useEffect(() => {
+    window.getCurrentPersonaId = getCurrentPersonaId;
+    window.absoluteForcePersona = absoluteForcePersona;
+    
+    return () => {
+      // Clean up when component unmounts
+      delete window.getCurrentPersonaId;
+      delete window.absoluteForcePersona;
+    };
+  }, [currentPersonaId, absoluteForcePersona]);
+
+  // Add an effect to monitor persona changes
+  useEffect(() => {
+    console.log(`[PERSONA DEBUG] Persona state changed to: ${currentPersonaId}`);
+    
+    // Store the current persona in localStorage whenever it changes
+    try {
+      localStorage.setItem('selectedPersonaId', currentPersonaId);
+    } catch (e) {
+      console.error('[PERSONA DEBUG] Failed to save persona to localStorage:', e);
+    }
+  }, [currentPersonaId]);
+
   if (!user) {
     return (
       <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
@@ -1922,12 +2151,7 @@ function TailwindApp() {
             
             {/* Persona selector container */}
             <div className="flex justify-center md:justify-end px-2 pb-2">
-              <TailwindPersonaSelector
-                onSelectPersona={onSelectPersona}
-                socket={socket}
-                selectedPersonaId={selectedPersonaId}
-                isLocked={isPersonaLocked}
-              />
+              <TailwindPersonaSelector socket={socket} />
             </div>
 
             {/* Scrollable chat area - takes remaining height */}
@@ -1937,7 +2161,7 @@ function TailwindApp() {
                 {messages.length === 0 ? (
                   <div className="flex items-center justify-center h-[200px] text-[#3A2E22] opacity-60 text-[1.1rem]">
                     {user ? `Xin chào ${user.name}! ` : 'Xin chào! '}
-                    {(AVAILABLE_PERSONAS.find(p => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0]).displayName} đang lắng nghe!
+                    {(AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0]).displayName} đang lắng nghe!
                   </div>
                 ) : (
                   sortedMessages.map((message) => (
@@ -2023,7 +2247,7 @@ function TailwindApp() {
                       </div>
                       <div className="text-xs text-gray-500 ml-2 mt-1">
                         {message.isBot 
-                          ? (AVAILABLE_PERSONAS.find(p => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0]).displayName
+                          ? (AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0]).displayName
                           : 'Bạn'
                         }
                       </div>

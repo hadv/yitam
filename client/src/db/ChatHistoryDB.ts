@@ -14,6 +14,7 @@ export interface Topic {
   model?: string;
   systemPrompt?: string;
   pinnedState?: boolean;
+  personaId?: string;
 }
 
 export interface Message {

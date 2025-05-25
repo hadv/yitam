@@ -191,15 +191,15 @@ const TailwindMessagePersistence: React.FC<MessagePersistenceProps> = ({ childre
         const messageWithTopicId = { ...message, topicId };
         const messageId = await db.safeMessagesAdd(messageWithTopicId);
         console.log(`[MSG_PERSIST] Message saved with ID ${messageId} using safe method`);
-        
-        // Update topic statistics
-        await updateTopicOnMessageAdd(topicId, message);
+      
+      // Update topic statistics
+      await updateTopicOnMessageAdd(topicId, message);
         
         // Double check message count for debugging
         const msgCount = await db.messages.where('topicId').equals(topicId).count();
         console.log(`[MSG_PERSIST] Topic ${topicId} now has ${msgCount} messages`);
-        
-        return messageId;
+      
+      return messageId;
       } catch (innerError) {
         console.error('[MSG_PERSIST] Error in safe message add:', innerError);
         return await directSaveMessage(topicId, message);

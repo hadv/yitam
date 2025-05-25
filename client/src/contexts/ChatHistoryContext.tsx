@@ -31,11 +31,11 @@ export const ChatHistoryProvider = ({ children }: ChatHistoryProviderProps) => {
   const [dbError, setDBError] = useState<Error | null>(null);
   const [storageUsage, setStorageUsage] = useState<{ usage: number; quota: number; percentage: number } | null>(null);
   const [initAttempts, setInitAttempts] = useState(0);
-
+  
   // Function to initialize the database
   const initDatabase = useCallback(async () => {
     console.log('[CONTEXT DEBUG] Initializing database...');
-    try {
+      try {
       // Ensure database is open
       if (!db.isOpen()) {
         await db.open();
@@ -55,7 +55,7 @@ export const ChatHistoryProvider = ({ children }: ChatHistoryProviderProps) => {
       setIsDBReady(true);
       setDBError(null);
       return true;
-    } catch (error) {
+      } catch (error) {
       console.error('[CONTEXT DEBUG] Database initialization error:', error);
       setDBError(error instanceof Error ? error : new Error('Unknown database error'));
       
@@ -74,7 +74,7 @@ export const ChatHistoryProvider = ({ children }: ChatHistoryProviderProps) => {
           }
         } catch (recoveryError) {
           console.error('[CONTEXT DEBUG] Database recovery error:', recoveryError);
-        }
+      }
       }
       
       return false;
@@ -87,7 +87,7 @@ export const ChatHistoryProvider = ({ children }: ChatHistoryProviderProps) => {
     setInitAttempts(prev => prev + 1);
     return await initDatabase();
   }, [initDatabase]);
-
+  
   // Check storage usage
   const checkStorageUsage = useCallback(async () => {
     try {
@@ -165,7 +165,7 @@ export const ChatHistoryProvider = ({ children }: ChatHistoryProviderProps) => {
       db.on('versionchange').unsubscribe(handleDBClosed);
     };
   }, []);
-
+  
   // Clear chat history for a user
   const clearUserChatHistory = async (userId: string): Promise<boolean> => {
     try {
@@ -224,7 +224,7 @@ export const ChatHistoryProvider = ({ children }: ChatHistoryProviderProps) => {
       return false;
     }
   };
-
+  
   return (
     <ChatHistoryContext.Provider value={{ isDBReady, dbError, storageUsage, forceDBInit, checkStorageUsage, clearUserChatHistory }}>
       {children}

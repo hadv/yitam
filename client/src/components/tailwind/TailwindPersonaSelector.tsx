@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { usePersona } from '../../contexts/PersonaContext';
 
 export interface Persona {
   id: string;
@@ -12,10 +13,7 @@ export interface Persona {
 }
 
 interface TailwindPersonaSelectorProps {
-  onSelectPersona: (personaId: string) => void;
   socket: any;
-  selectedPersonaId: string;
-  isLocked?: boolean;
 }
 
 // Hard-coded personas based on GitHub issue #56
@@ -96,39 +94,56 @@ export const AVAILABLE_PERSONAS: Persona[] = [
   }
 ];
 
-const TailwindPersonaSelector: React.FC<TailwindPersonaSelectorProps> = ({ 
-  onSelectPersona, 
-  socket, 
-  selectedPersonaId,
-  isLocked = false
-}) => {
+const TailwindPersonaSelector: React.FC<TailwindPersonaSelectorProps> = ({ socket }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const { currentPersonaId, setCurrentPersonaId, isPersonaLocked, saveDefaultPersona } = usePersona();
+
+  // Debug log when persona changes
+  useEffect(() => {
+    console.log(`[PERSONA SELECTOR] Current persona ID from context: ${currentPersonaId}`);
+  }, [currentPersonaId]);
 
   const handlePersonaClick = (personaId: string) => {
-    if (isLocked) return;
-    onSelectPersona(personaId);
+    if (isPersonaLocked) {
+      console.log(`[PERSONA SELECTOR] Cannot change persona - locked. Attempted: ${personaId}`);
+      return;
+    }
+    console.log(`[PERSONA SELECTOR] User clicked on persona: ${personaId}`);
+    
+    // Use the context method to update persona
+    setCurrentPersonaId(personaId);
+    
+    // Also save this as the default persona since it's a user selection
+    saveDefaultPersona(personaId);
+    
+    // Log the selection
+    console.log(`[PERSONA SELECTOR] Persona selected and saved as default: ${personaId}`);
+    
+    // Close the dropdown
     setIsOpen(false);
   };
 
   const toggleDropdown = () => {
-    if (isLocked) return;
+    if (isPersonaLocked) return;
     setIsOpen(!isOpen);
   };
 
   // Find the currently selected persona
-  const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === selectedPersonaId) || AVAILABLE_PERSONAS[0];
+  const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0];
 
   return (
     <div className="relative w-64 text-sm">
       <div 
         className={`flex items-center justify-between p-2 border border-gray-300 rounded
-          ${isLocked 
+          ${isPersonaLocked 
             ? 'bg-gray-100 text-gray-500 cursor-not-allowed' 
             : 'bg-white hover:bg-gray-50 cursor-pointer'}`}
         onClick={toggleDropdown}
+        data-selector-type="persona"
+        data-selected-persona={currentPersonaId}
       >
         <span className="font-medium">{selectedPersona.displayName}</span>
-        {isLocked ? (
+        {isPersonaLocked ? (
           <span className="text-xs ml-2">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -139,15 +154,19 @@ const TailwindPersonaSelector: React.FC<TailwindPersonaSelectorProps> = ({
         )}
       </div>
       
-      {isOpen && !isLocked && (
+      {isOpen && !isPersonaLocked && (
         <div className="absolute w-full mt-1 bg-white border border-gray-300 rounded shadow-lg z-10 max-h-72 overflow-y-auto">
           {AVAILABLE_PERSONAS.map(persona => (
             <div 
               key={persona.id}
               className={`p-3 cursor-pointer border-b border-gray-100 hover:bg-gray-50 ${
-                selectedPersonaId === persona.id ? 'bg-blue-50' : ''
+                currentPersonaId === persona.id ? 'bg-blue-50 selected' : ''
               }`}
               onClick={() => handlePersonaClick(persona.id)}
+              data-persona-id={persona.id}
+              data-persona-name={persona.displayName}
+              data-testid={`persona-option-${persona.id}`}
+              data-selected={currentPersonaId === persona.id ? 'true' : 'false'}
             >
               <div className="font-medium mb-1">{persona.displayName}</div>
               <div className="text-xs text-gray-600 truncate">{persona.description}</div>

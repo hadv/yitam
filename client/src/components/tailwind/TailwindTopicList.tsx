@@ -23,7 +23,6 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
   const [sortOption, setSortOption] = useState<'lastActive' | 'createdAt' | 'title'>('lastActive');
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
     const loadTopics = async () => {
       try {
         setIsLoading(true);
@@ -42,8 +41,9 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
       }
     };
 
+  useEffect(() => {
     loadTopics();
-  }, [userId]);
+  }, [userId, currentTopicId]);
 
   const sortTopics = (topicsToSort: Topic[]) => {
     const sorted = [...topicsToSort];
