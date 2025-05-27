@@ -9,6 +9,9 @@ declare global {
     exportTopic?: (topicId: number) => Promise<any>;
     testTitleExtraction?: (text: string) => string;
     lastUsedPersona?: string;
+    refreshTopicList?: () => void;
+    updateTopicMessageCount?: (topicId: number, count: number) => void;
+    triggerTopicListRefresh?: () => void;
   }
 }
 
@@ -35,7 +38,7 @@ import TailwindSampleQuestions from './TailwindSampleQuestions';
 import TailwindTermsModal from './TailwindTermsModal';
 import TailwindPersonaSelector from './TailwindPersonaSelector';
 import TailwindTopicManager from './TailwindTopicManager';
-import TailwindMessagePersistence from './TailwindMessagePersistence';
+import TailwindMessagePersistence, { useMessagePersistence } from './TailwindMessagePersistence';
 import TailwindHeader from './TailwindHeader';
 import TailwindFooter from './TailwindFooter';
 import TailwindMessageDisplay from './TailwindMessageDisplay';
@@ -51,6 +54,7 @@ import { setupWindowDebugFunctions } from '../../utils/debugging';
 
 // Types
 import { UserData, Message } from '../../types/chat';
+import db from '../../db/ChatHistoryDB';
 
 function TailwindApp() {
   // User state
@@ -65,6 +69,9 @@ function TailwindApp() {
   const [questionsLimit] = useState(6);
   const inputRef = useRef<HTMLDivElement>(null);
   
+  // Message deletion state
+  const [messageToDelete, setMessageToDelete] = useState<string | null>(null);
+  
   // Get context hooks
   const { isDBReady, dbError, storageUsage, forceDBInit } = useChatHistory();
   const { 
@@ -77,6 +84,9 @@ function TailwindApp() {
     absoluteForcePersona
   } = usePersona();
   
+  // Message persistence hook
+  const { deleteMessage } = useMessagePersistence();
+  
   // Custom hooks
   const { socket, isConnected, connectSocket, disconnect } = useSocket(user);
   const { 
@@ -87,7 +97,9 @@ function TailwindApp() {
     sendMessage,
     startNewChat,
     handleTopicSelect,
-    createNewTopic
+    createNewTopic,
+    setMessages,
+    setCurrentTopicId
   } = useMessages(socket, user);
 
   // Check if any bot message is currently streaming
@@ -105,7 +117,22 @@ function TailwindApp() {
       (text: string) => extractTitleFromBotText(text)
     );
     
-    return cleanup;
+    // Add a helper function to trigger topic refresh via event
+    window.triggerTopicListRefresh = () => {
+      console.log('[APP] Triggering topic list refresh via event');
+      // First try the regular refreshTopicList function if available
+      if (window.refreshTopicList && typeof window.refreshTopicList === 'function') {
+        window.refreshTopicList();
+      }
+      
+      // Also dispatch a custom event for components that listen for it
+      window.dispatchEvent(new Event('storage:refreshTopics'));
+    };
+    
+    return () => {
+      cleanup();
+      delete window.triggerTopicListRefresh;
+    };
   }, [currentPersonaId, absoluteForcePersona]);
 
   // Component mount effect - debug IndexedDB
@@ -144,6 +171,15 @@ function TailwindApp() {
       
       // Log system info for debugging
       getSystemInfo();
+      
+      // Perform database cleanup to ensure consistency
+      try {
+        console.log('[APP] Running database cleanup to ensure data consistency');
+        const cleanupResult = await db.cleanupOrphanedData();
+        console.log('[APP] Database cleanup results:', cleanupResult);
+      } catch (cleanupError) {
+        console.error('[APP] Error during database cleanup:', cleanupError);
+      }
     };
     
     checkDbVersion();
@@ -195,6 +231,133 @@ function TailwindApp() {
     });
   }, [forceDBInit, isDBReady]);
 
+  // Handle message deletion request
+  const handleDeleteMessage = useCallback((messageId: string) => {
+    setMessageToDelete(messageId);
+  }, []);
+
+  // Confirm message deletion
+  const confirmDeleteMessage = useCallback(async () => {
+    if (!messageToDelete || !currentTopicId) return;
+    
+    try {
+      // Find the message object in the current messages array
+      const messageObj = messages.find(msg => msg.id === messageToDelete);
+      if (!messageObj) return;
+      
+      // Log message details for debugging
+      console.log('[DELETE DEBUG] Attempting to delete message:', {
+        uiId: messageObj.id,
+        dbId: messageObj.dbMessageId,
+        isBot: messageObj.isBot,
+        text: messageObj.text.substring(0, 30) + (messageObj.text.length > 30 ? '...' : '')
+      });
+      
+      // Remove message from UI immediately to give instant feedback
+      setMessages(messages.filter(msg => msg.id !== messageToDelete));
+      
+      // Store the current topic ID for later checking if it's deleted
+      const topicToCheck = currentTopicId;
+      
+      // If it's a DB message (has a numeric id stored in the message object)
+      if (messageObj.dbMessageId) {
+        try {
+          // First verify the message exists in the database
+          const messageInDb = await db.messages.get(messageObj.dbMessageId);
+          if (!messageInDb) {
+            console.warn(`[DELETE DEBUG] Message ${messageObj.dbMessageId} not found in database`);
+            setMessageToDelete(null);
+            return;
+          }
+          
+          // Delete from database using direct database deletion for reliability
+          console.log(`[DELETE DEBUG] Forcefully deleting message ${messageObj.dbMessageId} from database`);
+          const deleteResult = await db.forceDeleteMessage(messageObj.dbMessageId);
+          
+          if (!deleteResult) {
+            console.error(`[DELETE DEBUG] Failed to delete message ${messageObj.dbMessageId} from database`);
+            alert('Failed to delete message. Please try again later.');
+            setMessageToDelete(null);
+            return;
+          }
+          
+          console.log(`[DELETE DEBUG] Message ${messageObj.dbMessageId} deleted successfully from database`);
+          
+          // Double-check message was actually deleted
+          const verifyDeleted = await db.messages.get(messageObj.dbMessageId);
+          if (verifyDeleted) {
+            console.error(`[DELETE DEBUG] Critical error: Message ${messageObj.dbMessageId} still exists in database after deletion`);
+            // Try one more time with direct table access
+            await db.messages.where('id').equals(messageObj.dbMessageId).delete();
+            
+            // Check again
+            const secondCheck = await db.messages.get(messageObj.dbMessageId);
+            if (secondCheck) {
+              console.error(`[DELETE DEBUG] Fatal error: Message ${messageObj.dbMessageId} cannot be deleted`);
+              alert('Failed to delete message. Please try again later.');
+              setMessageToDelete(null);
+              return;
+            }
+          }
+          
+          // Now check the message count for the topic
+          const remainingMessages = await db.messages.where('topicId').equals(topicToCheck).count();
+          console.log(`[DELETE DEBUG] Topic ${topicToCheck} now has ${remainingMessages} messages`);
+          
+          // If no messages remain, delete the topic
+          if (remainingMessages === 0) {
+            console.log(`[DELETE DEBUG] No messages left in topic ${topicToCheck}, deleting topic`);
+            await db.topics.delete(topicToCheck);
+            console.log(`[DELETE DEBUG] Topic ${topicToCheck} deleted successfully`);
+            
+            // Update UI state
+            setCurrentTopicId(undefined);
+            startNewChat();
+            
+            // Trigger topic list refresh
+            if (window.triggerTopicListRefresh) {
+              window.triggerTopicListRefresh();
+            }
+          } else {
+            // Update topic count in the database
+            await db.updateTopicMessageCount(topicToCheck);
+            
+            // Trigger UI updates
+            if (window.updateTopicMessageCount) {
+              window.updateTopicMessageCount(topicToCheck, remainingMessages);
+            }
+            
+            if (window.triggerTopicListRefresh) {
+              window.triggerTopicListRefresh();
+            }
+          }
+        } catch (error) {
+          console.error(`[DELETE DEBUG] Error deleting message:`, error);
+          alert('Failed to delete message. Please try again later.');
+        }
+      }
+    } finally {
+      // Clear the message to delete
+      setMessageToDelete(null);
+    }
+  }, [messageToDelete, messages, setMessages, currentTopicId, startNewChat, setCurrentTopicId]);
+
+  // Cancel message deletion
+  const cancelDeleteMessage = useCallback(() => {
+    setMessageToDelete(null);
+  }, []);
+
+  // Clear cached messages when switching topics or starting new chat
+  useEffect(() => {
+    // This ensures we always fetch fresh messages from the database when the topic changes
+    console.log(`[TOPIC DEBUG] Topic changed to ${currentTopicId}, clearing cached messages`);
+    
+    // We could add additional cleanup here if needed
+    return () => {
+      // Cleanup when topic changes or component unmounts
+    };
+  }, [currentTopicId]);
+
   if (!user) {
     return (
       <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
@@ -238,6 +401,7 @@ function TailwindApp() {
                     <TailwindMessageDisplay 
                       messages={messages}
                       currentPersonaId={currentPersonaId}
+                      onDeleteMessage={handleDeleteMessage}
                     />
                   </div>
                   
@@ -374,6 +538,32 @@ function TailwindApp() {
                   </div>
                 )}
               </TailwindModal>
+              
+              {/* Message Delete Confirmation Modal */}
+              {messageToDelete && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                  <div className="bg-white rounded-lg p-6 max-w-sm w-full">
+                    <h3 className="text-lg font-medium text-[#3A2E22] mb-4">Xác nhận xóa</h3>
+                    <p className="text-gray-600 mb-6">
+                      Bạn có chắc chắn muốn xóa tin nhắn này? Hành động này không thể hoàn tác.
+                    </p>
+                    <div className="flex justify-end space-x-3">
+                      <button
+                        onClick={cancelDeleteMessage}
+                        className="px-4 py-2 border border-gray-300 rounded-md text-[#3A2E22] hover:bg-gray-50"
+                      >
+                        Hủy
+                      </button>
+                      <button
+                        onClick={confirmDeleteMessage}
+                        className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                      >
+                        Xóa
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </TailwindMessagePersistence>
         </ChatHistoryProvider>

@@ -3,7 +3,7 @@ import * as ReactDOM from 'react-dom';
 import { Message, ChatSocket } from '../types/chat';
 import { usePersona } from '../contexts/PersonaContext';
 import { AVAILABLE_PERSONAS } from '../components/tailwind/TailwindPersonaSelector';
-import db from '../db/ChatHistoryDB';
+import db, { Message as DBMessage } from '../db/ChatHistoryDB';
 import { extractTitleFromBotText } from '../utils/titleExtraction';
 
 export const useMessages = (socket: ChatSocket, user: any) => {
@@ -15,6 +15,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
   const messageUpdaterTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isUpdatingRef = useRef(false);
   const lastMessageRef = useRef<string | null>(null);
+  const lastUserMessageIdRef = useRef<string | null>(null);
   const currentTopicRef = useRef<number | undefined>(undefined);
   const pendingBotMessagesQueue = useRef<{message: Message, topicId: number}[]>([]);
   
@@ -43,7 +44,12 @@ export const useMessages = (socket: ChatSocket, user: any) => {
       }
       messageUpdaterTimeoutRef.current = setTimeout(() => {
         ReactDOM.unstable_batchedUpdates(() => {
-          setMessages(pendingMessagesRef.current);
+          // CRITICAL FIX: Ensure the state is always consistent with pendingMessagesRef
+          if (JSON.stringify(pendingMessagesRef.current.map(m => m.id)) !== 
+              JSON.stringify(messages.map(m => m.id))) {
+            console.log('[STATE DEBUG] State sync inconsistency detected, using most current reference');
+          }
+          setMessages([...pendingMessagesRef.current]);
           isUpdatingRef.current = false;
         });
       }, 50);
@@ -59,6 +65,12 @@ export const useMessages = (socket: ChatSocket, user: any) => {
       const botTimestamp = Date.now() + 100;
       const botId = `bot-${botTimestamp}-${response.id}`;
       const currentMessages = pendingMessagesRef.current;
+      
+      // CRITICAL FIX: Log the current state of user message tracking before bot response starts
+      console.log('[ID DEBUG] Current lastUserMessageId when bot response starts:', lastUserMessageIdRef.current);
+      console.log('[ID DEBUG] Current messages before bot response:', 
+        currentMessages.map(m => ({ id: m.id, isBot: m.isBot }))
+      );
       
       updateMessages([
         ...currentMessages,
@@ -224,14 +236,54 @@ export const useMessages = (socket: ChatSocket, user: any) => {
     try {
       // Find the user message that came before this bot response
       const allMessages = pendingMessagesRef.current;
-      const messageIndex = allMessages.findIndex(msg => msg.id === botMessage.id);
-      const precedingMessages = messageIndex > 0 ? allMessages.slice(0, messageIndex) : [];
-      const lastUserMessage = [...precedingMessages].reverse().find(msg => !msg.isBot);
+      
+      // Try to find the user message using the last user message ID first
+      const lastUserMessageId = lastUserMessageIdRef.current;
+      console.log('[ID DEBUG] Last tracked user message ID:', lastUserMessageId);
+      console.log('[ID DEBUG] All current message IDs:', 
+        allMessages.map(msg => ({ id: msg.id, isBot: msg.isBot }))
+      );
+      
+      let lastUserMessage: Message | undefined;
+      
+      if (lastUserMessageId) {
+        // Try to find the message directly by ID first
+        lastUserMessage = allMessages.find(msg => msg.id === lastUserMessageId);
+        console.log('[ID DEBUG] Found user message by ID:', !!lastUserMessage);
+        
+        // If found, log the message details for debugging
+        if (lastUserMessage) {
+          console.log('[ID DEBUG] Found user message details:', {
+            id: lastUserMessage.id,
+            text: lastUserMessage.text?.substring(0, 20) + '...',
+            timestamp: lastUserMessage.timestamp
+          });
+        }
+      }
+      
+      // Fallback to the old method if we couldn't find the message by ID
+      if (!lastUserMessage) {
+        const messageIndex = allMessages.findIndex(msg => msg.id === botMessage.id);
+        const precedingMessages = messageIndex > 0 ? allMessages.slice(0, messageIndex) : [];
+        lastUserMessage = [...precedingMessages].reverse().find(msg => !msg.isBot);
+        console.log('[ID DEBUG] Fallback to finding user message by order:', !!lastUserMessage);
+        
+        // IMPROVED FALLBACK: If still no user message, try finding the most recent user message in the entire list
+        if (!lastUserMessage) {
+          console.log('[ID DEBUG] Trying last resort fallback - finding most recent user message in all messages');
+          lastUserMessage = [...allMessages].reverse().find(msg => !msg.isBot);
+          console.log('[ID DEBUG] Last resort fallback result:', !!lastUserMessage);
+        }
+      }
       
       if (!lastUserMessage) {
         console.log('[TOPIC DEBUG] No user message found, skipping topic creation');
+        console.log('[ID DEBUG] All current messages:', allMessages.map(m => ({ id: m.id, isBot: m.isBot })));
         return;
       }
+      
+      // Clear the last user message ID reference since we've handled the response
+      lastUserMessageIdRef.current = null;
       
       // Get the persona ID to use for the topic
       let personaIdForTopic = currentPersonaId;
@@ -296,7 +348,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
             });
             
             // Save the bot message to the existing topic
-            await db.messages.put({
+            const dbMessageId = await db.messages.put({
               id: Date.now(),
               topicId: currentTopicRef.current,
               timestamp: botMessage.timestamp || Date.now(),
@@ -307,7 +359,24 @@ export const useMessages = (socket: ChatSocket, user: any) => {
               modelVersion: 'claude-3'
             });
             
-            console.log(`[TOPIC DEBUG] Added message to existing topic ${currentTopicRef.current}`);
+            console.log(`[TOPIC DEBUG] Added message to existing topic ${currentTopicRef.current} with database ID ${dbMessageId}`);
+            
+            // Update the UI message to include the database ID for future reference
+            const updatedMessages = pendingMessagesRef.current.map(msg => 
+              msg.id === botMessage.id 
+                ? { ...msg, dbMessageId }
+                : msg
+            );
+            updateMessages(updatedMessages);
+            
+            // Log all message IDs and database IDs for debugging
+            console.log('[ID DEBUG] Current messages with database IDs:', 
+              updatedMessages.map(msg => ({
+                uiId: msg.id,
+                dbId: msg.dbMessageId,
+                isBot: msg.isBot
+              }))
+            );
             
             // CRITICAL: Make sure the UI shows the correct persona for this topic
             absoluteForcePersona(topicPersona);
@@ -378,7 +447,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
       });
       
       // Save user message with put
-      await db.messages.put({
+      const userDbMessageId = await db.messages.put({
         id: timestamp + 1,
         topicId: topicId,
         timestamp: lastUserMessage.timestamp || timestamp - 1000,
@@ -389,7 +458,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
       });
       
       // Save bot message with put
-      await db.messages.put({
+      const botDbMessageId = await db.messages.put({
         id: timestamp + 2,
         topicId: topicId,
         timestamp: botMessage.timestamp || timestamp,
@@ -400,7 +469,27 @@ export const useMessages = (socket: ChatSocket, user: any) => {
         modelVersion: 'claude-3'
       });
       
-      console.log(`[TOPIC DEBUG] Successfully saved both messages to topic ${topicId}`);
+      // Update UI messages with database IDs
+      const updatedMessages = pendingMessagesRef.current.map(msg => {
+        if (msg.id === lastUserMessage.id) {
+          return { ...msg, dbMessageId: userDbMessageId };
+        } else if (msg.id === botMessage.id) {
+          return { ...msg, dbMessageId: botDbMessageId };
+        }
+        return msg;
+      });
+      updateMessages(updatedMessages);
+      
+      // Log all message IDs for debugging
+      console.log('[ID DEBUG] Messages with database IDs after topic creation:', 
+        updatedMessages.map(msg => ({
+          uiId: msg.id,
+          dbId: msg.dbMessageId,
+          isBot: msg.isBot
+        }))
+      );
+      
+      console.log(`[TOPIC DEBUG] Successfully saved both messages to topic ${topicId} with database IDs ${userDbMessageId} and ${botDbMessageId}`);
     } catch (error) {
       console.error('[TOPIC DEBUG] Error in DIRECT topic creation:', error);
     }
@@ -474,11 +563,24 @@ export const useMessages = (socket: ChatSocket, user: any) => {
       personaId: capturedPersonaId
     } as Message & { personaId: string };
     
+    // Track the last user message ID for bot response pairing
+    lastUserMessageIdRef.current = userMessage.id;
+    console.log('[ID DEBUG] Setting last user message ID:', userMessage.id);
+    
     // Update UI state
     setHasUserSentMessage(true);
     // Lock the persona using context
     setIsPersonaLocked(true);
-    updateMessages([...pendingMessagesRef.current, userMessage]);
+    
+    // IMPORTANT FIX: Ensure the message is properly added to pendingMessagesRef before setting lastUserMessageIdRef
+    const updatedMessages = [...pendingMessagesRef.current, userMessage];
+    pendingMessagesRef.current = updatedMessages;
+    updateMessages(updatedMessages);
+    
+    // Log the current state of messages for debugging
+    console.log('[ID DEBUG] Current message IDs after adding user message:', 
+      pendingMessagesRef.current.map(msg => ({ id: msg.id, isBot: msg.isBot }))
+    );
     
     // CRITICAL FIX: Check if we're in an existing topic and save the message to the database
     if (currentTopicRef.current) {
@@ -508,7 +610,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
           }
           
           // Save the user message
-          await db.messages.put({
+          const userDbMessageId = await db.messages.put({
             id: timestamp,
             topicId: topicId,
             timestamp: timestamp,
@@ -517,6 +619,18 @@ export const useMessages = (socket: ChatSocket, user: any) => {
             type: 'text',
             tokens: Math.ceil(text.length / 4)
           });
+          
+          // Update the UI message with its database ID for deletion capability
+          const userMessageId = `user-${timestamp}-${randomId}`;
+          const updatedMessages = pendingMessagesRef.current.map(msg => 
+            msg.id === userMessageId 
+              ? { ...msg, dbMessageId: userDbMessageId }
+              : msg
+          );
+          updateMessages(updatedMessages);
+          
+          // Log message IDs for debugging
+          console.log('[ID DEBUG] User message UI ID:', userMessageId, 'Database ID:', userDbMessageId);
           
           // Update topic statistics
           await db.topics.update(topicId, {
@@ -573,6 +687,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
     
     // Reset message state
     lastMessageRef.current = null;
+    lastUserMessageIdRef.current = null; // Reset the last user message ID reference
     pendingMessagesRef.current = [welcomeMessage];
     setMessages([welcomeMessage]);
     setHasUserSentMessage(false);
@@ -593,6 +708,9 @@ export const useMessages = (socket: ChatSocket, user: any) => {
         // Reset to default persona from localStorage
         resetPersona();
         
+        // Reset user message ID tracking
+        lastUserMessageIdRef.current = null;
+        
         const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0];
         const welcomeMessage = {
           id: 'welcome',
@@ -609,16 +727,68 @@ export const useMessages = (socket: ChatSocket, user: any) => {
       
       console.log('[PERSONA DEBUG] Loading topic:', topicId);
       
+      // First, clear any existing messages to avoid showing stale data
+      updateMessages([{
+        id: 'loading',
+        text: 'Đang tải cuộc trò chuyện...',
+        isBot: true,
+        timestamp: Date.now()
+      }]);
+      
       try {
-        // Get the topic synchronously - CRITICAL: this needs to be loaded first
+        // Force database re-open to ensure fresh connection
+        console.log('[TOPIC DEBUG] Ensuring fresh database connection');
+        if (db.isOpen()) {
+          await db.close();
+        }
+        await db.open();
+        
+        // Verify topic exists and has correct message count
         const topic = await db.topics.get(topicId);
         
         if (!topic) {
-          console.error(`[PERSONA DEBUG] Topic ${topicId} not found`);
+          console.error(`[PERSONA DEBUG] Topic ${topicId} not found in database`);
+          updateMessages([{
+            id: 'error',
+            text: 'Không tìm thấy cuộc trò chuyện. Vui lòng thử lại.',
+            isBot: true,
+            timestamp: Date.now()
+          }]);
           return;
         }
         
         console.log(`[PERSONA DEBUG] Found topic: ${topic.title} (ID: ${topicId})`);
+        
+        // Update topic message count first to ensure it's accurate
+        console.log(`[TOPIC DEBUG] Updating message count for topic ${topicId}`);
+        await db.updateTopicMessageCount(topicId);
+        
+        // Now count messages after updating to get accurate count
+        const messageCount = await db.messages.where('topicId').equals(topicId).count();
+        console.log(`[TOPIC DEBUG] Topic ${topicId} has ${messageCount} messages after count verification`);
+        
+        // If topic is empty (ONLY if it has exactly 0 messages)
+        if (messageCount === 0) {
+          console.warn(`[TOPIC DEBUG] Topic ${topicId} is completely empty (${messageCount} messages), deleting it`);
+          
+          try {
+            // Delete the topic
+            await db.topics.delete(topicId);
+            
+            console.log(`[TOPIC DEBUG] Empty topic ${topicId} has been deleted`);
+            
+            // Start a new chat
+            startNewChat();
+            
+            // Show notification to user
+            alert('Cuộc trò chuyện đã bị xóa vì không có tin nhắn nào.');
+            
+            return;
+          } catch (deleteError) {
+            console.error(`[TOPIC DEBUG] Error deleting empty topic ${topicId}:`, deleteError);
+            // Continue loading in case deletion failed
+          }
+        }
         
         // Verify topic has a persona ID
         if (!topic.personaId) {
@@ -658,13 +828,62 @@ export const useMessages = (socket: ChatSocket, user: any) => {
         // Set the lock AFTER setting the persona
         setIsPersonaLocked(true);
         
-        // Now load messages for this topic
-        const topicMessages = await db.messages
-          .where('topicId')
-          .equals(topicId)
-          .sortBy('timestamp');
+        // Now load messages for this topic - CRITICAL: Ensure we're getting fresh data
+        console.log(`[TOPIC DEBUG] Fetching messages for topic ${topicId} with forced database refresh`);
         
-        console.log(`[PERSONA DEBUG] Loaded ${topicMessages.length} messages for topic ${topicId}`);
+        // Clear transaction cache to ensure fresh data
+        await db.transaction('r', db.messages, () => {});
+        
+        // Get messages with direct table access
+        let topicMessages: DBMessage[] = [];
+        
+        try {
+          topicMessages = await db.messages
+            .where('topicId')
+            .equals(topicId)
+            .sortBy('timestamp');
+          
+          console.log(`[TOPIC DEBUG] Successfully loaded ${topicMessages.length} messages for topic ${topicId}`);
+        } catch (fetchError) {
+          console.error(`[TOPIC DEBUG] Error fetching messages:`, fetchError);
+          
+          // Try one more time with a clean connection
+          try {
+            await db.close();
+            await db.open();
+            
+            topicMessages = await db.messages
+              .where('topicId')
+              .equals(topicId)
+              .sortBy('timestamp');
+            
+            console.log(`[TOPIC DEBUG] Successfully loaded ${topicMessages.length} messages on second attempt`);
+          } catch (secondError) {
+            console.error(`[TOPIC DEBUG] Failed to load messages on second attempt:`, secondError);
+            throw secondError;
+          }
+        }
+        
+        // If we still have no messages, delete the topic and start new chat
+        if (topicMessages.length === 0) {
+          console.error(`[TOPIC DEBUG] No messages found for topic ${topicId}, deleting topic`);
+          
+          try {
+            // Delete the topic
+            await db.topics.delete(topicId);
+            console.log(`[TOPIC DEBUG] Empty topic ${topicId} has been deleted after finding no messages`);
+            
+            // Start a new chat
+            startNewChat();
+            
+            // Show notification to user
+            alert('Cuộc trò chuyện đã bị xóa vì không tìm thấy tin nhắn nào.');
+            
+            return;
+          } catch (deleteError) {
+            console.error(`[TOPIC DEBUG] Error deleting empty topic ${topicId}:`, deleteError);
+          }
+        }
         
         // Get the persona to use for display - MUST use the topic's persona ID
         const persona = AVAILABLE_PERSONAS.find(p => p.id === topicPersonaId) || AVAILABLE_PERSONAS[0];
@@ -672,11 +891,20 @@ export const useMessages = (socket: ChatSocket, user: any) => {
         
         // Convert DB messages to UI format
         const uiMessages = topicMessages.map(dbMsg => ({
-          id: `msg-${dbMsg.id || 'unknown'}-${dbMsg.timestamp}`,
+          id: `msg-${dbMsg.id || 'unknown'}-${dbMsg.timestamp}-${Date.now()}`, // Add timestamp to ensure unique IDs
           text: dbMsg.content,
           isBot: dbMsg.role === 'assistant',
-          timestamp: dbMsg.timestamp
+          timestamp: dbMsg.timestamp,
+          dbMessageId: dbMsg.id // Add the database ID reference to the UI message
         }));
+        
+        console.log('[ID DEBUG] Loaded messages with database IDs:', 
+          uiMessages.map(msg => ({
+            uiId: msg.id,
+            dbId: msg.dbMessageId,
+            isBot: msg.isBot
+          }))
+        );
         
         // If there are no messages, add a welcome message
         if (uiMessages.length === 0) {
@@ -685,7 +913,8 @@ export const useMessages = (socket: ChatSocket, user: any) => {
             text: user ? `Xin chào ${user.name}! ${persona.displayName} đang lắng nghe!` : 
                         `Xin chào! ${persona.displayName} đang lắng nghe!`,
             isBot: true,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            dbMessageId: undefined // Add the dbMessageId property, even though it's undefined for welcome messages
           });
         }
         
@@ -694,6 +923,21 @@ export const useMessages = (socket: ChatSocket, user: any) => {
         
         // Set user sent message to avoid showing sample questions
         setHasUserSentMessage(true);
+        
+        // Make one final check that message count matches database
+        const finalCount = await db.messages.where('topicId').equals(topicId).count();
+        console.log(`[TOPIC DEBUG] Final verification: Topic ${topicId} has ${finalCount} messages, UI shows ${uiMessages.length}`);
+        
+        // Update topic message count if there's a discrepancy
+        if (finalCount !== topic.messageCnt) {
+          console.log(`[TOPIC DEBUG] Updating topic message count from ${topic.messageCnt} to ${finalCount}`);
+          await db.updateTopicMessageCount(topicId);
+          
+          // Trigger refresh of topic list UI
+          if (window.triggerTopicListRefresh) {
+            window.triggerTopicListRefresh();
+          }
+        }
         
         console.log(`[PERSONA DEBUG] Topic ${topicId} fully loaded with persona "${topicPersonaId}"`);
       } catch (dbError) {
@@ -714,8 +958,21 @@ export const useMessages = (socket: ChatSocket, user: any) => {
       }
     } catch (error) {
       console.error('[PERSONA DEBUG] Fatal error in handleTopicSelect:', error);
+      
+      // Show an error message to the user
+      const errorMessage = {
+        id: `error-${Date.now()}`,
+        text: 'Đã xảy ra lỗi khi tải cuộc trò chuyện. Vui lòng thử lại.',
+        isBot: true,
+        error: {
+          type: 'other' as const,
+          message: 'Failed to load conversation'
+        }
+      };
+      
+      updateMessages([errorMessage]);
     }
-  }, [user, updateMessages, currentPersonaId, absoluteForcePersona, resetPersona, setIsPersonaLocked]);
+  }, [user, updateMessages, currentPersonaId, absoluteForcePersona, resetPersona, setIsPersonaLocked, startNewChat]);
 
   // Create a new topic
   const createNewTopic = useCallback(async (title: string) => {
