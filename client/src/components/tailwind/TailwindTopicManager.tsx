@@ -37,6 +37,9 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
         const currentTopic = await db.topics.get(currentTopicId);
         if (currentTopic) {
           setSelectedTopicDetails(currentTopic);
+        } else {
+          console.warn(`[TOPIC DEBUG] Current topic ID ${currentTopicId} not found in database`);
+          setSelectedTopicDetails(null);
         }
       } else if (userTopics.length > 0) {
         // Auto-select the most recent topic by default if no topic is selected
@@ -55,10 +58,111 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
     }
   };
 
-  // Load topics on mount and when current topic changes
+  // Set up a global refresh function that external components can call
+  useEffect(() => {
+    // Store previous refresh function if it exists
+    const prevRefreshFunction = window.refreshTopicList;
+    
+    // Create a wrapper function that calls our loadTopics but preserves any existing functionality
+    const refreshWrapper = () => {
+      console.log('[TOPIC MANAGER] Refreshing topic list');
+      loadTopics();
+      
+      // If there was a previous function and it's not ours, call it too
+      if (prevRefreshFunction && typeof prevRefreshFunction === 'function' && 
+          prevRefreshFunction !== refreshWrapper && prevRefreshFunction !== loadTopics) {
+        console.log('[TOPIC MANAGER] Calling previous refresh function');
+        prevRefreshFunction();
+      }
+    };
+    
+    // Set our wrapper as the global refresh function
+    window.refreshTopicList = refreshWrapper;
+    
+    // Also listen for the custom event for more reliable refreshing
+    const handleStorageEvent = () => {
+      console.log('[TOPIC MANAGER] Detected refresh event, reloading topics');
+      loadTopics();
+    };
+    
+    // Add event listener
+    window.addEventListener('storage:refreshTopics', handleStorageEvent);
+    
+    // Add a function to update a topic's message count in the UI
+    window.updateTopicMessageCount = async (topicId: number, newCount: number) => {
+      console.log(`[TOPIC UI] Updating topic ${topicId} message count to ${newCount}`);
+      
+      // Update the local topics array
+      setTopics(prevTopics => prevTopics.map(topic => {
+        if (topic.id === topicId) {
+          return { ...topic, messageCnt: newCount };
+        }
+        return topic;
+      }));
+      
+      // If this is the currently selected topic, update its details too
+      if (selectedTopicDetails && selectedTopicDetails.id === topicId) {
+        setSelectedTopicDetails(prev => {
+          if (prev) {
+            return { ...prev, messageCnt: newCount };
+          }
+          return prev;
+        });
+      }
+    };
+    
+    // Clean up when unmounting
+    return () => {
+      // Only remove our wrapper if it's still the current function
+      if (window.refreshTopicList === refreshWrapper) {
+        // Restore previous function or delete the property
+        if (prevRefreshFunction && prevRefreshFunction !== loadTopics && 
+            prevRefreshFunction !== refreshWrapper) {
+          window.refreshTopicList = prevRefreshFunction;
+        } else {
+          delete window.refreshTopicList;
+        }
+      }
+      
+      // Remove event listener
+      window.removeEventListener('storage:refreshTopics', handleStorageEvent);
+      
+      // Only remove message count updater if it exists
+      if (window.updateTopicMessageCount) {
+        delete window.updateTopicMessageCount;
+      }
+    };
+  }, []);
+  
+  // Update selected topic details when currentTopicId changes
+  useEffect(() => {
+    if (currentTopicId) {
+      console.log(`[TOPIC MANAGER] Current topic ID changed to ${currentTopicId}, fetching details`);
+      
+      // Fetch the current topic's details
+      db.topics.get(currentTopicId)
+        .then(topic => {
+          if (topic) {
+            setSelectedTopicDetails(topic);
+          } else {
+            console.warn(`[TOPIC MANAGER] Topic ${currentTopicId} not found in database`);
+            setSelectedTopicDetails(null);
+          }
+        })
+        .catch(error => {
+          console.error(`[TOPIC MANAGER] Error fetching topic ${currentTopicId}:`, error);
+          setSelectedTopicDetails(null);
+        });
+    } else {
+      // No current topic ID, clear selected topic details
+      setSelectedTopicDetails(null);
+    }
+  }, [currentTopicId]);
+  
+  // Load topics on mount
   useEffect(() => {
     loadTopics();
-  }, [userId, currentTopicId]);
+  }, [userId]);
 
   // Handle creating a new topic
   const handleCreateTopic = () => {
@@ -88,7 +192,16 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
 
       // Reload topics and switch to the saved topic
       await loadTopics();
+      
+      // Call the parent component's topic selection handler
       onSelectTopic(topicId);
+      
+      // Update local state
+      const savedTopic = await db.topics.get(topicId);
+      if (savedTopic) {
+        setSelectedTopicDetails(savedTopic);
+      }
+      
       setIsEditorOpen(false);
     } catch (error) {
       console.error('Error saving topic:', error);
@@ -146,22 +259,33 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
     setShowConfirmDelete(null);
   };
 
+  // Determine the current topic ID for display
+  // Always prioritize the prop from parent over local state
+  const activeTopicId = currentTopicId || selectedTopicDetails?.id;
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-5 gap-4 p-4 h-full">
       <div className="md:col-span-3">
         <TailwindTopicList
           userId={userId}
           onSelectTopic={(topicId) => {
+            // Call the parent component's topic selection handler
             onSelectTopic(topicId);
+            
             // Also update local state for immediate display
             db.topics.get(topicId).then(topic => {
-              if (topic) setSelectedTopicDetails(topic);
+              if (topic) {
+                console.log(`[TOPIC MANAGER] Selected topic ${topicId}, updating local state`);
+                setSelectedTopicDetails(topic);
+              } else {
+                console.warn(`[TOPIC MANAGER] Selected topic ${topicId} not found in database`);
+              }
             });
           }}
           onCreateTopic={handleCreateTopic}
           onDeleteTopic={handleDeleteTopic}
           onEditTopic={handleEditTopic}
-          currentTopicId={selectedTopicDetails?.id || currentTopicId}
+          currentTopicId={activeTopicId}
         />
       </div>
       
@@ -218,4 +342,4 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
   );
 };
 
-export default TailwindTopicManager; 
+export default TailwindTopicManager;

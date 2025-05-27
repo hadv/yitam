@@ -30,6 +30,8 @@ export interface Message {
     retryAfter?: number;
   };
   personaId?: string;
+  dbMessageId?: number;
+  tokens?: number;
 }
 
 export interface AnthropicErrorResponse {

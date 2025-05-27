@@ -192,14 +192,22 @@ const TailwindMessagePersistence: React.FC<MessagePersistenceProps> = ({ childre
         const messageId = await db.safeMessagesAdd(messageWithTopicId);
         console.log(`[MSG_PERSIST] Message saved with ID ${messageId} using safe method`);
       
-      // Update topic statistics
-      await updateTopicOnMessageAdd(topicId, message);
+        // Update topic statistics
+        await updateTopicOnMessageAdd(topicId, message);
         
         // Double check message count for debugging
         const msgCount = await db.messages.where('topicId').equals(topicId).count();
         console.log(`[MSG_PERSIST] Topic ${topicId} now has ${msgCount} messages`);
+        
+        // Verify message was actually saved
+        const savedMessage = await db.messages.get(messageId);
+        if (savedMessage) {
+          console.log(`[MSG_PERSIST] Successfully verified message ${messageId} exists in database`);
+        } else {
+          console.warn(`[MSG_PERSIST] Warning: Could not verify message ${messageId} in database after save`);
+        }
       
-      return messageId;
+        return messageId;
       } catch (innerError) {
         console.error('[MSG_PERSIST] Error in safe message add:', innerError);
         return await directSaveMessage(topicId, message);
@@ -259,17 +267,104 @@ const TailwindMessagePersistence: React.FC<MessagePersistenceProps> = ({ childre
   // Delete a message and update topic stats
   const deleteMessage = async (messageId: number, topicId: number): Promise<void> => {
     try {
-      // Get the message to be deleted to update topic stats
+      console.log(`[DELETE DEBUG] Starting deletion process for message ID ${messageId} from topic ${topicId}`);
+      
+      // Make sure the database is open
+      await db.ensureOpen();
+      
+      // Check if the topic exists first
+      const topicExists = await db.topics.get(topicId);
+      if (!topicExists) {
+        console.log(`[DELETE DEBUG] Topic ${topicId} does not exist, nothing to delete`);
+        return;
+      }
+      
+      // Get the message first for topic stats update
       const message = await db.messages.get(messageId);
-      if (!message) return;
+      if (!message) {
+        console.log(`[DELETE DEBUG] Message ID ${messageId} not found in database, nothing to delete`);
+        return;
+      }
+
+      console.log(`[DELETE DEBUG] Found message to delete: ID=${messageId}, role=${message.role}, content=${message.content.substring(0, 30)}...`);
       
-      // Delete the message
-      await db.messages.delete(messageId);
+      // Count messages BEFORE deletion
+      const messageCountBefore = await db.messages.where('topicId').equals(topicId).count();
+      console.log(`[DELETE DEBUG] Topic ${topicId} has ${messageCountBefore} messages before deletion`);
       
-      // Update topic statistics
-      await updateTopicOnMessageDelete(topicId, message);
+      // If this is the last message, delete the topic directly
+      if (messageCountBefore === 1) {
+        console.log(`[DELETE DEBUG] This is the last message in topic ${topicId}, deleting topic`);
+        
+        try {
+          // Delete message first
+          await db.forceDeleteMessage(messageId);
+          
+          // Then delete the topic
+          await db.topics.delete(topicId);
+          console.log(`[DELETE DEBUG] Topic ${topicId} deleted successfully`);
+          
+          // No need for further processing since topic is gone
+          return;
+        } catch (error) {
+          console.error(`[DELETE DEBUG] Error deleting topic ${topicId}:`, error);
+          // Continue with normal flow if topic deletion fails
+        }
+      }
+      
+      // Use the force delete method which tries multiple deletion strategies
+      const deleteSuccess = await db.forceDeleteMessage(messageId);
+      
+      if (!deleteSuccess) {
+        console.error(`[DELETE DEBUG] Failed to delete message ${messageId} after multiple attempts`);
+        throw new Error(`Unable to delete message ${messageId} using all available strategies`);
+      }
+      
+      console.log(`[DELETE DEBUG] Successfully deleted message ${messageId}`);
+      
+      // Count messages AFTER deletion to see if the topic is now empty
+      const messageCountAfter = await db.messages.where('topicId').equals(topicId).count();
+      console.log(`[DELETE DEBUG] Topic ${topicId} has ${messageCountAfter} messages after deletion`);
+      
+      // Check if the topic is now COMPLETELY empty (exactly 0 messages)
+      if (messageCountAfter === 0) {
+        console.log(`[DELETE DEBUG] Topic ${topicId} is now completely empty (0 messages), deleting topic`);
+        
+        try {
+          // Delete the topic
+          await db.topics.delete(topicId);
+          console.log(`[DELETE DEBUG] Topic ${topicId} deleted successfully`);
+          
+          // Fire the custom refresh event to update UI
+          if (typeof window !== 'undefined') {
+            console.log(`[DELETE DEBUG] Dispatching refresh event to update UI`);
+            window.dispatchEvent(new Event('storage:refreshTopics'));
+          }
+          
+          // Return early since there's no topic to update stats for
+          return;
+        } catch (topicDeleteError) {
+          console.error(`[DELETE DEBUG] Error deleting topic ${topicId}:`, topicDeleteError);
+          // Continue with normal stats update if topic deletion fails
+        }
+      }
+      
+      // Update topic statistics using our updateTopicMessageCount method
+      try {
+        const updateSuccess = await db.updateTopicMessageCount(topicId);
+        console.log(`[DELETE DEBUG] Topic ${topicId} stats update: ${updateSuccess ? 'success' : 'failed'}`);
+        
+        // Fire the custom refresh event to update UI
+        if (typeof window !== 'undefined') {
+          console.log(`[DELETE DEBUG] Dispatching refresh event to update UI`);
+          window.dispatchEvent(new Event('storage:refreshTopics'));
+        }
+      } catch (statsError) {
+        console.error(`[DELETE DEBUG] Error updating topic stats for ${topicId}:`, statsError);
+      }
     } catch (error) {
-      console.error('Error deleting message:', error);
+      console.error(`[DELETE DEBUG] Error deleting message ${messageId}:`, error);
+      throw error; // Re-throw to allow proper handling in UI
     }
   };
 
@@ -306,39 +401,68 @@ const TailwindMessagePersistence: React.FC<MessagePersistenceProps> = ({ childre
   // Update topic statistics when a message is deleted
   const updateTopicOnMessageDelete = async (topicId: number, message: Message): Promise<void> => {
     try {
+      console.log(`[STATS DEBUG] Updating topic ${topicId} stats after deleting a message`);
+      
+      // First verify topic still exists
       const topic = await db.topics.get(topicId);
-      if (topic) {
-        const updateData: Partial<Topic> = {
-          messageCnt: Math.max(0, (topic.messageCnt || 0) - 1)
-        };
+      if (!topic) {
+        console.log(`[STATS DEBUG] Topic ${topicId} no longer exists, skipping stats update`);
+        return;
+      }
+      
+      // Get actual message count directly from database
+      const actualMessageCount = await db.messages.where('topicId').equals(topicId).count();
+      const actualUserCount = await db.messages.where('topicId').equals(topicId).and(msg => msg.role === 'user').count();
+      const actualAssistantCount = await db.messages.where('topicId').equals(topicId).and(msg => msg.role === 'assistant').count();
+      
+      console.log(`[STATS DEBUG] Actual counts for topic ${topicId}: total=${actualMessageCount}, user=${actualUserCount}, assistant=${actualAssistantCount}`);
+      
+      // Calculate token count (this is approximate as we'd need to load all messages to be exact)
+      let newTokenCount = (topic.totalTokens || 0) - (message.tokens || 0);
+      if (newTokenCount < 0) newTokenCount = 0;
+      
+      // Use transaction to ensure atomicity
+      await db.transaction('rw', db.topics, async () => {
+        await db.topics.update(topicId, {
+          messageCnt: actualMessageCount,
+          userMessageCnt: actualUserCount,
+          assistantMessageCnt: actualAssistantCount,
+          totalTokens: newTokenCount,
+          lastActive: Date.now()
+        });
         
-        // Update user or assistant message count based on the role
-        if (message.role === 'user') {
-          updateData.userMessageCnt = Math.max(0, (topic.userMessageCnt || 0) - 1);
-        } else if (message.role === 'assistant') {
-          updateData.assistantMessageCnt = Math.max(0, (topic.assistantMessageCnt || 0) - 1);
-        }
-        
-        // Update token count if available
-        if (message.tokens) {
-          updateData.totalTokens = Math.max(0, (topic.totalTokens || 0) - message.tokens);
-        }
-        
-        await db.topics.update(topicId, updateData);
+        console.log(`[STATS DEBUG] Topic ${topicId} stats updated with accurate counts`);
+      });
+      
+      // Check if topic is now empty and should be deleted
+      if (actualMessageCount === 0) {
+        console.log(`[STATS DEBUG] Topic ${topicId} is now empty, marking for deletion`);
+        // We don't delete here - this will be handled in the main deleteMessage function
       }
     } catch (error) {
-      console.error('Error updating topic stats on message delete:', error);
+      console.error(`[STATS DEBUG] Error updating topic stats on message delete for topic ${topicId}:`, error);
     }
   };
 
   // Manually update topic statistics by counting all messages
   const updateTopicStats = async (topicId: number): Promise<void> => {
     try {
-      // Get all messages for this topic
+      console.log(`[STATS DEBUG] Starting complete topic stats refresh for topic ${topicId}`);
+      
+      // First ensure the topic exists
+      const topic = await db.topics.get(topicId);
+      if (!topic) {
+        console.error(`[STATS DEBUG] Topic ${topicId} not found, cannot update stats`);
+        return;
+      }
+      
+      // Get all messages for this topic with a fresh query
       const messages = await db.messages
         .where('topicId')
         .equals(topicId)
         .toArray();
+      
+      console.log(`[STATS DEBUG] Found ${messages.length} messages for topic ${topicId}`);
       
       // Calculate statistics
       const userMessages = messages.filter(msg => msg.role === 'user');
@@ -350,16 +474,19 @@ const TailwindMessagePersistence: React.FC<MessagePersistenceProps> = ({ childre
         ? Math.max(...messages.map(msg => msg.timestamp))
         : Date.now();
       
-      // Update topic
-      await db.topics.update(topicId, {
-        messageCnt: messages.length,
-        userMessageCnt: userMessages.length,
-        assistantMessageCnt: assistantMessages.length,
-        totalTokens,
-        lastActive
+      // Update topic with accurate counts
+      await db.transaction('rw', db.topics, async () => {
+        await db.topics.update(topicId, {
+          messageCnt: messages.length,
+          userMessageCnt: userMessages.length,
+          assistantMessageCnt: assistantMessages.length,
+          totalTokens,
+          lastActive
+        });
+        console.log(`[STATS DEBUG] Topic ${topicId} stats updated successfully: ${messages.length} total messages`);
       });
     } catch (error) {
-      console.error('Error updating topic stats:', error);
+      console.error('[STATS DEBUG] Error updating topic stats:', error);
     }
   };
 

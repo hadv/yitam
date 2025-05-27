@@ -114,6 +114,81 @@ class ChatHistoryDB extends Dexie {
     }
   }
 
+  // Ensure the database is open before performing operations
+  async ensureOpen(): Promise<boolean> {
+    try {
+      if (!this.isOpen()) {
+        console.log('[DB DEBUG] Database not open, opening now');
+        await this.open();
+      }
+      return true;
+    } catch (error) {
+      console.error('[DB DEBUG] Error ensuring database is open:', error);
+      // Try to close and reopen as a last resort
+      try {
+        console.log('[DB DEBUG] Attempting to close and reopen database');
+        await this.close();
+        await this.open();
+        return this.isOpen();
+      } catch (reopenError) {
+        console.error('[DB DEBUG] Failed to reopen database:', reopenError);
+        return false;
+      }
+    }
+  }
+  
+  // Enhanced message deletion with multiple strategies
+  async forceDeleteMessage(messageId: number): Promise<boolean> {
+    console.log(`[DB DEBUG] Force delete message: ${messageId}`);
+    
+    // Make sure DB is open
+    await this.ensureOpen();
+    
+    try {
+      // First try: Standard delete
+      await this.messages.delete(messageId);
+      
+      // Verify deletion
+      const check1 = await this.messages.get(messageId);
+      if (!check1) {
+        console.log(`[DB DEBUG] Message ${messageId} deleted successfully with standard delete`);
+        return true;
+      }
+      
+      console.log(`[DB DEBUG] Standard delete failed for message ${messageId}, trying where clause`);
+      
+      // Second try: Where clause
+      await this.messages.where('id').equals(messageId).delete();
+      
+      // Verify again
+      const check2 = await this.messages.get(messageId);
+      if (!check2) {
+        console.log(`[DB DEBUG] Message ${messageId} deleted successfully with where clause`);
+        return true;
+      }
+      
+      console.log(`[DB DEBUG] Where clause delete failed for message ${messageId}, trying with exclusive lock`);
+      
+      // Third try: With exclusive lock
+      await this.transaction('rw!', this.messages, async () => {
+        await this.messages.delete(messageId);
+      });
+      
+      // Final verification
+      const check3 = await this.messages.get(messageId);
+      if (!check3) {
+        console.log(`[DB DEBUG] Message ${messageId} deleted successfully with exclusive lock`);
+        return true;
+      }
+      
+      console.error(`[DB DEBUG] All deletion strategies failed for message ${messageId}`);
+      return false;
+    } catch (error) {
+      console.error(`[DB DEBUG] Error in forceDeleteMessage:`, error);
+      return false;
+    }
+  }
+
   // Enhanced message add with better error handling
   async safeMessagesAdd(message: Omit<Message, 'id'>): Promise<number> {
     try {
@@ -329,6 +404,161 @@ class ChatHistoryDB extends Dexie {
     } catch (error) {
       console.error('Database reset failed:', error);
       return false;
+    }
+  }
+
+  // Check if a topic is empty (has EXACTLY 0 messages)
+  async isTopicEmpty(topicId: number): Promise<boolean> {
+    try {
+      await this.ensureOpen();
+      
+      // Check if the topic exists
+      const topic = await this.topics.get(topicId);
+      if (!topic) {
+        console.log(`[DB DEBUG] Topic ${topicId} does not exist, considering it empty`);
+        return true;
+      }
+      
+      // Count messages for this topic
+      const messageCount = await this.messages.where('topicId').equals(topicId).count();
+      console.log(`[DB DEBUG] Topic ${topicId} has ${messageCount} messages`);
+      
+      // Only consider a topic empty if it has EXACTLY 0 messages
+      return messageCount === 0;
+    } catch (error) {
+      console.error(`[DB DEBUG] Error checking if topic ${topicId} is empty:`, error);
+      return false; // Default to not empty on error to prevent accidental deletion
+    }
+  }
+  
+  // Delete an empty topic - only if it has EXACTLY 0 messages
+  async deleteEmptyTopic(topicId: number): Promise<boolean> {
+    try {
+      await this.ensureOpen();
+      
+      // First check if it's empty
+      const isEmpty = await this.isTopicEmpty(topicId);
+      if (!isEmpty) {
+        console.log(`[DB DEBUG] Topic ${topicId} is not empty (has at least 1 message), not deleting`);
+        return false;
+      }
+      
+      // Use a transaction to delete the topic (no need to delete messages, there are none)
+      await this.transaction('rw', [this.topics], async () => {
+        // Delete the topic
+        await this.topics.delete(topicId);
+        console.log(`[DB DEBUG] Deleted empty topic ${topicId}`);
+      });
+      
+      return true;
+    } catch (error) {
+      console.error(`[DB DEBUG] Error deleting empty topic ${topicId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Update a topic's message count directly with accurate counts from the database
+   * @param topicId The ID of the topic to update
+   * @returns True if the update was successful
+   */
+  async updateTopicMessageCount(topicId: number): Promise<boolean> {
+    try {
+      console.log(`[DB] Updating message count for topic ${topicId}`);
+      
+      // Ensure the database is open
+      await this.ensureOpen();
+      
+      // Verify the topic exists
+      const topic = await this.topics.get(topicId);
+      if (!topic) {
+        console.error(`[DB] Topic ${topicId} not found, cannot update message count`);
+        return false;
+      }
+      
+      // Get accurate counts directly from database
+      const actualMessageCount = await this.messages.where('topicId').equals(topicId).count();
+      const actualUserCount = await this.messages.where('topicId').equals(topicId).and(msg => msg.role === 'user').count();
+      const actualAssistantCount = await this.messages.where('topicId').equals(topicId).and(msg => msg.role === 'assistant').count();
+      
+      console.log(`[DB] Topic ${topicId} actual counts: total=${actualMessageCount}, user=${actualUserCount}, assistant=${actualAssistantCount}`);
+      
+      // If the topic has no messages, consider deleting it
+      if (actualMessageCount === 0) {
+        console.log(`[DB] Topic ${topicId} has no messages, deleting`);
+        await this.topics.delete(topicId);
+        return true;
+      }
+      
+      // Update the topic with accurate counts
+      await this.topics.update(topicId, {
+        messageCnt: actualMessageCount,
+        userMessageCnt: actualUserCount, 
+        assistantMessageCnt: actualAssistantCount,
+        lastActive: Date.now()
+      });
+      
+      console.log(`[DB] Topic ${topicId} message count updated successfully`);
+      return true;
+    } catch (error) {
+      console.error(`[DB] Error updating topic message count for ${topicId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Clean up orphaned messages and empty topics
+   * @returns Object with counts of deleted items
+   */
+  async cleanupOrphanedData(): Promise<{ deletedTopics: number, deletedMessages: number }> {
+    try {
+      console.log('[DB] Starting database cleanup');
+      
+      // Ensure the database is open
+      await this.ensureOpen();
+      
+      // 1. Find and delete empty topics (topics with no messages)
+      const emptyTopicIds: number[] = [];
+      
+      // Get all topics
+      const allTopics = await this.topics.toArray();
+      console.log(`[DB] Checking ${allTopics.length} topics for emptiness`);
+      
+      // Check each topic to see if it has messages
+      for (const topic of allTopics) {
+        if (!topic.id) continue;
+        
+        const messageCount = await this.messages.where('topicId').equals(topic.id).count();
+        
+        if (messageCount === 0) {
+          console.log(`[DB] Topic ${topic.id} (${topic.title}) is empty, marking for deletion`);
+          emptyTopicIds.push(topic.id);
+        }
+      }
+      
+      // Delete empty topics
+      let deletedTopics = 0;
+      for (const topicId of emptyTopicIds) {
+        await this.topics.delete(topicId);
+        deletedTopics++;
+        console.log(`[DB] Deleted empty topic ${topicId}`);
+      }
+      
+      // 2. Update all topic message counts to ensure they're accurate
+      const remainingTopics = await this.topics.toArray();
+      console.log(`[DB] Updating message counts for ${remainingTopics.length} remaining topics`);
+      
+      for (const topic of remainingTopics) {
+        if (!topic.id) continue;
+        
+        await this.updateTopicMessageCount(topic.id);
+      }
+      
+      console.log(`[DB] Database cleanup complete: deleted ${deletedTopics} empty topics`);
+      return { deletedTopics, deletedMessages: 0 };
+    } catch (error) {
+      console.error(`[DB] Error during database cleanup:`, error);
+      return { deletedTopics: 0, deletedMessages: 0 };
     }
   }
 }

@@ -23,24 +23,48 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
   const [sortOption, setSortOption] = useState<'lastActive' | 'createdAt' | 'title'>('lastActive');
   const [isLoading, setIsLoading] = useState(true);
 
-    const loadTopics = async () => {
-      try {
-        setIsLoading(true);
+  const loadTopics = async () => {
+    try {
+      setIsLoading(true);
+      console.log('[TOPIC LIST] Loading topics for user', userId);
+      
+      // Get all topics for this user
+      const userTopics = await db.topics
+        .where('userId')
+        .equals(userId)
+        .toArray();
         
-        // Get all topics for this user
-        const userTopics = await db.topics
-          .where('userId')
-          .equals(userId)
-          .toArray();
-          
-        setTopics(userTopics);
-      } catch (error) {
-        console.error('Error loading topics:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+      console.log(`[TOPIC LIST] Loaded ${userTopics.length} topics`);
+      setTopics(userTopics);
+    } catch (error) {
+      console.error('[TOPIC LIST] Error loading topics:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  // Only register a lightweight refresh function that only updates this component's state
+  // without overriding the main function from TopicManager
+  useEffect(() => {
+    // Don't create or register a new refreshTopicList function
+    // Just load topics initially
+    loadTopics();
+    
+    // Listen for refreshTopicList calls but don't replace the function
+    const handleStorageEvent = () => {
+      console.log('[TOPIC LIST] Detected refresh request, reloading topics');
+      loadTopics();
+    };
+    
+    // Temporary event listener for testing topic list refresh
+    window.addEventListener('storage:refreshTopics', handleStorageEvent);
+    
+    return () => {
+      window.removeEventListener('storage:refreshTopics', handleStorageEvent);
+    };
+  }, [userId]);
+  
+  // Reload topics when currentTopicId changes
   useEffect(() => {
     loadTopics();
   }, [userId, currentTopicId]);
