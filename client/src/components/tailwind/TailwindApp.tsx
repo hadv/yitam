@@ -12,6 +12,11 @@ declare global {
     refreshTopicList?: () => void;
     updateTopicMessageCount?: (topicId: number, count: number) => void;
     triggerTopicListRefresh?: () => void;
+    // Add search debug functions
+    reindexAllMessages?: (userId: string) => Promise<boolean>;
+    reindexCurrentTopic?: () => Promise<boolean>;
+    getSearchStats?: () => Promise<any>;
+    searchMessages?: (query: string, filters?: any) => Promise<any>;
   }
 }
 
@@ -51,6 +56,8 @@ import { debugIndexedDB, reinitializeDatabase } from '../../db/ChatHistoryDBUtil
 import { checkDatabaseVersionMismatch, updateStoredDatabaseVersion, getSystemInfo } from '../../utils/version';
 import { extractTitleFromBotText } from '../../utils/titleExtraction';
 import { setupWindowDebugFunctions } from '../../utils/debugging';
+import { reindexAllUserMessages, getSearchIndexStats } from '../../utils/searchUtils';
+import { advancedSearch } from '../../db/ChatHistoryDBUtil';
 
 // Types
 import { UserData, Message } from '../../types/chat';
@@ -128,12 +135,47 @@ function TailwindApp() {
       // Also dispatch a custom event for components that listen for it
       window.dispatchEvent(new Event('storage:refreshTopics'));
     };
+
+    // Add search-related debug functions
+    window.reindexAllMessages = async (userId: string) => {
+      console.log(`[SEARCH DEBUG] Reindexing all messages for user ${userId}`);
+      return await reindexAllUserMessages(userId);
+    };
+
+    window.reindexCurrentTopic = async () => {
+      if (!currentTopicId) {
+        console.warn('[SEARCH DEBUG] No current topic to reindex');
+        return false;
+      }
+      console.log(`[SEARCH DEBUG] Reindexing current topic ${currentTopicId}`);
+      const { reindexTopic } = await import('../../db/ChatHistoryDBUtil');
+      const success = await reindexTopic(currentTopicId);
+      return success;
+    };
+
+    window.getSearchStats = async () => {
+      console.log('[SEARCH DEBUG] Getting search index statistics');
+      return await getSearchIndexStats();
+    };
+
+    window.searchMessages = async (query: string, filters = {}) => {
+      if (!user || !user.email) {
+        console.warn('[SEARCH DEBUG] No user to search for');
+        return [];
+      }
+      console.log(`[SEARCH DEBUG] Searching for "${query}" with filters:`, filters);
+      return await advancedSearch(query, user.email, filters);
+    };
     
     return () => {
       cleanup();
       delete window.triggerTopicListRefresh;
+      delete window.reindexAllMessages;
+      delete window.reindexCurrentTopic;
+      delete window.getSearchStats;
+      delete window.searchMessages;
     };
-  }, [currentPersonaId, absoluteForcePersona]);
+  }, [currentPersonaId, absoluteForcePersona, user, currentTopicId]);
 
   // Component mount effect - debug IndexedDB
   useEffect(() => {

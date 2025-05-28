@@ -225,30 +225,43 @@ export async function indexMessageContent(content: string, topicId: number, mess
     return;
   }
 
-  // Tokenize and filter the content
-  const words = content.toLowerCase()
-    .split(/\W+/)
-    .filter(word => 
-      word.length >= 3 &&
-      word.length <= 30 &&
-      !STOP_WORDS.has(word) &&
-      !/^\d+$/.test(word)
-    );
+  try {
+    // Tokenize and filter the content - more permissive for Vietnamese
+    const words = content.toLowerCase()
+      .split(/\s+|[,.!?;:()"']/g) // Split by whitespace and punctuation
+      .map(word => word.trim())
+      .filter(word => 
+        word.length >= 2 && // Reduced from 3 to 2 to better handle Vietnamese words
+        word.length <= 40 && // Increased from 30 to 40 to handle longer compound words
+        !STOP_WORDS.has(word) &&
+        !/^\d+$/.test(word) // Not just digits
+      );
 
-  // Store in word index
-  const uniqueWords = [...new Set(words)];
-  
-  if (uniqueWords.length === 0) {
-    return;
-  }
+    // Store in word index
+    const uniqueWords = [...new Set(words)];
+    
+    if (uniqueWords.length === 0) {
+      return;
+    }
 
-  // Add each word to the index
-  for (const word of uniqueWords) {
-    await db.wordIndex.put({
-      word,
-      topicId,
-      messageId
-    });
+    // Add each word to the index
+    for (const word of uniqueWords) {
+      try {
+        await db.wordIndex.put({
+          word,
+          topicId,
+          messageId
+        });
+      } catch (error) {
+        console.error(`Error indexing word "${word}" for message ${messageId}:`, error);
+        // Continue with other words even if one fails
+      }
+    }
+    
+    console.log(`[INDEX] Successfully indexed ${uniqueWords.length} unique words for message ${messageId}`);
+  } catch (error) {
+    console.error(`[INDEX] Error in indexMessageContent for message ${messageId}:`, error);
+    throw error; // Re-throw for proper error handling
   }
 }
 
@@ -751,36 +764,49 @@ export async function advancedSearch(
       return [];
     }
     
+    console.log(`[SEARCH] Starting advanced search for "${query}" for user ${userId}`);
+    
     // Get all topics for this user
     const userTopics = await db.topics
       .where('userId')
       .equals(userId)
       .toArray();
     
+    console.log(`[SEARCH] Found ${userTopics.length} topics for user`);
+    
     const topicIds = userTopics
-      .map((topic: Topic) => topic.id)
-      .filter((id: number | undefined): id is number => id !== undefined);
+      .map((topic) => topic.id)
+      .filter((id): id is number => id !== undefined);
     
     const topicMap = new Map<number, Topic>(
       userTopics
-        .filter((topic: Topic) => topic.id !== undefined)
-        .map((topic: Topic) => [topic.id as number, topic])
+        .filter((topic) => topic.id !== undefined)
+        .map((topic) => [topic.id as number, topic])
     );
     
-    // Tokenize query
-    let words = query.toLowerCase().split(/\W+/).filter(word => word.length >= 3);
+    console.log(`[SEARCH] Created topic map with ${topicMap.size} entries`);
+    
+    // Tokenize query with more permissive rules for Vietnamese
+    let words = query.toLowerCase()
+      .split(/\s+|[,.!?;:()"']/g)
+      .map(word => word.trim())
+      .filter(word => word.length >= 2); // More permissive minimum length for Vietnamese
     
     if (words.length === 0) {
       return [];
     }
-    
+
     // For exact search, use the whole phrase
     if (filters.exact) {
+      console.log(`[SEARCH] Using exact phrase search for "${query}"`);
+      
       // Search for full phrase in message content
       const allMessages = await db.messages
         .where('topicId')
         .anyOf(topicIds)
         .toArray();
+      
+      console.log(`[SEARCH] Retrieved ${allMessages.length} messages from all topics`);
       
       // Filter messages by content containing exact phrase
       const matchingMessages = allMessages.filter((message: Message) => {
@@ -795,49 +821,154 @@ export async function advancedSearch(
         return message.content.toLowerCase().includes(query.toLowerCase());
       });
       
+      console.log(`[SEARCH] Found ${matchingMessages.length} messages matching exact phrase`);
+      
       // Sort by timestamp (newest first)
       const results = matchingMessages
         .sort((a: Message, b: Message) => b.timestamp - a.timestamp)
         .slice(0, limit)
-        .map((message: Message) => ({
-          message,
-          topic: topicMap.get(message.topicId) as Topic
-        }))
-        .filter((result: {message: Message, topic: Topic}) => result.topic !== undefined); // Ensure topic exists
+        .map((message: Message) => {
+          const topic = topicMap.get(message.topicId);
+          if (!topic) {
+            console.warn(`[SEARCH] Could not find topic with ID ${message.topicId} for message ${message.id}`);
+          }
+          return {
+            message,
+            topic: topic as Topic
+          };
+        })
+        .filter((result: {message: Message, topic: Topic}) => result.topic !== undefined);
+      
+      console.log(`[SEARCH] Returning ${results.length} final exact match results`);
+      
+      // Log first 3 results for debugging
+      results.slice(0, 3).forEach((result, index) => {
+        console.log(`[SEARCH] Result ${index+1}: Message ID ${result.message.id}, Topic ID ${result.topic.id}, Topic Title "${result.topic.title}"`);
+      });
       
       return results;
     }
     
-    // For non-exact search, use the word index
-    let messageIds = new Set<number>();
-    let messageTopicIds = new Map<number, number>();
-    
-    // Find messages containing the search words
-    for (const word of words) {
-      const entries = await db.wordIndex
-        .where('word')
-        .equals(word)
-        .and((entry: WordIndex) => topicIds.includes(entry.topicId))
+    // For non-exact search, try to use the word index first
+    try {
+      console.log(`[SEARCH] Using word index search for ${words.length} words`);
+      
+      let messageIds = new Set<number>();
+      let messageTopicIds = new Map<number, number>();
+      
+      // Find messages containing the search words
+      for (const word of words) {
+        try {
+          const entries = await db.wordIndex
+            .where('word')
+            .equals(word)
+            .and((entry: WordIndex) => topicIds.includes(entry.topicId))
+            .toArray();
+          
+          console.log(`[SEARCH] Found ${entries.length} entries for word "${word}"`);
+          
+          entries.forEach((entry: WordIndex) => {
+            messageIds.add(entry.messageId);
+            messageTopicIds.set(entry.messageId, entry.topicId);
+          });
+        } catch (error) {
+          console.error(`Error searching for word "${word}":`, error);
+          // Continue with other words
+        }
+      }
+      
+      console.log(`[SEARCH] Word index search found ${messageIds.size} unique message IDs`);
+      
+      if (messageIds.size === 0) {
+        // If no results from index, fall back to direct search
+        console.log('[SEARCH] No results from word index, falling back to direct search');
+        return await directContentSearch(query, userId, topicIds, topicMap, filters, limit);
+      }
+      
+      // Get the actual messages
+      const messages = await db.messages
+        .where('id')
+        .anyOf([...messageIds])
         .toArray();
       
-      entries.forEach((entry: WordIndex) => {
-        messageIds.add(entry.messageId);
-        messageTopicIds.set(entry.messageId, entry.topicId);
+      console.log(`[SEARCH] Retrieved ${messages.length} messages from database`);
+      
+      // Apply filters
+      const filteredMessages = messages.filter((message: Message) => {
+        // Apply date filters
+        if (filters.startDate && message.timestamp < filters.startDate) return false;
+        if (filters.endDate && message.timestamp > filters.endDate) return false;
+        
+        // Apply role filter
+        if (filters.role && message.role !== filters.role) return false;
+        
+        return true;
       });
+      
+      console.log(`[SEARCH] After applying filters: ${filteredMessages.length} messages remain`);
+      
+      // Sort by timestamp (newest first) and take top N
+      const results = filteredMessages
+        .sort((a: Message, b: Message) => b.timestamp - a.timestamp)
+        .slice(0, limit)
+        .map((message: Message) => {
+          // Use the topic ID from the message to get the topic
+          const topic = topicMap.get(message.topicId);
+          if (!topic) {
+            console.warn(`[SEARCH] Could not find topic with ID ${message.topicId} for message ${message.id}`);
+          }
+          return {
+            message,
+            topic: topic as Topic
+          };
+        })
+        .filter((result: {message: Message, topic: Topic}) => result.topic !== undefined);
+      
+      console.log(`[SEARCH] Returning ${results.length} final results from word index search`);
+      
+      // Log first 3 results for debugging
+      results.slice(0, 3).forEach((result, index) => {
+        console.log(`[SEARCH] Result ${index+1}: Message ID ${result.message.id}, Topic ID ${result.topic.id}, Topic Title "${result.topic.title}"`);
+      });
+      
+      return results;
+    } catch (indexError) {
+      console.error('[SEARCH] Error using word index for search:', indexError);
+      // Fall back to direct content search if word index fails
+      return await directContentSearch(query, userId, topicIds, topicMap, filters, limit);
     }
+  } catch (error) {
+    console.error('[SEARCH] Error in advanced search:', error);
+    return [];
+  }
+}
+
+/**
+ * Direct content search without using word index
+ * Used as a fallback when word index search fails
+ */
+async function directContentSearch(
+  query: string,
+  userId: string,
+  topicIds: number[],
+  topicMap: Map<number, Topic>,
+  filters: SearchFilters = {},
+  limit: number = 20
+): Promise<{ message: Message; topic: Topic }[]> {
+  try {
+    console.log(`[SEARCH] Performing direct content search for: "${query}"`);
     
-    if (messageIds.size === 0) {
-      return [];
-    }
-    
-    // Get the actual messages
+    // Get all messages from the user's topics
     const messages = await db.messages
-      .where('id')
-      .anyOf([...messageIds])
+      .where('topicId')
+      .anyOf(topicIds)
       .toArray();
     
-    // Apply filters
-    const filteredMessages = messages.filter((message: Message) => {
+    console.log(`[SEARCH] Retrieved ${messages.length} messages from ${topicIds.length} topics`);
+    
+    // Filter messages by content and other filters
+    const queryLower = query.toLowerCase();
+    const matchingMessages = messages.filter((message: Message) => {
       // Apply date filters
       if (filters.startDate && message.timestamp < filters.startDate) return false;
       if (filters.endDate && message.timestamp > filters.endDate) return false;
@@ -845,22 +976,51 @@ export async function advancedSearch(
       // Apply role filter
       if (filters.role && message.role !== filters.role) return false;
       
-      return true;
+      // Check content contains the query
+      return message.content.toLowerCase().includes(queryLower);
     });
     
+    console.log(`[SEARCH] Found ${matchingMessages.length} messages containing the search term`);
+    
+    // Group messages by topic for debugging
+    const messagesByTopic = new Map<number, number>();
+    matchingMessages.forEach(msg => {
+      const count = messagesByTopic.get(msg.topicId) || 0;
+      messagesByTopic.set(msg.topicId, count + 1);
+    });
+    
+    console.log(`[SEARCH] Messages distribution across topics:`);
+    for (const [topicId, count] of messagesByTopic.entries()) {
+      const topic = topicMap.get(topicId);
+      console.log(`[SEARCH] Topic ID ${topicId} (${topic ? topic.title : 'Unknown'}): ${count} matching messages`);
+    }
+    
     // Sort by timestamp (newest first) and take top N
-    const results = filteredMessages
+    const results = matchingMessages
       .sort((a: Message, b: Message) => b.timestamp - a.timestamp)
       .slice(0, limit)
-      .map((message: Message) => ({
-        message,
-        topic: topicMap.get(message.topicId) as Topic
-      }))
-      .filter((result: {message: Message, topic: Topic}) => result.topic !== undefined); // Ensure topic exists
+      .map((message: Message) => {
+        const topic = topicMap.get(message.topicId);
+        if (!topic) {
+          console.warn(`[SEARCH] Could not find topic with ID ${message.topicId} for message ${message.id}`);
+        }
+        return {
+          message,
+          topic: topic as Topic
+        };
+      })
+      .filter((result: {message: Message, topic: Topic}) => result.topic !== undefined);
+    
+    console.log(`[SEARCH] Direct content search returning ${results.length} final results`);
+    
+    // Log first 3 results for debugging
+    results.slice(0, 3).forEach((result, index) => {
+      console.log(`[SEARCH] Result ${index+1}: Message ID ${result.message.id}, Topic ID ${result.topic.id}, Topic Title "${result.topic.title}"`);
+    });
     
     return results;
   } catch (error) {
-    console.error('Error in advanced search:', error);
+    console.error('[SEARCH] Error in direct content search:', error);
     return [];
   }
 }
@@ -871,11 +1031,57 @@ export async function advancedSearch(
  */
 export async function reindexTopic(topicId: number): Promise<boolean> {
   try {
-    // Delete all existing word indices for this topic
-    await db.wordIndex
-      .where('topicId')
-      .equals(topicId)
-      .delete();
+    // Try to delete all existing word indices for this topic
+    try {
+      // Check if the wordIndex table exists and has the correct schema
+      let hasWordIndex = true;
+      try {
+        // Try to access the wordIndex table
+        await db.wordIndex.count();
+      } catch (schemaError) {
+        console.error('[SEARCH] Error accessing wordIndex table, may not exist in schema:', schemaError);
+        hasWordIndex = false;
+      }
+
+      if (hasWordIndex) {
+        try {
+          // Try to delete existing indices
+          await db.wordIndex
+            .where('topicId')
+            .equals(topicId)
+            .delete();
+        } catch (deleteError) {
+          // If the topicId is not indexed, this will fail with a SchemaError
+          console.log('[SEARCH] Could not delete existing word indices by topicId, likely due to schema issues:', deleteError);
+          
+          // Try a different approach - get all messageIds for this topic first
+          const messages = await db.messages
+            .where('topicId')
+            .equals(topicId)
+            .toArray();
+          
+          const messageIds = messages
+            .map(message => message.id)
+            .filter((id): id is number => id !== undefined);
+          
+          // Then delete word indices for these messages one by one
+          for (const messageId of messageIds) {
+            try {
+              await db.wordIndex
+                .where('messageId')
+                .equals(messageId)
+                .delete();
+            } catch (error) {
+              console.error(`[SEARCH] Error deleting word indices for message ${messageId}:`, error);
+              // Continue with other messages
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[SEARCH] Error clearing existing word indices:', error);
+      // Continue anyway - we can still try to add new indices
+    }
     
     // Get all messages for this topic
     const messages = await db.messages
@@ -884,13 +1090,21 @@ export async function reindexTopic(topicId: number): Promise<boolean> {
       .toArray();
     
     // Re-index each message
+    let indexedCount = 0;
     for (const message of messages) {
       if (message.id !== undefined && message.content) {
-        await indexMessageContent(message.content, topicId, message.id);
+        try {
+          await indexMessageContent(message.content, topicId, message.id);
+          indexedCount++;
+        } catch (error) {
+          console.error(`[SEARCH] Error indexing message ${message.id}:`, error);
+          // Continue with other messages
+        }
       }
     }
     
-    return true;
+    console.log(`[SEARCH] Successfully indexed ${indexedCount}/${messages.length} messages for topic ${topicId}`);
+    return indexedCount > 0 || messages.length === 0;
   } catch (error) {
     console.error('Error re-indexing topic:', error);
     return false;

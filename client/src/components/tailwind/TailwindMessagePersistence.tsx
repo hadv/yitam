@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { createContext, useContext } from 'react';
 import db, { Message, Topic } from '../../db/ChatHistoryDB';
+import { enhancedDirectDBWrite } from '../../db/ChatHistoryDBUtil';
+import { indexMessageContent } from '../../db/ChatHistoryDBUtil';
 
 interface MessagePersistenceProps {
   children: React.ReactNode;
@@ -25,98 +27,58 @@ export const useMessagePersistence = () => React.useContext(MessagePersistenceCo
 
 // Direct message save function that works outside of React context
 export async function directSaveMessage(topicId: number, message: Omit<Message, 'id' | 'topicId'>): Promise<number> {
+  console.log(`[MSG_PERSIST] Starting directSaveMessage fallback for topic ${topicId}`);
+
   try {
-    console.log(`[DIRECT_SAVE] Starting direct save for topic ${topicId}, role: ${message.role}`);
+    // Add the message to the database
+    const messageWithTopicId = { ...message, topicId };
+    const messageId = await db.messages.add(messageWithTopicId);
     
-    // Verify DB connection first
+    // If we get here, save succeeded
+    console.log(`[MSG_PERSIST] Successfully saved message with ID ${messageId} using direct method`);
+
+    // Try to update topic stats
     try {
-      const isConnected = await db.isOpen();
-      if (!isConnected) {
-        console.error('[DIRECT_SAVE] Database connection not open, attempting to open');
-        await db.open();
-      }
-    } catch (connError) {
-      console.error('[DIRECT_SAVE] Database connection check failed:', connError);
-    }
-    
-    // Check if topic exists
-    const topic = await db.topics.get(topicId);
-    if (!topic) {
-      console.error(`[DIRECT_SAVE] Topic ${topicId} does not exist, message cannot be saved`);
-      return -1;
-    }
-    
-    // Add the message directly to the database
-    console.log(`[DIRECT_SAVE] Attempting to save message for topic ${topicId}, role: ${message.role}, content length: ${message.content.length}`);
-    
-    try {
-      // First try with safeMessagesAdd
-      const messageWithTopicId = { ...message, topicId };
-      console.log('[DIRECT_SAVE] Trying with safeMessagesAdd first');
-      const messageId = await db.safeMessagesAdd(messageWithTopicId);
-      
-      if (messageId > 0) {
-        console.log(`[DIRECT_SAVE] Message added with safeMessagesAdd, ID: ${messageId}`);
-        
-        // Update topic statistics
+      const topic = await db.topics.get(topicId);
+      if (topic) {
         await updateTopicStats(topic, message);
-        
-        return messageId;
-      } else {
-        throw new Error(`Failed to get valid messageId: ${messageId}`);
       }
-    } catch (firstAttemptError) {
-      console.error('[DIRECT_SAVE] safeMessagesAdd failed:', firstAttemptError);
-      
-      // Try with safePutMessage as fallback
-      try {
-        console.log('[DIRECT_SAVE] Trying with safePutMessage as fallback');
-        const messageWithTopicId = { 
-          ...message, 
-          topicId,
-          id: Date.now() + Math.floor(Math.random() * 1000) 
-        };
-        
-        const messageId = await db.safePutMessage(messageWithTopicId as Message);
-        
-        if (messageId > 0) {
-          console.log(`[DIRECT_SAVE] Message added with safePutMessage, ID: ${messageId}`);
-          
-          // Update topic statistics
-          await updateTopicStats(topic, message);
-          
-          return messageId;
-        } else {
-          throw new Error(`safePutMessage failed with ID: ${messageId}`);
-        }
-      } catch (secondAttemptError) {
-        console.error('[DIRECT_SAVE] safePutMessage fallback failed:', secondAttemptError);
-        
-        // Try traditional add as last resort
-        try {
-          console.log('[DIRECT_SAVE] Trying traditional add as last resort');
-          const messageWithTopicId = { ...message, topicId };
-          const messageId = await db.messages.add(messageWithTopicId);
-          
-          if (!messageId || messageId <= 0) {
-            console.error(`[DIRECT_SAVE] Failed to get valid messageId with traditional add: ${messageId}`);
-            return -1;
-          }
-          
-          console.log(`[DIRECT_SAVE] Message added with traditional add, ID: ${messageId}`);
-          
-          // Update topic statistics
-          await updateTopicStats(topic, message);
-          
-          return messageId;
-        } catch (thirdAttemptError) {
-          console.error('[DIRECT_SAVE] All save methods failed:', thirdAttemptError);
-          return -1;
-        }
-      }
+    } catch (statsError) {
+      console.error('[MSG_PERSIST] Error updating topic stats in direct save:', statsError);
     }
+
+    // Index message content for search
+    try {
+      console.log(`[MSG_PERSIST] Indexing message ${messageId} for search (direct save)`);
+      await indexMessageContent(message.content, topicId, messageId);
+    } catch (indexError) {
+      console.error(`[MSG_PERSIST] Error indexing message in direct save:`, indexError);
+      // Continue even if indexing fails
+    }
+    
+    return messageId;
   } catch (error) {
-    console.error('[DIRECT_SAVE] Error in direct save:', error);
+    console.error('[MSG_PERSIST] Error in direct save method:', error);
+    
+    // Last resort - try the enhanced direct write method
+    try {
+      console.log('[MSG_PERSIST] Attempting last-resort direct write');
+      const success = await enhancedDirectDBWrite(topicId, {
+        role: message.role,
+        content: message.content,
+        timestamp: message.timestamp || Date.now()
+      });
+      
+      if (success) {
+        console.log('[MSG_PERSIST] Last-resort write succeeded');
+        return -2; // Special code to indicate success but no id
+      }
+      
+      console.error('[MSG_PERSIST] Last-resort write failed');
+    } catch (lastError) {
+      console.error('[MSG_PERSIST] Last-resort write error:', lastError);
+    }
+    
     return -1;
   }
 }
@@ -195,6 +157,15 @@ const TailwindMessagePersistence: React.FC<MessagePersistenceProps> = ({ childre
         // Update topic statistics
         await updateTopicOnMessageAdd(topicId, message);
         
+        // Index message content for search
+        try {
+          console.log(`[MSG_PERSIST] Indexing message ${messageId} for search`);
+          await indexMessageContent(message.content, topicId, messageId);
+        } catch (indexError) {
+          console.error(`[MSG_PERSIST] Error indexing message content:`, indexError);
+          // Continue even if indexing fails - search will be affected but core functionality remains
+        }
+        
         // Double check message count for debugging
         const msgCount = await db.messages.where('topicId').equals(topicId).count();
         console.log(`[MSG_PERSIST] Topic ${topicId} now has ${msgCount} messages`);
@@ -256,6 +227,21 @@ const TailwindMessagePersistence: React.FC<MessagePersistenceProps> = ({ childre
         
         return ids;
       });
+      
+      // Index all messages for search
+      try {
+        console.log(`[MSG_PERSIST] Indexing ${messageIds.length} messages in batch for search`);
+        for (let i = 0; i < messageIds.length; i++) {
+          const messageId = messageIds[i];
+          const message = messages[i];
+          if (messageId && message.content) {
+            await indexMessageContent(message.content, topicId, messageId);
+          }
+        }
+      } catch (indexError) {
+        console.error(`[MSG_PERSIST] Error indexing batch messages:`, indexError);
+        // Continue even if indexing fails
+      }
       
       return messageIds;
     } catch (error) {
