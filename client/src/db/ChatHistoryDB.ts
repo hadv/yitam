@@ -49,16 +49,25 @@ class ChatHistoryDB extends Dexie {
     this.version(1).stores({
       topics: '++id, userId, title, lastActive',
       messages: '++id, topicId, timestamp, role, [topicId+timestamp]',
-      wordIndex: '[word+topicId], word'
+      wordIndex: '++id, [word+topicId], word, topicId, messageId'
     });
     
     // Version 2 - Schema upgrade to fix potential issues with ID generation
     this.version(2).stores({
       topics: '++id, userId, title, lastActive',
       messages: '++id, topicId, timestamp, role, [topicId+timestamp]',
-      wordIndex: '[word+topicId], word'
+      wordIndex: '++id, [word+topicId], word, topicId, messageId'
     }).upgrade(tx => {
       console.log('Upgrading database to version 2');
+    });
+
+    // Version 3 - Fix for wordIndex schema to ensure topicId and messageId are indexed
+    this.version(3).stores({
+      topics: '++id, userId, title, lastActive',
+      messages: '++id, topicId, timestamp, role, [topicId+timestamp]',
+      wordIndex: '++id, [word+topicId], word, topicId, messageId'
+    }).upgrade(tx => {
+      console.log('Upgrading database to version 3 - fixing wordIndex schema');
     });
 
     // Define table mappings
@@ -364,7 +373,7 @@ class ChatHistoryDB extends Dexie {
       this.version(1).stores({
         topics: '++id, userId, title, lastActive',
         messages: '++id, topicId, timestamp, role, [topicId+timestamp]',
-        wordIndex: '[word+topicId], word'
+        wordIndex: '++id, [word+topicId], word, topicId, messageId'
       });
       
       await this.open();
@@ -386,10 +395,10 @@ class ChatHistoryDB extends Dexie {
       
       // Create a new database with latest schema
       const newDb = new Dexie('ChatHistoryDB');
-      newDb.version(2).stores({
+      newDb.version(3).stores({
         topics: '++id, userId, title, lastActive',
         messages: '++id, topicId, timestamp, role, [topicId+timestamp]',
-        wordIndex: '[word+topicId], word'
+        wordIndex: '++id, [word+topicId], word, topicId, messageId'
       });
       
       await newDb.open();

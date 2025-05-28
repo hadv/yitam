@@ -3,6 +3,7 @@ import db, { Topic } from '../../db/ChatHistoryDB';
 import TailwindTopicList from './TailwindTopicList';
 import TailwindTopicEditor from './TailwindTopicEditor';
 import TailwindTopicMetadata from './TailwindTopicMetadata';
+import TailwindTopicSearch from './TailwindTopicSearch';
 
 interface TopicManagerProps {
   userId: string;
@@ -21,6 +22,7 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
   const [selectedTopicDetails, setSelectedTopicDetails] = useState<Topic | null>(null);
   const [showConfirmDelete, setShowConfirmDelete] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'topics' | 'search'>('topics');
 
   // Load topics from database
   const loadTopics = async () => {
@@ -266,27 +268,75 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
   return (
     <div className="grid grid-cols-1 md:grid-cols-5 gap-4 p-4 h-full">
       <div className="md:col-span-3">
-        <TailwindTopicList
-          userId={userId}
-          onSelectTopic={(topicId) => {
-            // Call the parent component's topic selection handler
-            onSelectTopic(topicId);
-            
-            // Also update local state for immediate display
-            db.topics.get(topicId).then(topic => {
-              if (topic) {
-                console.log(`[TOPIC MANAGER] Selected topic ${topicId}, updating local state`);
-                setSelectedTopicDetails(topic);
-              } else {
-                console.warn(`[TOPIC MANAGER] Selected topic ${topicId} not found in database`);
-              }
-            });
-          }}
-          onCreateTopic={handleCreateTopic}
-          onDeleteTopic={handleDeleteTopic}
-          onEditTopic={handleEditTopic}
-          currentTopicId={activeTopicId}
-        />
+        {/* Tab Navigation */}
+        <div className="flex mb-4 border-b border-gray-200">
+          <button
+            className={`py-2 px-4 font-medium text-sm focus:outline-none ${
+              activeTab === 'topics'
+                ? 'border-b-2 border-[#78A161] text-[#3A2E22]'
+                : 'text-gray-500 hover:text-[#3A2E22]'
+            }`}
+            onClick={() => setActiveTab('topics')}
+          >
+            Danh sách cuộc trò chuyện
+          </button>
+          <button
+            className={`py-2 px-4 font-medium text-sm focus:outline-none ${
+              activeTab === 'search'
+                ? 'border-b-2 border-[#78A161] text-[#3A2E22]'
+                : 'text-gray-500 hover:text-[#3A2E22]'
+            }`}
+            onClick={() => setActiveTab('search')}
+          >
+            Tìm kiếm tin nhắn
+          </button>
+        </div>
+
+        {/* Tab Content */}
+        {activeTab === 'topics' ? (
+          <TailwindTopicList
+            userId={userId}
+            onSelectTopic={(topicId) => {
+              // Call the parent component's topic selection handler
+              onSelectTopic(topicId);
+              
+              // Also update local state for immediate display
+              db.topics.get(topicId).then(topic => {
+                if (topic) {
+                  console.log(`[TOPIC MANAGER] Selected topic ${topicId}, updating local state`);
+                  setSelectedTopicDetails(topic);
+                } else {
+                  console.warn(`[TOPIC MANAGER] Selected topic ${topicId} not found in database`);
+                }
+              });
+            }}
+            onCreateTopic={handleCreateTopic}
+            onDeleteTopic={handleDeleteTopic}
+            onEditTopic={handleEditTopic}
+            currentTopicId={activeTopicId}
+          />
+        ) : (
+          <TailwindTopicSearch 
+            userId={userId}
+            onSelectTopic={(topicId) => {
+              // Call the parent component's topic selection handler
+              onSelectTopic(topicId);
+              
+              // Also update local state for immediate display
+              db.topics.get(topicId).then(topic => {
+                if (topic) {
+                  console.log(`[TOPIC MANAGER] Selected topic ${topicId} from search, updating local state`);
+                  setSelectedTopicDetails(topic);
+                  // Switch back to topics tab to show the selected topic
+                  setActiveTab('topics');
+                } else {
+                  console.warn(`[TOPIC MANAGER] Selected topic ${topicId} from search not found in database`);
+                }
+              });
+            }}
+            currentTopicId={activeTopicId}
+          />
+        )}
       </div>
       
       <div className="md:col-span-2">
