@@ -770,6 +770,16 @@ export class Query {
           const shouldContinue = await callback(JSON.stringify(errorMessage));
           if (!shouldContinue) return;
         }
+        // Check for overloaded error
+        else if (streamProcessingError?.error?.error?.type === 'overloaded_error' ||
+                 streamProcessingError?.message?.includes('Overloaded')) {
+          const errorMessage = {
+            type: 'overloaded',
+            message: 'Dịch vụ AI hiện đang quá tải. Đây có thể là vấn đề từ nhà cung cấp dịch vụ LLM API. Vui lòng thử lại sau ít phút.'
+          };
+          const shouldContinue = await callback(JSON.stringify(errorMessage));
+          if (!shouldContinue) return;
+        }
         // Default error message
         else {
           const errorMessage = {
