@@ -48,6 +48,7 @@ import TailwindHeader from './TailwindHeader';
 import TailwindFooter from './TailwindFooter';
 import TailwindMessageDisplay from './TailwindMessageDisplay';
 import TailwindModal from './TailwindModal';
+import TailwindDataExportImport from './TailwindDataExportImport';
 import { BetaBanner, ApiKeyWarning } from './TailwindBanners';
 
 // Utilities
@@ -73,6 +74,7 @@ function TailwindApp() {
   // UI state
   const [showTopicManager, setShowTopicManager] = useState(false);
   const [showApiSettings, setShowApiSettings] = useState(false);
+  const [showDataExportImport, setShowDataExportImport] = useState(false);
   const [questionsLimit] = useState(6);
   const inputRef = useRef<HTMLDivElement>(null);
   
@@ -120,7 +122,58 @@ function TailwindApp() {
       undefined, // debugPersonaSystem
       undefined, // checkTopicPersonaConsistency
       undefined, // fixTopicPersonas
-      undefined, // exportTopic
+      async (topicId: number) => {
+        try {
+          console.log(`[EXPORT DEBUG] Exporting topic ${topicId}`);
+          
+          // Get the topic
+          const topic = await db.topics.get(topicId);
+          if (!topic) {
+            console.error(`[EXPORT DEBUG] Topic ${topicId} not found`);
+            return { success: false, error: 'Topic not found' };
+          }
+          
+          // Get all messages for this topic
+          const messages = await db.messages
+            .where('topicId')
+            .equals(topicId)
+            .toArray();
+          
+          // Create export data
+          const exportData = {
+            topics: [topic],
+            messages: messages
+          };
+          
+          // Create a download link
+          const dataStr = JSON.stringify(exportData, null, 2);
+          const dataBlob = new Blob([dataStr], { type: 'application/json' });
+          const url = URL.createObjectURL(dataBlob);
+          
+          // Create filename with topic title and date
+          const date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+          const safeTitle = topic.title.replace(/[^a-z0-9]/gi, '_').substring(0, 30);
+          const filename = `yitam_${safeTitle}_${date}.json`;
+          
+          // Create and click a download link
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          
+          // Clean up
+          setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          }, 100);
+          
+          return { success: true, topic, messageCount: messages.length };
+        } catch (error) {
+          console.error('[EXPORT DEBUG] Error exporting topic:', error);
+          return { success: false, error };
+        }
+      },
       (text: string) => extractTitleFromBotText(text)
     );
     
@@ -421,6 +474,7 @@ function TailwindApp() {
                   onLogout={handleLogout}
                   onOpenTopicManager={() => setShowTopicManager(true)}
                   onOpenApiSettings={() => setShowApiSettings(true)}
+                  onOpenDataExportImport={() => setShowDataExportImport(true)}
                 />
                 
                 {/* Beta warning banner */}
@@ -579,6 +633,20 @@ function TailwindApp() {
                     </div>
                   </div>
                 )}
+              </TailwindModal>
+              
+              {/* Data Export/Import Modal */}
+              <TailwindModal
+                isOpen={showDataExportImport}
+                onClose={() => setShowDataExportImport(false)}
+                title="Xuất/Nhập dữ liệu"
+                maxWidth="max-w-4xl"
+              >
+                <TailwindDataExportImport
+                  userId={user.email}
+                  currentTopicId={currentTopicId}
+                  onClose={() => setShowDataExportImport(false)}
+                />
               </TailwindModal>
               
               {/* Message Delete Confirmation Modal */}
