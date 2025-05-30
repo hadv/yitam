@@ -1,4 +1,53 @@
-// Add this at the top of the file, before the imports
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { GoogleOAuthProvider } from '@react-oauth/google';
+import { config } from '../../config';
+import * as ReactDOM from 'react-dom';
+
+// Contexts
+import { ConsentProvider } from '../../contexts/ConsentContext';
+import { ChatHistoryProvider, useChatHistory } from '../../contexts/ChatHistoryContext';
+import { usePersona } from '../../contexts/PersonaContext';
+
+// Custom Hooks
+import { useSocket } from '../../hooks/useSocket';
+import { useMessages } from '../../hooks/useMessages';
+import { useAuth } from '../../hooks/useAuth';
+import { useModals } from '../../hooks/useModals';
+import { useMessageDeletion } from '../../hooks/useMessageDeletion';
+import { useDebugFunctions } from '../../hooks/useDebugFunctions';
+import { useStorageWindowFunctions } from '../../hooks/useStorageWindowFunctions';
+
+// UI Components
+import { TailwindAuth } from './TailwindAuth';
+import { TailwindApiKeySettings } from './TailwindApiKeySettings';
+import TailwindChatBox from './TailwindChatBox';
+import TailwindMessageInput from './TailwindMessageInput';
+import TailwindSampleQuestions from './TailwindSampleQuestions';
+import TailwindPersonaSelector from './TailwindPersonaSelector';
+import TailwindTopicManager from './TailwindTopicManager';
+import TailwindMessagePersistence, { useMessagePersistence } from './TailwindMessagePersistence';
+import TailwindHeader from './TailwindHeader';
+import TailwindFooter from './TailwindFooter';
+import TailwindMessageDisplay from './TailwindMessageDisplay';
+import TailwindModal from './TailwindModal';
+import TailwindDataExportImport from './TailwindDataExportImport';
+import TailwindPrivacyControls from './TailwindPrivacyControls';
+import TailwindPrivacyPolicy from './TailwindPrivacyPolicy';
+import { BetaBanner, ApiKeyWarning } from './TailwindBanners';
+
+// Extracted Components
+import TailwindStorageSettings from './settings/TailwindStorageSettings';
+import GDPRNotification from './notifications/GDPRNotification';
+import StorageWarningBanner from './notifications/StorageWarningBanner';
+import MessageDeleteModal from './modals/MessageDeleteModal';
+
+// Utilities
+import { decryptApiKey } from '../../utils/encryption';
+import { debugIndexedDB, reinitializeDatabase } from '../../db/ChatHistoryDBUtil';
+import { checkDatabaseVersionMismatch, updateStoredDatabaseVersion, getSystemInfo } from '../../utils/version';
+import db from '../../db/ChatHistoryDB';
+
+// Global type declarations
 declare global {
   interface Window {
     getCurrentPersonaId?: () => string;
@@ -17,69 +66,28 @@ declare global {
     reindexCurrentTopic?: () => Promise<boolean>;
     getSearchStats?: () => Promise<any>;
     searchMessages?: (query: string, filters?: any) => Promise<any>;
+    // Add storage management functions
+    compressMessages?: (topicId?: number) => Promise<any>;
+    setStorageRetentionPolicy?: (days: number) => void;
+    cleanupOldestConversations?: (keepCount?: number) => Promise<any>;
+    cleanupOrphanedData?: () => Promise<any>;
+    // Add performance optimization functions
+    benchmarkOperations?: () => Promise<any>;
+    optimizeDatabasePerformance?: () => Promise<any>;
+    analyzeStorage?: () => Promise<any>;
   }
 }
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { GoogleOAuthProvider } from '@react-oauth/google';
-import { config } from '../../config';
-import * as ReactDOM from 'react-dom';
-
-// Contexts
-import { ConsentProvider } from '../../contexts/ConsentContext';
-import { ChatHistoryProvider, useChatHistory } from '../../contexts/ChatHistoryContext';
-import { usePersona } from '../../contexts/PersonaContext';
-
-// Custom Hooks
-import { useSocket } from '../../hooks/useSocket';
-import { useMessages } from '../../hooks/useMessages';
-
-// UI Components
-import { TailwindAuth } from './TailwindAuth';
-import { TailwindApiKeySettings } from './TailwindApiKeySettings';
-import TailwindChatBox from './TailwindChatBox';
-import TailwindMessageInput from './TailwindMessageInput';
-import TailwindSampleQuestions from './TailwindSampleQuestions';
-import TailwindTermsModal from './TailwindTermsModal';
-import TailwindPersonaSelector from './TailwindPersonaSelector';
-import TailwindTopicManager from './TailwindTopicManager';
-import TailwindMessagePersistence, { useMessagePersistence } from './TailwindMessagePersistence';
-import TailwindHeader from './TailwindHeader';
-import TailwindFooter from './TailwindFooter';
-import TailwindMessageDisplay from './TailwindMessageDisplay';
-import TailwindModal from './TailwindModal';
-import TailwindDataExportImport from './TailwindDataExportImport';
-import { BetaBanner, ApiKeyWarning } from './TailwindBanners';
-
-// Utilities
-import { decryptApiKey } from '../../utils/encryption';
-import { debugIndexedDB, reinitializeDatabase } from '../../db/ChatHistoryDBUtil';
-import { checkDatabaseVersionMismatch, updateStoredDatabaseVersion, getSystemInfo } from '../../utils/version';
-import { extractTitleFromBotText } from '../../utils/titleExtraction';
-import { setupWindowDebugFunctions } from '../../utils/debugging';
-import { reindexAllUserMessages, getSearchIndexStats } from '../../utils/searchUtils';
-import { advancedSearch } from '../../db/ChatHistoryDBUtil';
-
-// Types
-import { UserData, Message } from '../../types/chat';
-import db from '../../db/ChatHistoryDB';
-
 function TailwindApp() {
-  // User state
-  const [user, setUser] = useState<UserData | null>(() => {
-    const savedUser = localStorage.getItem('user');
-    return savedUser ? JSON.parse(savedUser) : null;
-  });
+  // Get the auth state
+  const { user, isAuthenticated, handleAuthSuccess, handleLogout } = useAuth();
   
   // UI state
-  const [showTopicManager, setShowTopicManager] = useState(false);
-  const [showApiSettings, setShowApiSettings] = useState(false);
-  const [showDataExportImport, setShowDataExportImport] = useState(false);
-  const [questionsLimit] = useState(6);
   const inputRef = useRef<HTMLDivElement>(null);
+  const [questionsLimit] = useState(6);
   
-  // Message deletion state
-  const [messageToDelete, setMessageToDelete] = useState<string | null>(null);
+  // Get modals state
+  const { modals, notifications } = useModals();
   
   // Get context hooks
   const { isDBReady, dbError, storageUsage, forceDBInit } = useChatHistory();
@@ -110,125 +118,28 @@ function TailwindApp() {
     setMessages,
     setCurrentTopicId
   } = useMessages(socket, user);
+  
+  // Message deletion hook
+  const {
+    messageToDelete,
+    handleDeleteMessage,
+    confirmDeleteMessage,
+    cancelDeleteMessage
+  } = useMessageDeletion(messages, setMessages, currentTopicId, startNewChat, setCurrentTopicId);
+
+  // Setup debug functions
+  useDebugFunctions(
+    () => currentPersonaId,
+    absoluteForcePersona,
+    user,
+    currentTopicId
+  );
+  
+  // Setup storage window functions
+  useStorageWindowFunctions(user?.email);
 
   // Check if any bot message is currently streaming
   const isBotResponding = messages.some(msg => msg.isBot && msg.isStreaming);
-
-  // Set up debug functions on the window object
-  useEffect(() => {
-    const cleanup = setupWindowDebugFunctions(
-      () => currentPersonaId,
-      absoluteForcePersona,
-      undefined, // debugPersonaSystem
-      undefined, // checkTopicPersonaConsistency
-      undefined, // fixTopicPersonas
-      async (topicId: number) => {
-        try {
-          console.log(`[EXPORT DEBUG] Exporting topic ${topicId}`);
-          
-          // Get the topic
-          const topic = await db.topics.get(topicId);
-          if (!topic) {
-            console.error(`[EXPORT DEBUG] Topic ${topicId} not found`);
-            return { success: false, error: 'Topic not found' };
-          }
-          
-          // Get all messages for this topic
-          const messages = await db.messages
-            .where('topicId')
-            .equals(topicId)
-            .toArray();
-          
-          // Create export data
-          const exportData = {
-            topics: [topic],
-            messages: messages
-          };
-          
-          // Create a download link
-          const dataStr = JSON.stringify(exportData, null, 2);
-          const dataBlob = new Blob([dataStr], { type: 'application/json' });
-          const url = URL.createObjectURL(dataBlob);
-          
-          // Create filename with topic title and date
-          const date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-          const safeTitle = topic.title.replace(/[^a-z0-9]/gi, '_').substring(0, 30);
-          const filename = `yitam_${safeTitle}_${date}.json`;
-          
-          // Create and click a download link
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          
-          // Clean up
-          setTimeout(() => {
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-          }, 100);
-          
-          return { success: true, topic, messageCount: messages.length };
-        } catch (error) {
-          console.error('[EXPORT DEBUG] Error exporting topic:', error);
-          return { success: false, error };
-        }
-      },
-      (text: string) => extractTitleFromBotText(text)
-    );
-    
-    // Add a helper function to trigger topic refresh via event
-    window.triggerTopicListRefresh = () => {
-      console.log('[APP] Triggering topic list refresh via event');
-      // First try the regular refreshTopicList function if available
-      if (window.refreshTopicList && typeof window.refreshTopicList === 'function') {
-        window.refreshTopicList();
-      }
-      
-      // Also dispatch a custom event for components that listen for it
-      window.dispatchEvent(new Event('storage:refreshTopics'));
-    };
-
-    // Add search-related debug functions
-    window.reindexAllMessages = async (userId: string) => {
-      console.log(`[SEARCH DEBUG] Reindexing all messages for user ${userId}`);
-      return await reindexAllUserMessages(userId);
-    };
-
-    window.reindexCurrentTopic = async () => {
-      if (!currentTopicId) {
-        console.warn('[SEARCH DEBUG] No current topic to reindex');
-        return false;
-      }
-      console.log(`[SEARCH DEBUG] Reindexing current topic ${currentTopicId}`);
-      const { reindexTopic } = await import('../../db/ChatHistoryDBUtil');
-      const success = await reindexTopic(currentTopicId);
-      return success;
-    };
-
-    window.getSearchStats = async () => {
-      console.log('[SEARCH DEBUG] Getting search index statistics');
-      return await getSearchIndexStats();
-    };
-
-    window.searchMessages = async (query: string, filters = {}) => {
-      if (!user || !user.email) {
-        console.warn('[SEARCH DEBUG] No user to search for');
-        return [];
-      }
-      console.log(`[SEARCH DEBUG] Searching for "${query}" with filters:`, filters);
-      return await advancedSearch(query, user.email, filters);
-    };
-    
-    return () => {
-      cleanup();
-      delete window.triggerTopicListRefresh;
-      delete window.reindexAllMessages;
-      delete window.reindexCurrentTopic;
-      delete window.getSearchStats;
-      delete window.searchMessages;
-    };
-  }, [currentPersonaId, absoluteForcePersona, user, currentTopicId]);
 
   // Component mount effect - debug IndexedDB
   useEffect(() => {
@@ -249,12 +160,6 @@ function TailwindApp() {
       // Check if current DB version matches stored version
       if (checkDatabaseVersionMismatch()) {
         // Show a loading message
-        const loadingMessage: Message = {
-          id: `system-${Date.now()}`,
-          text: 'Phiên bản cơ sở dữ liệu đã thay đổi. Đang cập nhật hệ thống... vui lòng đợi trong giây lát.',
-          isBot: true
-        };
-        
         // Reset the database
         const success = await reinitializeDatabase();
         
@@ -280,25 +185,17 @@ function TailwindApp() {
     checkDbVersion();
   }, []);
 
-  // Auth success handler
-  const handleAuthSuccess = useCallback((userData: UserData) => {
-    // Store user data
-    localStorage.setItem('user', JSON.stringify(userData));
-    setUser(userData);
-  }, []);
-
-  // Logout handler
-  const handleLogout = useCallback(() => {
-    // Disconnect socket
-    disconnect();
-    
-    // Clear user data
-    localStorage.removeItem('user');
-    setUser(null);
-    
-    // Reset state
-    startNewChat();
-  }, [disconnect, startNewChat]);
+  // Initialize the database as early as possible
+  useEffect(() => {
+    forceDBInit().then(isReady => {
+      console.log(`[DB DEBUG] Database initialization result: ${isReady}`);
+      
+      // If still not ready after our attempt, show a warning
+      if (!isReady && !isDBReady) {
+        console.warn('[DB DEBUG] Database still not ready after initialization attempt');
+      }
+    });
+  }, [forceDBInit, isDBReady]);
 
   // Scroll to bottom when new messages arrive
   useEffect(() => {
@@ -314,146 +211,100 @@ function TailwindApp() {
     return !!apiKey;
   };
 
-  // Initialize the database as early as possible
-  useEffect(() => {
-    forceDBInit().then(isReady => {
-      console.log(`[DB DEBUG] Database initialization result: ${isReady}`);
-      
-      // If still not ready after our attempt, show a warning
-      if (!isReady && !isDBReady) {
-        console.warn('[DB DEBUG] Database still not ready after initialization attempt');
-      }
-    });
-  }, [forceDBInit, isDBReady]);
-
-  // Handle message deletion request
-  const handleDeleteMessage = useCallback((messageId: string) => {
-    setMessageToDelete(messageId);
+  // Lazy loading scroll handler for improved performance
+  const handleChatScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    // This function could be improved for virtual scrolling in the future
   }, []);
+  
+  // Handle data deletion
+  const handleDataDeleted = useCallback(() => {
+    // Reset state after data deletion
+    startNewChat();
+    setCurrentTopicId(undefined);
 
-  // Confirm message deletion
-  const confirmDeleteMessage = useCallback(async () => {
-    if (!messageToDelete || !currentTopicId) return;
+    // Close privacy controls modal
+    modals.privacyControls.close();
     
-    try {
-      // Find the message object in the current messages array
-      const messageObj = messages.find(msg => msg.id === messageToDelete);
-      if (!messageObj) return;
-      
-      // Log message details for debugging
-      console.log('[DELETE DEBUG] Attempting to delete message:', {
-        uiId: messageObj.id,
-        dbId: messageObj.dbMessageId,
-        isBot: messageObj.isBot,
-        text: messageObj.text.substring(0, 30) + (messageObj.text.length > 30 ? '...' : '')
-      });
-      
-      // Remove message from UI immediately to give instant feedback
-      setMessages(messages.filter(msg => msg.id !== messageToDelete));
-      
-      // Store the current topic ID for later checking if it's deleted
-      const topicToCheck = currentTopicId;
-      
-      // If it's a DB message (has a numeric id stored in the message object)
-      if (messageObj.dbMessageId) {
-        try {
-          // First verify the message exists in the database
-          const messageInDb = await db.messages.get(messageObj.dbMessageId);
-          if (!messageInDb) {
-            console.warn(`[DELETE DEBUG] Message ${messageObj.dbMessageId} not found in database`);
-            setMessageToDelete(null);
-            return;
-          }
-          
-          // Delete from database using direct database deletion for reliability
-          console.log(`[DELETE DEBUG] Forcefully deleting message ${messageObj.dbMessageId} from database`);
-          const deleteResult = await db.forceDeleteMessage(messageObj.dbMessageId);
-          
-          if (!deleteResult) {
-            console.error(`[DELETE DEBUG] Failed to delete message ${messageObj.dbMessageId} from database`);
-            alert('Failed to delete message. Please try again later.');
-            setMessageToDelete(null);
-            return;
-          }
-          
-          console.log(`[DELETE DEBUG] Message ${messageObj.dbMessageId} deleted successfully from database`);
-          
-          // Double-check message was actually deleted
-          const verifyDeleted = await db.messages.get(messageObj.dbMessageId);
-          if (verifyDeleted) {
-            console.error(`[DELETE DEBUG] Critical error: Message ${messageObj.dbMessageId} still exists in database after deletion`);
-            // Try one more time with direct table access
-            await db.messages.where('id').equals(messageObj.dbMessageId).delete();
-            
-            // Check again
-            const secondCheck = await db.messages.get(messageObj.dbMessageId);
-            if (secondCheck) {
-              console.error(`[DELETE DEBUG] Fatal error: Message ${messageObj.dbMessageId} cannot be deleted`);
-              alert('Failed to delete message. Please try again later.');
-              setMessageToDelete(null);
-              return;
-            }
-          }
-          
-          // Now check the message count for the topic
-          const remainingMessages = await db.messages.where('topicId').equals(topicToCheck).count();
-          console.log(`[DELETE DEBUG] Topic ${topicToCheck} now has ${remainingMessages} messages`);
-          
-          // If no messages remain, delete the topic
-          if (remainingMessages === 0) {
-            console.log(`[DELETE DEBUG] No messages left in topic ${topicToCheck}, deleting topic`);
-            await db.topics.delete(topicToCheck);
-            console.log(`[DELETE DEBUG] Topic ${topicToCheck} deleted successfully`);
-            
-            // Update UI state
-            setCurrentTopicId(undefined);
-            startNewChat();
-            
-            // Trigger topic list refresh
-            if (window.triggerTopicListRefresh) {
-              window.triggerTopicListRefresh();
-            }
-          } else {
-            // Update topic count in the database
-            await db.updateTopicMessageCount(topicToCheck);
-            
-            // Trigger UI updates
-            if (window.updateTopicMessageCount) {
-              window.updateTopicMessageCount(topicToCheck, remainingMessages);
-            }
-            
-            if (window.triggerTopicListRefresh) {
-              window.triggerTopicListRefresh();
-            }
-          }
-        } catch (error) {
-          console.error(`[DELETE DEBUG] Error deleting message:`, error);
-          alert('Failed to delete message. Please try again later.');
-        }
-      }
-    } finally {
-      // Clear the message to delete
-      setMessageToDelete(null);
+    // Show in-app notification
+    notifications.dataDeleted.show();
+
+    // Trigger topic list refresh if available
+    if (window.triggerTopicListRefresh) {
+      window.triggerTopicListRefresh();
     }
-  }, [messageToDelete, messages, setMessages, currentTopicId, startNewChat, setCurrentTopicId]);
+  }, [startNewChat, setCurrentTopicId, modals.privacyControls, notifications.dataDeleted]);
 
-  // Cancel message deletion
-  const cancelDeleteMessage = useCallback(() => {
-    setMessageToDelete(null);
-  }, []);
-
-  // Clear cached messages when switching topics or starting new chat
+  // Auto-generate test topics in development mode
   useEffect(() => {
-    // This ensures we always fetch fresh messages from the database when the topic changes
-    console.log(`[TOPIC DEBUG] Topic changed to ${currentTopicId}, clearing cached messages`);
+    if (!user || import.meta.env.MODE !== 'development') return;
     
-    // We could add additional cleanup here if needed
-    return () => {
-      // Cleanup when topic changes or component unmounts
+    const generateTestTopics = async () => {
+      try {
+        // Check if user has any topics
+        const topicCount = await db.topics
+          .where('userId').equals(user.email)
+          .count();
+        
+        if (topicCount > 0) {
+          console.log(`[DEV] User already has ${topicCount} topics, skipping test data generation`);
+          return;
+        }
+        
+        console.log('[DEV] No topics found, generating 100 test topics');
+        
+        // Generate 100 test topics with messages
+        for (let i = 1; i <= 100; i++) {
+          // Create topic
+          const topicId = await db.topics.add({
+            userId: user.email,
+            title: `Test Topic ${i}`,
+            createdAt: Date.now() - (100 - i) * 86400000, // Older to newer
+            lastActive: Date.now() - (100 - i) * 86400000,
+            messageCnt: 2,
+            userMessageCnt: 1,
+            assistantMessageCnt: 1,
+            personaId: 'traditional-medicine' // Default persona
+          });
+          
+          // Add user message
+          await db.messages.add({
+            topicId: topicId as number,
+            timestamp: Date.now() - (100 - i) * 86400000,
+            role: 'user',
+            content: `This is test message ${i} from user. For testing performance and storage functionality.`
+          });
+          
+          // Add bot response
+          await db.messages.add({
+            topicId: topicId as number,
+            timestamp: Date.now() - (100 - i) * 86400000 + 5000,
+            role: 'assistant',
+            content: `This is test response ${i} from assistant. This simulates a response to the user's query about traditional medicine. The response is intentionally kept short for test purposes, but in a real scenario, these messages could be much longer and would benefit from compression.`
+          });
+          
+          // Log progress at intervals
+          if (i % 10 === 0) {
+            console.log(`[DEV] Generated ${i}/100 test topics`);
+          }
+        }
+        
+        console.log('[DEV] Successfully generated 100 test topics');
+        
+        // Refresh topic list if needed
+        if (window.triggerTopicListRefresh) {
+          window.triggerTopicListRefresh();
+        }
+      } catch (error) {
+        console.error('[DEV] Error generating test topics:', error);
+      }
     };
-  }, [currentTopicId]);
+    
+    // Run after a short delay to allow the app to initialize
+    setTimeout(generateTestTopics, 1000);
+  }, [user]);
 
-  if (!user) {
+  // Rendering logic
+  if (!isAuthenticated) {
     return (
       <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
         <TailwindAuth onAuthSuccess={handleAuthSuccess} />
@@ -471,10 +322,23 @@ function TailwindApp() {
                 {/* Header */}
                 <TailwindHeader 
                   user={user}
-                  onLogout={handleLogout}
-                  onOpenTopicManager={() => setShowTopicManager(true)}
-                  onOpenApiSettings={() => setShowApiSettings(true)}
-                  onOpenDataExportImport={() => setShowDataExportImport(true)}
+                  onLogout={() => {
+                    disconnect();
+                    handleLogout();
+                    startNewChat();
+                  }}
+                  onOpenTopicManager={modals.topicManager.open}
+                  onOpenApiSettings={modals.apiSettings.open}
+                  onOpenDataExportImport={modals.dataExportImport.open}
+                  onOpenStorageSettings={modals.storageSettings.open}
+                  onOpenPrivacyControls={modals.privacyControls.open}
+                  onOpenPrivacyPolicy={modals.privacyPolicy.open}
+                />
+                
+                {/* GDPR data deleted notification */}
+                <GDPRNotification 
+                  show={notifications.dataDeleted.isVisible}
+                  onClose={notifications.dataDeleted.hide}
                 />
                 
                 {/* Beta warning banner */}
@@ -482,8 +346,14 @@ function TailwindApp() {
                 
                 {/* API Key warning banner */}
                 {!hasStoredApiKey() && (
-                  <ApiKeyWarning onSetup={() => setShowApiSettings(true)} />
+                  <ApiKeyWarning onSetup={modals.apiSettings.open} />
                 )}
+                
+                {/* Storage warning banner for high usage */}
+                <StorageWarningBanner 
+                  storageUsage={storageUsage} 
+                  onOpenStorageSettings={modals.storageSettings.open}
+                />
                 
                 {/* Persona selector container */}
                 <div className="flex justify-center md:justify-end px-2 pb-2">
@@ -491,13 +361,17 @@ function TailwindApp() {
                 </div>
 
                 {/* Scrollable chat area - takes remaining height */}
-                <div className="flex-1 overflow-y-auto my-[10px] pb-[80px] relative bg-white/50 rounded-lg">
+                <div 
+                  className="flex-1 overflow-y-auto my-[10px] pb-[80px] relative bg-white/50 rounded-lg"
+                  onScroll={handleChatScroll}
+                >
                   {/* Chat display */}
                   <div id="yitam-chat-container" className="flex flex-col p-2.5 bg-white rounded-[8px] shadow-[0_1px_3px_rgba(0,0,0,0.1)] chat-messages-container">
                     <TailwindMessageDisplay 
                       messages={messages}
                       currentPersonaId={currentPersonaId}
                       onDeleteMessage={handleDeleteMessage}
+                      pageSize={30} // Default value, could be made configurable
                     />
                   </div>
                   
@@ -548,6 +422,16 @@ function TailwindApp() {
                       opacity: 1;
                     }
                   }
+                  
+                  @keyframes fadeInOut {
+                    0% { opacity: 0; transform: translateY(-10px); }
+                    10% { opacity: 1; transform: translateY(0); }
+                    90% { opacity: 1; transform: translateY(0); }
+                    100% { opacity: 0; transform: translateY(-10px); }
+                  }
+                  .animate-fade-in-out {
+                    animation: fadeInOut 5s ease-in-out;
+                  }
                 `}</style>
 
                 {/* Message input - fixed at bottom */}
@@ -575,12 +459,12 @@ function TailwindApp() {
 
               {/* API Settings Modal */}
               <TailwindModal 
-                isOpen={showApiSettings}
-                onClose={() => setShowApiSettings(false)}
+                isOpen={modals.apiSettings.isOpen}
+                onClose={modals.apiSettings.close}
               >
                 <TailwindApiKeySettings 
                   onApiKeySet={() => {
-                    setShowApiSettings(false);
+                    modals.apiSettings.close();
                     // Reconnect socket with new API key
                     if (user) {
                       connectSocket(user);
@@ -592,19 +476,19 @@ function TailwindApp() {
               
               {/* Topic Manager Modal */}
               <TailwindModal
-                isOpen={showTopicManager}
-                onClose={() => setShowTopicManager(false)}
+                isOpen={modals.topicManager.isOpen}
+                onClose={modals.topicManager.close}
                 title="Quản lý cuộc trò chuyện"
                 maxWidth="max-w-5xl"
                 fullHeight={true}
               >
                 <div className="p-6">
                   <TailwindTopicManager
-                    userId={user.email}
+                    userId={user?.email || ''}
                     currentTopicId={currentTopicId}
                     onSelectTopic={(topicId: number) => {
                       handleTopicSelect(topicId);
-                      setShowTopicManager(false);
+                      modals.topicManager.close();
                     }}
                   />
                 </div>
@@ -637,43 +521,73 @@ function TailwindApp() {
               
               {/* Data Export/Import Modal */}
               <TailwindModal
-                isOpen={showDataExportImport}
-                onClose={() => setShowDataExportImport(false)}
+                isOpen={modals.dataExportImport.isOpen}
+                onClose={modals.dataExportImport.close}
                 title="Xuất/Nhập dữ liệu"
                 maxWidth="max-w-4xl"
               >
                 <TailwindDataExportImport
-                  userId={user.email}
+                  userId={user?.email || ''}
                   currentTopicId={currentTopicId}
-                  onClose={() => setShowDataExportImport(false)}
+                  onClose={modals.dataExportImport.close}
+                />
+              </TailwindModal>
+              
+              {/* Storage Settings Modal */}
+              <TailwindModal
+                isOpen={modals.storageSettings.isOpen}
+                onClose={modals.storageSettings.close}
+                title="Quản lý dung lượng lưu trữ"
+                maxWidth="max-w-4xl"
+              >
+                <TailwindStorageSettings
+                  userId={user?.email || ''}
+                  onClose={modals.storageSettings.close}
                 />
               </TailwindModal>
               
               {/* Message Delete Confirmation Modal */}
-              {messageToDelete && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                  <div className="bg-white rounded-lg p-6 max-w-sm w-full">
-                    <h3 className="text-lg font-medium text-[#3A2E22] mb-4">Xác nhận xóa</h3>
-                    <p className="text-gray-600 mb-6">
-                      Bạn có chắc chắn muốn xóa tin nhắn này? Hành động này không thể hoàn tác.
-                    </p>
-                    <div className="flex justify-end space-x-3">
-                      <button
-                        onClick={cancelDeleteMessage}
-                        className="px-4 py-2 border border-gray-300 rounded-md text-[#3A2E22] hover:bg-gray-50"
-                      >
-                        Hủy
-                      </button>
-                      <button
-                        onClick={confirmDeleteMessage}
-                        className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
-                      >
-                        Xóa
-                      </button>
-                    </div>
-                  </div>
+              <MessageDeleteModal
+                messageId={messageToDelete}
+                onConfirm={confirmDeleteMessage}
+                onCancel={cancelDeleteMessage}
+              />
+              
+              {/* Privacy Controls Modal */}
+              <TailwindModal
+                isOpen={modals.privacyControls.isOpen}
+                onClose={modals.privacyControls.close}
+                title="Quyền riêng tư & Kiểm soát dữ liệu"
+                maxWidth="max-w-4xl"
+              >
+                <TailwindPrivacyControls 
+                  userId={user?.email || ''}
+                  onDataDeleted={handleDataDeleted}
+                />
+                <div className="flex justify-center pt-4 pb-2">
+                  <button
+                    onClick={() => {
+                      modals.privacyControls.close();
+                      modals.privacyPolicy.open();
+                    }}
+                    className="px-4 py-2 text-[#78A161] hover:text-[#5D8A46] font-medium"
+                  >
+                    Xem chính sách quyền riêng tư
+                  </button>
                 </div>
-              )}
+              </TailwindModal>
+              
+              {/* Privacy Policy Modal */}
+              <TailwindModal
+                isOpen={modals.privacyPolicy.isOpen}
+                onClose={modals.privacyPolicy.close}
+                title="Chính sách quyền riêng tư"
+                maxWidth="max-w-6xl"
+                fullHeight={false}
+                scrollable={true}
+              >
+                <TailwindPrivacyPolicy />
+              </TailwindModal>
             </div>
           </TailwindMessagePersistence>
         </ChatHistoryProvider>

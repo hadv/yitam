@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { Message } from '../../types/chat';
 import TailwindToolCallParser from './TailwindToolCallParser';
 import { AVAILABLE_PERSONAS } from './TailwindPersonaSelector';
@@ -7,14 +7,21 @@ interface TailwindMessageDisplayProps {
   messages: Message[];
   currentPersonaId: string;
   onDeleteMessage?: (messageId: string) => void;
+  pageSize?: number; // Number of messages to display per page
 }
 
 const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({ 
   messages, 
   currentPersonaId,
-  onDeleteMessage
+  onDeleteMessage,
+  pageSize = 30 // Default to 30 messages per page
 }) => {
   const [showActionsForId, setShowActionsForId] = useState<string | null>(null);
+  const [visibleMessages, setVisibleMessages] = useState<Message[]>([]);
+  const [page, setPage] = useState(1);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
   
   // Sort messages by timestamp
   const sortedMessages = useMemo(() => {
@@ -42,6 +49,71 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
       return getTimestamp(a.id) - getTimestamp(b.id);
     });
   }, [messages]);
+  
+  // Effect to update visible messages when sortedMessages changes
+  useEffect(() => {
+    // If we have an ongoing chat, always show the latest messages
+    if (sortedMessages.length > 0 && sortedMessages[sortedMessages.length - 1].isStreaming) {
+      // Always show all messages when streaming is happening
+      setVisibleMessages(sortedMessages);
+      return;
+    }
+    
+    // If total messages are less than pageSize, show all
+    if (sortedMessages.length <= pageSize) {
+      setVisibleMessages(sortedMessages);
+      return;
+    }
+    
+    // Otherwise, show the latest page of messages
+    const startIndex = Math.max(0, sortedMessages.length - (page * pageSize));
+    const messagesToShow = sortedMessages.slice(startIndex);
+    setVisibleMessages(messagesToShow);
+  }, [sortedMessages, page, pageSize]);
+
+  // Setup intersection observer for infinite scrolling
+  useEffect(() => {
+    // Clean up previous observer
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+    }
+    
+    // Create new observer
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (entry.isIntersecting && !isLoadingMore && visibleMessages.length < sortedMessages.length) {
+          setIsLoadingMore(true);
+          // Simulate loading delay to prevent rapid loading
+          setTimeout(() => {
+            setPage((prevPage) => prevPage + 1);
+            setIsLoadingMore(false);
+          }, 300);
+        }
+      },
+      {
+        root: null,
+        rootMargin: '100px',
+        threshold: 0.1,
+      }
+    );
+    
+    // Observe the load more div
+    if (loadMoreRef.current) {
+      observerRef.current.observe(loadMoreRef.current);
+    }
+    
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
+  }, [isLoadingMore, visibleMessages.length, sortedMessages.length]);
+
+  // Reset pagination when messages change drastically (like switching topics)
+  useEffect(() => {
+    setPage(1);
+  }, [messages.length === 0]);
 
   if (messages.length === 0) {
     const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0];
@@ -54,7 +126,30 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
 
   return (
     <>
-      {sortedMessages.map((message) => (
+      {/* Load more indicator for infinite scrolling */}
+      {visibleMessages.length < sortedMessages.length && (
+        <div 
+          ref={loadMoreRef}
+          className="text-center py-4 text-sm text-gray-500"
+        >
+          {isLoadingMore ? (
+            <div className="flex justify-center items-center">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#5D4A38]"></div>
+              <span className="ml-2">Đang tải tin nhắn cũ hơn...</span>
+            </div>
+          ) : (
+            <button 
+              onClick={() => setPage(prev => prev + 1)}
+              className="px-3 py-1 bg-[#F2EEE5] hover:bg-[#E6DFD1] rounded-md text-[#5D4A38] transition-colors"
+            >
+              Tải thêm tin nhắn
+            </button>
+          )}
+        </div>
+      )}
+      
+      {/* Messages */}
+      {visibleMessages.map((message) => (
         <div 
           key={message.id} 
           className={`mb-3 ${message.isBot ? 'self-start' : 'self-end'} max-w-[80%] ${!message.isBot ? 'ml-auto' : ''}`}
@@ -90,7 +185,7 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
                 <div className="prose prose-sm max-w-none prose-headings:my-2 prose-headings:font-semibold prose-p:my-2 prose-ul:my-2 prose-ul:pl-6 prose-ol:my-2 prose-ol:pl-6 prose-li:my-1 prose-code:bg-[rgba(93,74,56,0.1)] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono prose-pre:bg-[rgba(93,74,56,0.1)] prose-pre:p-4 prose-pre:rounded-lg prose-pre:my-2 prose-pre:overflow-x-auto prose-pre:code:bg-transparent prose-pre:code:p-0">
                   {(() => {
                     // Try to parse message text as JSON if it looks like JSON
-                    if (message.text.trim().startsWith('{')) {
+                    if (message.text && message.text.trim().startsWith('{')) {
                       try {
                         const parsedError = JSON.parse(message.text);
                         if (parsedError.type && parsedError.message) {
@@ -137,7 +232,7 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
                     }
                     
                     // Default message display
-                    return <TailwindToolCallParser text={message.text} />;
+                    return <TailwindToolCallParser text={message.text || ''} />;
                   })()}
                   {message.isStreaming && (
                     <span className="inline-flex items-center ml-1.5">
@@ -148,7 +243,7 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
                   )}
                 </div>
               ) : (
-                <div className="whitespace-pre-wrap text-white">{message.text}</div>
+                <div className="whitespace-pre-wrap text-white">{message.text || ''}</div>
               )}
             </div>
             <div className="text-xs text-gray-500 ml-2 mt-1">
@@ -160,6 +255,13 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
           </div>
         </div>
       ))}
+      
+      {/* Message count indicator */}
+      {sortedMessages.length > visibleMessages.length && (
+        <div className="text-center mb-2 text-xs text-gray-500">
+          Hiển thị {visibleMessages.length} trong tổng số {sortedMessages.length} tin nhắn
+        </div>
+      )}
     </>
   );
 };
