@@ -58,6 +58,8 @@ import TailwindFooter from './TailwindFooter';
 import TailwindMessageDisplay from './TailwindMessageDisplay';
 import TailwindModal from './TailwindModal';
 import TailwindDataExportImport from './TailwindDataExportImport';
+import TailwindPrivacyControls from './TailwindPrivacyControls';
+import TailwindPrivacyPolicy from './TailwindPrivacyPolicy';
 import { BetaBanner, ApiKeyWarning } from './TailwindBanners';
 
 // Utilities
@@ -1671,6 +1673,24 @@ function TailwindApp() {
     }
   }, [messages.length, messagePageSize]);
 
+  const [showPrivacyControls, setShowPrivacyControls] = useState(false);
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+
+  // Handle data deletion
+  const handleDataDeleted = useCallback(() => {
+    // Reset state after data deletion
+    startNewChat();
+    setCurrentTopicId(undefined);
+
+    // Show confirmation toast
+    alert("Dữ liệu của bạn đã được xóa thành công.");
+
+    // Trigger topic list refresh if available
+    if (window.triggerTopicListRefresh) {
+      window.triggerTopicListRefresh();
+    }
+  }, [startNewChat, setCurrentTopicId]);
+
   if (!user) {
     return (
       <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
@@ -1694,6 +1714,8 @@ function TailwindApp() {
                   onOpenApiSettings={() => setShowApiSettings(true)}
                   onOpenDataExportImport={() => setShowDataExportImport(true)}
                   onOpenStorageSettings={() => setShowStorageSettings(true)}
+                  onOpenPrivacyControls={() => setShowPrivacyControls(true)}
+                  onOpenPrivacyPolicy={() => setShowPrivacyPolicy(true)}
                 />
                 
                 {/* Beta warning banner */}
@@ -1947,6 +1969,40 @@ function TailwindApp() {
                   </div>
                 </div>
               )}
+              
+              {/* Privacy Controls Modal */}
+              <TailwindModal
+                isOpen={showPrivacyControls}
+                onClose={() => setShowPrivacyControls(false)}
+                title="Quyền riêng tư & Kiểm soát dữ liệu"
+                maxWidth="max-w-4xl"
+              >
+                <TailwindPrivacyControls 
+                  userId={user?.email || ''}
+                  onDataDeleted={handleDataDeleted}
+                />
+                <div className="flex justify-center pt-4 pb-2">
+                  <button
+                    onClick={() => {
+                      setShowPrivacyControls(false);
+                      setShowPrivacyPolicy(true);
+                    }}
+                    className="px-4 py-2 text-[#78A161] hover:text-[#5D8A46] font-medium"
+                  >
+                    Xem chính sách quyền riêng tư
+                  </button>
+                </div>
+              </TailwindModal>
+              
+              {/* Privacy Policy Modal */}
+              <TailwindModal
+                isOpen={showPrivacyPolicy}
+                onClose={() => setShowPrivacyPolicy(false)}
+                title="Chính sách quyền riêng tư"
+                maxWidth="max-w-6xl"
+              >
+                <TailwindPrivacyPolicy />
+              </TailwindModal>
             </div>
           </TailwindMessagePersistence>
         </ChatHistoryProvider>

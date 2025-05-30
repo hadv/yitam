@@ -9,6 +9,8 @@ interface TailwindHeaderProps {
   onOpenApiSettings: () => void;
   onOpenDataExportImport: () => void;
   onOpenStorageSettings?: () => void;
+  onOpenPrivacyControls?: () => void;
+  onOpenPrivacyPolicy?: () => void;
 }
 
 const TailwindHeader: React.FC<TailwindHeaderProps> = ({
@@ -17,7 +19,9 @@ const TailwindHeader: React.FC<TailwindHeaderProps> = ({
   onOpenTopicManager,
   onOpenApiSettings,
   onOpenDataExportImport,
-  onOpenStorageSettings
+  onOpenStorageSettings,
+  onOpenPrivacyControls,
+  onOpenPrivacyPolicy
 }) => {
   return (
     <header className="bg-[#F5EFE0] rounded-lg shadow-sm border border-[#E6DFD1]">
@@ -49,6 +53,8 @@ const TailwindHeader: React.FC<TailwindHeaderProps> = ({
               onOpenApiSettings={onOpenApiSettings}
               onOpenDataExportImport={onOpenDataExportImport}
               onOpenStorageSettings={onOpenStorageSettings}
+              onOpenPrivacyControls={onOpenPrivacyControls}
+              onOpenPrivacyPolicy={onOpenPrivacyPolicy}
             />
           )}
         </div>
@@ -66,6 +72,18 @@ const TailwindHeader: React.FC<TailwindHeaderProps> = ({
           </svg>
           Cài đặt API Key
         </button>
+        
+        {onOpenPrivacyControls && (
+          <button
+            onClick={onOpenPrivacyControls}
+            className="flex items-center ml-2 px-3 py-1.5 text-sm text-[#78A161] hover:text-[#5D4A38] hover:bg-[#78A16115] rounded-md transition-all"
+          >
+            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            Quyền riêng tư
+          </button>
+        )}
       </div>
     </header>
   );
