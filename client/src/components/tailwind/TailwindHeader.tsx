@@ -8,6 +8,7 @@ interface TailwindHeaderProps {
   onOpenTopicManager: () => void;
   onOpenApiSettings: () => void;
   onOpenDataExportImport: () => void;
+  onOpenStorageSettings?: () => void;
 }
 
 const TailwindHeader: React.FC<TailwindHeaderProps> = ({
@@ -15,7 +16,8 @@ const TailwindHeader: React.FC<TailwindHeaderProps> = ({
   onLogout,
   onOpenTopicManager,
   onOpenApiSettings,
-  onOpenDataExportImport
+  onOpenDataExportImport,
+  onOpenStorageSettings
 }) => {
   return (
     <header className="bg-[#F5EFE0] rounded-lg shadow-sm border border-[#E6DFD1]">
@@ -46,6 +48,7 @@ const TailwindHeader: React.FC<TailwindHeaderProps> = ({
               onOpenTopicManager={onOpenTopicManager}
               onOpenApiSettings={onOpenApiSettings}
               onOpenDataExportImport={onOpenDataExportImport}
+              onOpenStorageSettings={onOpenStorageSettings}
             />
           )}
         </div>

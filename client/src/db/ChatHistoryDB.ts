@@ -519,7 +519,7 @@ class ChatHistoryDB extends Dexie {
    * Clean up orphaned messages and empty topics
    * @returns Object with counts of deleted items
    */
-  async cleanupOrphanedData(): Promise<{ deletedTopics: number, deletedMessages: number }> {
+  async cleanupOrphanedData(): Promise<{ deletedTopics: number, deletedMessages: number, deletedWordIndices: number }> {
     try {
       console.log('[DB] Starting database cleanup');
       
@@ -547,13 +547,109 @@ class ChatHistoryDB extends Dexie {
       
       // Delete empty topics
       let deletedTopics = 0;
+      let totalDeletedMessages = 0;
+      
       for (const topicId of emptyTopicIds) {
-        await this.topics.delete(topicId);
-        deletedTopics++;
-        console.log(`[DB] Deleted empty topic ${topicId}`);
+        const result = await this.deleteTopic(topicId);
+        if (result.success) {
+          deletedTopics++;
+          totalDeletedMessages += result.deletedMessages;
+          console.log(`[DB] Deleted empty topic ${topicId} and ${result.deletedMessages} messages`);
+        }
       }
       
-      // 2. Update all topic message counts to ensure they're accurate
+      // 2. Find orphaned messages (messages that don't belong to any topic)
+      // Get all valid topic IDs
+      const allTopicIds = await this.topics.toCollection().primaryKeys() as number[];
+      
+      // Find messages that don't belong to any valid topic
+      const allMessages = await this.messages.toArray();
+      const orphanedMessages = allMessages.filter(msg => !allTopicIds.includes(msg.topicId));
+      
+      console.log(`[DB] Found ${orphanedMessages.length} orphaned messages`);
+      
+      // Delete orphaned messages
+      let deletedOrphanedMessages = 0;
+      
+      for (const msg of orphanedMessages) {
+        if (!msg.id) continue;
+        
+        try {
+          // Delete any word indices for this message
+          await this.wordIndex.where('messageId').equals(msg.id).delete();
+          
+          // Delete the message
+          await this.messages.delete(msg.id);
+          deletedOrphanedMessages++;
+          
+          if (deletedOrphanedMessages % 10 === 0 || deletedOrphanedMessages === orphanedMessages.length) {
+            console.log(`[DB] Deleted ${deletedOrphanedMessages}/${orphanedMessages.length} orphaned messages`);
+          }
+        } catch (deleteError) {
+          console.error(`[DB] Error deleting orphaned message ${msg.id}:`, deleteError);
+        }
+      }
+      
+      // 3. Find orphaned word indices
+      // Get all valid message IDs
+      const allMessageIds = await this.messages.toCollection().primaryKeys() as number[];
+      
+      // Find word indices that don't belong to any valid message
+      const orphanedIndices = await this.wordIndex
+        .filter(index => !allMessageIds.includes(index.messageId))
+        .toArray();
+      
+      console.log(`[DB] Found ${orphanedIndices.length} orphaned word indices`);
+      
+      // Delete orphaned word indices
+      let deletedWordIndices = 0;
+      
+      // Delete in batches of 100 for better performance
+      const BATCH_SIZE = 100;
+      for (let i = 0; i < orphanedIndices.length; i += BATCH_SIZE) {
+        const batch = orphanedIndices.slice(i, i + BATCH_SIZE);
+        try {
+          for (const index of batch) {
+            if (!index.id) continue;
+            await this.wordIndex.delete(index.id);
+            deletedWordIndices++;
+          }
+          
+          if (i + BATCH_SIZE >= orphanedIndices.length || i % 500 === 0) {
+            console.log(`[DB] Deleted ${deletedWordIndices}/${orphanedIndices.length} orphaned word indices`);
+          }
+        } catch (error) {
+          console.error(`[DB] Error deleting batch of orphaned word indices:`, error);
+        }
+      }
+      
+      // 4. Also find word indices with no valid topic
+      const orphanedTopicIndices = await this.wordIndex
+        .filter(index => !allTopicIds.includes(index.topicId))
+        .toArray();
+      
+      console.log(`[DB] Found ${orphanedTopicIndices.length} word indices with invalid topics`);
+      
+      // Delete these indices
+      let deletedTopicIndices = 0;
+      for (let i = 0; i < orphanedTopicIndices.length; i += BATCH_SIZE) {
+        const batch = orphanedTopicIndices.slice(i, i + BATCH_SIZE);
+        try {
+          for (const index of batch) {
+            if (!index.id) continue;
+            await this.wordIndex.delete(index.id);
+            deletedTopicIndices++;
+          }
+          
+          if (i + BATCH_SIZE >= orphanedTopicIndices.length || i % 500 === 0) {
+            console.log(`[DB] Deleted ${deletedTopicIndices}/${orphanedTopicIndices.length} word indices with invalid topics`);
+          }
+        } catch (error) {
+          console.error(`[DB] Error deleting batch of word indices with invalid topics:`, error);
+        }
+      }
+      
+      // 5. Update all topic message counts to ensure they're accurate
       const remainingTopics = await this.topics.toArray();
       console.log(`[DB] Updating message counts for ${remainingTopics.length} remaining topics`);
       
@@ -563,11 +659,85 @@ class ChatHistoryDB extends Dexie {
         await this.updateTopicMessageCount(topic.id);
       }
       
-      console.log(`[DB] Database cleanup complete: deleted ${deletedTopics} empty topics`);
-      return { deletedTopics, deletedMessages: 0 };
+      const totalMessages = totalDeletedMessages + deletedOrphanedMessages;
+      const totalIndices = deletedWordIndices + deletedTopicIndices;
+      console.log(`[DB] Database cleanup complete: deleted ${deletedTopics} empty topics, ${totalMessages} messages, and ${totalIndices} word indices`);
+      return { deletedTopics, deletedMessages: totalMessages, deletedWordIndices: totalIndices };
     } catch (error) {
       console.error(`[DB] Error during database cleanup:`, error);
-      return { deletedTopics: 0, deletedMessages: 0 };
+      return { deletedTopics: 0, deletedMessages: 0, deletedWordIndices: 0 };
+    }
+  }
+
+  /**
+   * Properly delete a topic and all its associated messages and word indices
+   * @param topicId The ID of the topic to delete
+   * @returns Object with information about the deletion
+   */
+  async deleteTopic(topicId: number): Promise<{ success: boolean, deletedMessages: number, deletedIndices: number }> {
+    try {
+      console.log(`[DB] Deleting topic ${topicId} and all associated data`);
+      
+      // Ensure the database is open
+      await this.ensureOpen();
+      
+      // Verify the topic exists
+      const topic = await this.topics.get(topicId);
+      if (!topic) {
+        console.warn(`[DB] Topic ${topicId} not found, nothing to delete`);
+        return { success: false, deletedMessages: 0, deletedIndices: 0 };
+      }
+      
+      // Use a transaction to ensure all or nothing is deleted
+      return await this.transaction('rw', [this.topics, this.messages, this.wordIndex], async () => {
+        // First, delete all messages for this topic
+        const messagesToDelete = await this.messages.where('topicId').equals(topicId).toArray();
+        const messageIds = messagesToDelete.map(msg => msg.id).filter(id => id !== undefined) as number[];
+        
+        console.log(`[DB] Found ${messageIds.length} messages to delete for topic ${topicId}`);
+        
+        // First, delete word indices for all messages in the topic in one operation
+        let deletedIndices = 0;
+        
+        // Delete word indices by topic ID (more efficient than by message ID)
+        deletedIndices = await this.wordIndex.where('topicId').equals(topicId).delete();
+        console.log(`[DB] Deleted ${deletedIndices} word indices for topic ${topicId}`);
+        
+        // Now delete each message individually
+        let deletedMessages = 0;
+        const BATCH_SIZE = 50;
+        
+        for (let i = 0; i < messageIds.length; i += BATCH_SIZE) {
+          const batch = messageIds.slice(i, i + BATCH_SIZE);
+          
+          try {
+            // Delete messages in the batch
+            for (const messageId of batch) {
+              await this.messages.delete(messageId);
+              deletedMessages++;
+            }
+            
+            if (deletedMessages % 50 === 0 || deletedMessages === messageIds.length) {
+              console.log(`[DB] Deleted ${deletedMessages}/${messageIds.length} messages for topic ${topicId}`);
+            }
+          } catch (error) {
+            console.error(`[DB] Error deleting batch of messages for topic ${topicId}:`, error);
+          }
+        }
+        
+        // Finally, delete the topic itself
+        await this.topics.delete(topicId);
+        console.log(`[DB] Successfully deleted topic ${topicId} and all associated data`);
+        
+        return { 
+          success: true, 
+          deletedMessages, 
+          deletedIndices
+        };
+      });
+    } catch (error) {
+      console.error(`[DB] Error deleting topic ${topicId}:`, error);
+      return { success: false, deletedMessages: 0, deletedIndices: 0 };
     }
   }
 }

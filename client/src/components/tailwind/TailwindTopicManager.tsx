@@ -219,14 +219,15 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
   const confirmDeleteTopic = async () => {
     if (showConfirmDelete) {
       try {
-        // First delete all messages for this topic
-        await db.messages
-          .where('topicId')
-          .equals(showConfirmDelete)
-          .delete();
-
-        // Then delete the topic itself
-        await db.topics.delete(showConfirmDelete);
+        // Use the new topic deletion method that properly handles all related data
+        const result = await db.deleteTopic(showConfirmDelete);
+        
+        if (!result.success) {
+          console.error(`[TOPIC MANAGER] Failed to delete topic ${showConfirmDelete}`);
+          return;
+        }
+        
+        console.log(`[TOPIC MANAGER] Successfully deleted topic ${showConfirmDelete} with ${result.deletedMessages} messages`);
 
         // Find another topic to select
         const otherTopics = topics.filter(t => t.id !== showConfirmDelete);

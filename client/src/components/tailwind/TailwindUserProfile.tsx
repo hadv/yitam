@@ -7,6 +7,7 @@ interface TailwindUserProfileProps {
   onOpenTopicManager: () => void;
   onOpenApiSettings: () => void;
   onOpenDataExportImport: () => void;
+  onOpenStorageSettings?: () => void;
 }
 
 const TailwindUserProfile: React.FC<TailwindUserProfileProps> = ({
@@ -14,7 +15,8 @@ const TailwindUserProfile: React.FC<TailwindUserProfileProps> = ({
   onLogout,
   onOpenTopicManager,
   onOpenApiSettings,
-  onOpenDataExportImport
+  onOpenDataExportImport,
+  onOpenStorageSettings
 }) => {
   const [imageError, setImageError] = useState(false);
   
@@ -73,6 +75,17 @@ const TailwindUserProfile: React.FC<TailwindUserProfileProps> = ({
           </svg>
           Xuất/nhập dữ liệu
         </button>
+        {onOpenStorageSettings && (
+          <button
+            onClick={onOpenStorageSettings}
+            className="w-full flex items-center px-4 py-2 text-sm text-[#5D4A38] hover:bg-[#78A16115] transition-colors"
+          >
+            <svg className="w-4 h-4 mr-2 text-[#78A161]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+            </svg>
+            Quản lý dung lượng lưu trữ
+          </button>
+        )}
         <button
           onClick={onOpenApiSettings}
           className="w-full flex items-center px-4 py-2 text-sm text-[#5D4A38] hover:bg-[#78A16115] transition-colors"
