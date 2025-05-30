@@ -1675,6 +1675,7 @@ function TailwindApp() {
 
   const [showPrivacyControls, setShowPrivacyControls] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [showDataDeletedNotification, setShowDataDeletedNotification] = useState(false);
 
   // Handle data deletion
   const handleDataDeleted = useCallback(() => {
@@ -1682,8 +1683,16 @@ function TailwindApp() {
     startNewChat();
     setCurrentTopicId(undefined);
 
-    // Show confirmation toast
-    alert("Dữ liệu của bạn đã được xóa thành công.");
+    // Close privacy controls modal
+    setShowPrivacyControls(false);
+    
+    // Show in-app notification instead of alert
+    setShowDataDeletedNotification(true);
+    
+    // Auto-hide notification after 5 seconds
+    setTimeout(() => {
+      setShowDataDeletedNotification(false);
+    }, 5000);
 
     // Trigger topic list refresh if available
     if (window.triggerTopicListRefresh) {
@@ -1717,6 +1726,26 @@ function TailwindApp() {
                   onOpenPrivacyControls={() => setShowPrivacyControls(true)}
                   onOpenPrivacyPolicy={() => setShowPrivacyPolicy(true)}
                 />
+                
+                {/* GDPR data deleted notification */}
+                {showDataDeletedNotification && (
+                  <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-md animate-fade-in-out flex items-center justify-between">
+                    <div className="flex items-center">
+                      <svg className="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span className="text-green-700">Dữ liệu của bạn đã được xóa thành công theo yêu cầu GDPR.</span>
+                    </div>
+                    <button 
+                      onClick={() => setShowDataDeletedNotification(false)}
+                      className="text-green-500 hover:text-green-700"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
                 
                 {/* Beta warning banner */}
                 <BetaBanner />
@@ -2000,10 +2029,27 @@ function TailwindApp() {
                 onClose={() => setShowPrivacyPolicy(false)}
                 title="Chính sách quyền riêng tư"
                 maxWidth="max-w-6xl"
+                fullHeight={false}
+                scrollable={true}
               >
                 <TailwindPrivacyPolicy />
               </TailwindModal>
             </div>
+            
+            {/* Add animation for the notification */}
+            <style>
+              {`
+              @keyframes fadeInOut {
+                0% { opacity: 0; transform: translateY(-10px); }
+                10% { opacity: 1; transform: translateY(0); }
+                90% { opacity: 1; transform: translateY(0); }
+                100% { opacity: 0; transform: translateY(-10px); }
+              }
+              .animate-fade-in-out {
+                animation: fadeInOut 5s ease-in-out;
+              }
+              `}
+            </style>
           </TailwindMessagePersistence>
         </ChatHistoryProvider>
       </ConsentProvider>
