@@ -487,6 +487,14 @@ function TailwindApp() {
                     userId={user?.email || ''}
                     currentTopicId={currentTopicId}
                     onSelectTopic={(topicId: number) => {
+                      // Check if the topicId is -1, which is a special value indicating no topics
+                      // or when a topic was deleted but we don't want to select another automatically
+                      if (topicId === -1) {
+                        // Just stay on the topic manager page without selecting a topic
+                        return;
+                      }
+                      
+                      // Normal topic selection
                       handleTopicSelect(topicId);
                       modals.topicManager.close();
                     }}
