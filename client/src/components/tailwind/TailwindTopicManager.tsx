@@ -20,6 +20,8 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [topicToEdit, setTopicToEdit] = useState<Topic | undefined>(undefined);
   const [selectedTopicDetails, setSelectedTopicDetails] = useState<Topic | null>(null);
+  const [hoveredTopicId, setHoveredTopicId] = useState<number | null>(null);
+  const [hoveredTopicDetails, setHoveredTopicDetails] = useState<Topic | null>(null);
   const [showConfirmDelete, setShowConfirmDelete] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'topics' | 'search'>('topics');
@@ -166,6 +168,26 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
     loadTopics();
   }, [userId]);
 
+  // Handle topic hover
+  useEffect(() => {
+    if (hoveredTopicId) {
+      db.topics.get(hoveredTopicId)
+        .then(topic => {
+          if (topic) {
+            setHoveredTopicDetails(topic);
+          } else {
+            setHoveredTopicDetails(null);
+          }
+        })
+        .catch(error => {
+          console.error(`[TOPIC MANAGER] Error fetching hovered topic ${hoveredTopicId}:`, error);
+          setHoveredTopicDetails(null);
+        });
+    } else {
+      setHoveredTopicDetails(null);
+    }
+  }, [hoveredTopicId]);
+
   // Handle creating a new topic
   const handleCreateTopic = () => {
     setTopicToEdit(undefined);
@@ -229,24 +251,9 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
         
         console.log(`[TOPIC MANAGER] Successfully deleted topic ${showConfirmDelete} with ${result.deletedMessages} messages`);
 
-        // Find another topic to select
-        const otherTopics = topics.filter(t => t.id !== showConfirmDelete);
-        if (otherTopics.length > 0) {
-          // Sort by most recently active
-          const sortedTopics = [...otherTopics].sort((a, b) => b.lastActive - a.lastActive);
-          const newTopicToSelect = sortedTopics[0];
-          if (newTopicToSelect && newTopicToSelect.id) {
-            setSelectedTopicDetails(newTopicToSelect);
-            onSelectTopic(newTopicToSelect.id);
-          } else {
-            setSelectedTopicDetails(null);
-          }
-        } else {
-          // No topics left, just reset the UI without creating a new topic
-          setSelectedTopicDetails(null);
-          // Use -1 as a special value to indicate no topics
-          onSelectTopic(-1);
-        }
+        // Enhancement #102: Do not automatically select another topic after deletion
+        // Just clear the selected topic details so the user has to explicitly select a topic
+        setSelectedTopicDetails(null);
 
         // Reload topics to update the list
         await loadTopics();
@@ -260,6 +267,11 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
   // Cancel deletion
   const cancelDeleteTopic = () => {
     setShowConfirmDelete(null);
+  };
+
+  // Handle topic hover
+  const handleTopicHover = (topicId: number | null) => {
+    setHoveredTopicId(topicId);
   };
 
   // Determine the current topic ID for display
@@ -314,6 +326,7 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
             onCreateTopic={handleCreateTopic}
             onDeleteTopic={handleDeleteTopic}
             onEditTopic={handleEditTopic}
+            onTopicHover={handleTopicHover}
             currentTopicId={activeTopicId}
           />
         ) : (
@@ -341,7 +354,12 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
       </div>
       
       <div className="md:col-span-2">
-        {selectedTopicDetails ? (
+        {hoveredTopicDetails ? (
+          <TailwindTopicMetadata 
+            topic={hoveredTopicDetails} 
+            className="sticky top-4"
+          />
+        ) : selectedTopicDetails ? (
           <TailwindTopicMetadata 
             topic={selectedTopicDetails} 
             className="sticky top-4"

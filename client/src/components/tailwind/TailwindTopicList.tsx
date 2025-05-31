@@ -8,6 +8,7 @@ interface TopicListProps {
   onCreateTopic: () => void;
   onDeleteTopic: (topicId: number) => void;
   onEditTopic: (topic: Topic) => void;
+  onTopicHover?: (topicId: number | null) => void;
   currentTopicId?: number;
 }
 
@@ -17,6 +18,7 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
   onCreateTopic,
   onDeleteTopic,
   onEditTopic,
+  onTopicHover,
   currentTopicId
 }) => {
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -93,6 +95,20 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
     return date.toLocaleDateString('vi-VN', { year: 'numeric', month: '2-digit', day: '2-digit' });
   };
 
+  // Handle mouse enter event
+  const handleMouseEnter = (topicId: number) => {
+    if (onTopicHover) {
+      onTopicHover(topicId);
+    }
+  };
+
+  // Handle mouse leave event
+  const handleMouseLeave = () => {
+    if (onTopicHover) {
+      onTopicHover(null);
+    }
+  };
+
   // Sort topics and then separate pinned topics to top
   const sortedTopicsRaw = sortTopics(topics);
   const pinnedTopics = sortedTopicsRaw.filter(topic => topic.pinnedState);
@@ -142,6 +158,8 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
                 topic.id === currentTopicId ? 'bg-[#F2EEE5]' : ''
               }`}
               onClick={() => topic.id && onSelectTopic(topic.id)}
+              onMouseEnter={() => topic.id && handleMouseEnter(topic.id)}
+              onMouseLeave={handleMouseLeave}
             >
               <div className="flex justify-between items-start">
                 <div className="flex-1 min-w-0 pr-4">
