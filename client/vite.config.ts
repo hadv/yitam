@@ -12,4 +12,13 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    sourcemap: true,
+    cssCodeSplit: true,
+    rollupOptions: {
+      output: {
+        inlineDynamicImports: false,
+      },
+    },
+  },
 }); 
