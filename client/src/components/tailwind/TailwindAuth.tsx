@@ -21,14 +21,14 @@ export const TailwindAuth = ({ onAuthSuccess }: TailwindAuthProps) => {
       const decoded = jwtDecode(credentialResponse.credential) as any;
       
       // Validate required fields
-      if (!decoded.email || !decoded.name || !decoded.picture) {
-        throw new Error('Missing required user data from Google response');
+      if (!decoded.name) {
+        throw new Error('Missing required user name from Google response');
       }
       
       const userData: UserData = {
-        email: decoded.email,
+        email: decoded.email || '',
         name: decoded.name,
-        picture: decoded.picture
+        picture: decoded.picture || ''
       };
       
       onAuthSuccess(userData);
