@@ -9,12 +9,14 @@ interface TopicManagerProps {
   userId: string;
   currentTopicId?: number;
   onSelectTopic: (topicId: number) => void;
+  onTopicDeleted?: (deletedTopicId: number) => void;
 }
 
 const TailwindTopicManager: React.FC<TopicManagerProps> = ({
   userId,
   currentTopicId,
-  onSelectTopic
+  onSelectTopic,
+  onTopicDeleted
 }) => {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -241,22 +243,38 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
   const confirmDeleteTopic = async () => {
     if (showConfirmDelete) {
       try {
+        // Store the deleted topic ID before deletion
+        const deletedTopicId = showConfirmDelete;
+        
         // Use the new topic deletion method that properly handles all related data
-        const result = await db.deleteTopic(showConfirmDelete);
+        const result = await db.deleteTopic(deletedTopicId);
         
         if (!result.success) {
-          console.error(`[TOPIC MANAGER] Failed to delete topic ${showConfirmDelete}`);
+          console.error(`[TOPIC MANAGER] Failed to delete topic ${deletedTopicId}`);
           return;
         }
         
-        console.log(`[TOPIC MANAGER] Successfully deleted topic ${showConfirmDelete} with ${result.deletedMessages} messages`);
+        console.log(`[TOPIC MANAGER] Successfully deleted topic ${deletedTopicId} with ${result.deletedMessages} messages`);
 
         // Enhancement #102: Do not automatically select another topic after deletion
         // Just clear the selected topic details so the user has to explicitly select a topic
         setSelectedTopicDetails(null);
+        
+        // Update the topics state directly by filtering out the deleted topic
+        setTopics(prevTopics => prevTopics.filter(topic => topic.id !== deletedTopicId));
+        
+        // Notify parent component that a topic was deleted
+        if (onTopicDeleted) {
+          onTopicDeleted(deletedTopicId);
+        }
 
-        // Reload topics to update the list
-        await loadTopics();
+        // If deleted topic is the current one, pass -1 to the parent to signal deletion
+        if (deletedTopicId === currentTopicId) {
+          onSelectTopic(-1);
+        }
+        
+        // Dispatch a custom event to notify other components
+        window.dispatchEvent(new CustomEvent('storage:refreshTopics'));
       } catch (error) {
         console.error('Error deleting topic:', error);
       }
