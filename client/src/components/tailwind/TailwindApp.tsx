@@ -498,6 +498,18 @@ function TailwindApp() {
                       handleTopicSelect(topicId);
                       modals.topicManager.close();
                     }}
+                    onTopicDeleted={(deletedTopicId: number) => {
+                      // If the deleted topic is the currently selected one
+                      if (deletedTopicId === currentTopicId) {
+                        startNewChat();
+                        setCurrentTopicId(undefined);
+                      }
+                      
+                      // Ensure the topic list is refreshed, but only trigger once
+                      if (window.triggerTopicListRefresh) {
+                        window.triggerTopicListRefresh();
+                      }
+                    }}
                   />
                 </div>
                 
