@@ -165,21 +165,24 @@ export const useMessages = (socket: ChatSocket, user: any) => {
 
     const handleServerError = (error: any) => {
       let errorObj: Message['error'];
+      let errorMessage: string = '';
       
       // Try to parse error if it's a JSON string
       if (typeof error === 'string') {
         try {
           const parsedError = JSON.parse(error);
           errorObj = {
-            type: parsedError.type as 'rate_limit' | 'credit_balance' | 'other',
+            type: parsedError.type as 'rate_limit' | 'credit_balance' | 'overloaded' | 'other',
             message: parsedError.message
           };
+          errorMessage = parsedError.message;
         } catch (e) {
           // If parsing fails, treat as a regular string error
           errorObj = {
             type: 'other' as const,
             message: error
           };
+          errorMessage = error;
         }
       } else {
         // Handle ServerError object
@@ -187,17 +190,19 @@ export const useMessages = (socket: ChatSocket, user: any) => {
           type: error.type,
           message: error.message
         };
+        errorMessage = error.message;
       }
 
-      const errorMessage: Message = {
+      const errorMessageObj: Message = {
         id: `error-${Date.now()}`,
-        text: '',
+        text: errorMessage, // Set the actual error message text here
         isBot: true,
+        isError: true, // Set isError flag to true
         error: errorObj
       };
       
       const currentMessages = pendingMessagesRef.current;
-      updateMessages([...currentMessages, errorMessage]);
+      updateMessages([...currentMessages, errorMessageObj]);
     };
 
     // Clean up previous listeners first

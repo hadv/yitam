@@ -6,8 +6,9 @@ interface Message {
   text: string;
   isBot: boolean;
   isStreaming?: boolean;
+  isError?: boolean;
   error?: {
-    type: 'rate_limit' | 'credit_balance' | 'other';
+    type: 'rate_limit' | 'credit_balance' | 'overloaded' | 'other';
     message: string;
     retryAfter?: number; // seconds to wait before retrying
   };
@@ -122,7 +123,18 @@ const TailwindChatBox: React.FC<ChatBoxProps> = ({ messages }) => {
                 >
                   {message.isBot ? (
                     <div className="prose prose-sm max-w-none prose-headings:my-2 prose-headings:font-semibold prose-p:my-2 prose-ul:my-2 prose-ul:pl-6 prose-ol:my-2 prose-ol:pl-6 prose-li:my-1 prose-code:bg-[rgba(93,74,56,0.1)] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono prose-pre:bg-[rgba(93,74,56,0.1)] prose-pre:p-4 prose-pre:rounded-lg prose-pre:my-2 prose-pre:overflow-x-auto prose-pre:code:bg-transparent prose-pre:code:p-0">
-                      <TailwindToolCallParser text={message.text} />
+                      {message.isError ? (
+                        <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg">
+                          <div className="flex items-center mb-2">
+                            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                            <div className="font-medium">{message.text}</div>
+                          </div>
+                        </div>
+                      ) : (
+                        <TailwindToolCallParser text={message.text} />
+                      )}
                       {message.isStreaming && (
                         <span className="inline-flex items-center ml-1.5">
                           <span className="typing-dot"></span>
@@ -130,12 +142,14 @@ const TailwindChatBox: React.FC<ChatBoxProps> = ({ messages }) => {
                           <span className="typing-dot"></span>
                         </span>
                       )}
-                      {message.error && (
+                      {!message.isError && message.error && (
                         <div className={`mt-4 p-4 rounded-lg border ${
                           message.error.type === 'rate_limit'
                             ? 'bg-amber-50 border-amber-200 text-amber-800'
                             : message.error.type === 'credit_balance'
                             ? 'bg-red-50 border-red-200 text-red-700'
+                            : message.error.type === 'overloaded'
+                            ? 'bg-amber-50 border-amber-200 text-amber-800'
                             : 'bg-red-50 border-red-200 text-red-700'
                         }`}>
                           <div className="flex items-center mb-2">
@@ -145,6 +159,8 @@ const TailwindChatBox: React.FC<ChatBoxProps> = ({ messages }) => {
                                   ? "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" // Clock icon for rate limit
                                   : message.error.type === 'credit_balance'
                                   ? "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" // Credit card icon for balance
+                                  : message.error.type === 'overloaded'
+                                  ? "M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 01-2.167-9.238m7.824 2.167a1 1 0 111.414 1.414m-1.414-1.414L3 3m8.293 8.293l1.414 1.414" // Signal icon for overloaded
                                   : "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" // Warning icon for other errors
                                 }
                               />

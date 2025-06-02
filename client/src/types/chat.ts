@@ -23,9 +23,10 @@ export interface Message {
   text: string;
   isBot: boolean;
   isStreaming?: boolean;
+  isError?: boolean;
   timestamp?: number;
   error?: {
-    type: 'rate_limit' | 'credit_balance' | 'other';
+    type: 'rate_limit' | 'credit_balance' | 'overloaded' | 'other';
     message: string;
     retryAfter?: number;
   };
@@ -46,7 +47,7 @@ export interface AnthropicErrorResponse {
 }
 
 export interface ServerError {
-  type: 'rate_limit' | 'credit_balance' | 'other';
+  type: 'rate_limit' | 'credit_balance' | 'overloaded' | 'other';
   message: string;
   details?: {
     retryAfter?: number;
