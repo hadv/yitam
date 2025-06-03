@@ -33,7 +33,7 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
   currentTopicId
 }) => {
   const [topics, setTopics] = useState<Topic[]>([]);
-  const [sortOption, setSortOption] = useState<'lastActive' | 'createdAt' | 'title'>('lastActive');
+  const [sortOption, setSortOption] = useState<'lastActive' | 'createdAt' | 'title'>('createdAt');
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTopicId, setSelectedTopicId] = useState<number | undefined>(currentTopicId);
   
