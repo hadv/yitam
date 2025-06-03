@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client
+  namespace: yitam
+spec:
+  replicas: 2  # You can adjust based on your needs
+  selector:
+    matchLabels:
+      app: client
+  template:
+    metadata:
+      labels:
+        app: client
+    spec:
+      containers:
+      - name: client
+        image: yitam-client:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+        - containerPort: 443
+        env:
+        - name: VITE_SERVER_URL
+          valueFrom:
+            configMapKeyRef:
+              name: yitam-config
+              key: VITE_SERVER_URL
+        - name: VITE_GOOGLE_CLIENT_ID
+          valueFrom:
+            configMapKeyRef:
+              name: yitam-config
+              key: VITE_GOOGLE_CLIENT_ID
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d/default.conf
+          subPath: nginx.conf
+          readOnly: true
+        - name: blacklist-config
+          mountPath: /etc/nginx/conf.d/blacklist.conf
+          subPath: blacklist.conf
+          readOnly: true
+        - name: ssl-certs
+          mountPath: /etc/nginx/ssl
+          readOnly: true
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: nginx-config
+      - name: blacklist-config
+        configMap:
+          name: nginx-config
+      - name: ssl-certs
+        secret:
+          secretName: ssl-certs 

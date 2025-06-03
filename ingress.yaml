@@ -1,0 +1,32 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: yitam-ingress
+  namespace: yitam
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    # If you're using cert-manager, you can add annotations for automatic TLS
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+  - hosts:
+    - yitam.org
+    secretName: ssl-certs
+  rules:
+  - host: yitam.org
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: client
+            port:
+              number: 443
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: server
+            port:
+              number: 3000 

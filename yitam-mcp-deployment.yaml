@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: yitam-mcp
+  namespace: yitam
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: yitam-mcp
+  template:
+    metadata:
+      labels:
+        app: yitam-mcp
+    spec:
+      containers:
+      - name: yitam-mcp
+        image: yitam-mcp:latest
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - name: mcp-dist
+          mountPath: /app/dist
+      volumes:
+      - name: mcp-dist
+        persistentVolumeClaim:
+          claimName: yitam-mcp-dist 

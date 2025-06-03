@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: yitam
+data:
+  nginx.conf: |
+    # Your nginx.conf content goes here
+    # This should be the content of your current nginx.conf file
+    server {
+        listen 80;
+        listen [::]:80;
+        server_name yitam.org;
+        
+        # Redirect HTTP to HTTPS
+        location / {
+            return 301 https://$host$request_uri;
+        }
+    }
+
+    server {
+        listen 443 ssl;
+        listen [::]:443 ssl;
+        server_name yitam.org;
+
+        ssl_certificate /etc/nginx/ssl/yitam.org.crt;
+        ssl_certificate_key /etc/nginx/ssl/yitam.org.key;
+
+        # Other SSL configurations...
+
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+            try_files $uri $uri/ /index.html;
+        }
+
+        location /api {
+            proxy_pass http://server:3000;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host $host;
+            proxy_cache_bypass $http_upgrade;
+        }
+    }
+  
+  blacklist.conf: |
+    # Your blacklist.conf content goes here
+    # This should be the content of your current blacklist.conf file 
