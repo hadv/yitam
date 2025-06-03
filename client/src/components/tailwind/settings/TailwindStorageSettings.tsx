@@ -24,7 +24,7 @@ const TailwindStorageSettings: React.FC<TailwindStorageSettingsProps> = ({
       <h3 className="text-lg font-medium text-[#3A2E22] mb-4">Cài đặt lưu trữ</h3>
       
       {/* Storage Usage Visualization */}
-      {storageUsage && storageUsage.percentage > 0 && (
+      {storageUsage && storageUsage.percentage > 0 ? (
         <div className="mb-6 p-4 bg-white rounded-lg shadow-sm">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-[#5D4A38]">
@@ -48,13 +48,13 @@ const TailwindStorageSettings: React.FC<TailwindStorageSettingsProps> = ({
           </div>
           
           {/* Warning message for high storage usage */}
-          {storageUsage.percentage > 80 && (
+          {storageUsage.percentage > 80 ? (
             <div className="mt-2 text-sm text-red-600">
               <strong>Cảnh báo:</strong> Dung lượng lưu trữ gần đầy. Hãy xóa bớt cuộc trò chuyện cũ hoặc bật tính năng tự động dọn dẹp.
             </div>
-          )}
+          ) : null}
         </div>
-      )}
+      ) : null}
       
       {/* Retention Policy Settings */}
       <div className="mb-6">
@@ -245,20 +245,20 @@ const TailwindStorageSettings: React.FC<TailwindStorageSettingsProps> = ({
               <div className="space-y-2">
                 <h4 className="font-medium text-green-800">Kết quả phân tích dung lượng:</h4>
                 
-                {cleanupState.cleanupResult.counts && (
+                {cleanupState.cleanupResult.counts ? (
                   <div className="ml-2">
                     <div className="text-green-700">Số lượng đề mục: {cleanupState.cleanupResult.counts.topics}</div>
                     <div className="text-green-700">Số lượng tin nhắn: {cleanupState.cleanupResult.counts.messages}</div>
                     <div className="text-green-700">Số lượng chỉ mục từ: {cleanupState.cleanupResult.counts.wordIndices}</div>
-                    {cleanupState.cleanupResult.counts.orphanedMessages && cleanupState.cleanupResult.counts.orphanedMessages > 0 && (
+                    {(cleanupState.cleanupResult.counts.orphanedMessages && cleanupState.cleanupResult.counts.orphanedMessages > 0) ? (
                       <div className="text-amber-600">
                         Phát hiện {cleanupState.cleanupResult.counts.orphanedMessages} tin nhắn không thuộc về đề mục nào!
                       </div>
-                    )}
+                    ) : null}
                   </div>
-                )}
+                ) : null}
                 
-                {cleanupState.cleanupResult.storageEstimate && (
+                {cleanupState.cleanupResult.storageEstimate ? (
                   <div className="ml-2">
                     <div className="text-green-700">
                       Dung lượng sử dụng: {(cleanupState.cleanupResult.storageEstimate.usage / (1024 * 1024)).toFixed(1)} MB
@@ -267,14 +267,14 @@ const TailwindStorageSettings: React.FC<TailwindStorageSettingsProps> = ({
                       Tỷ lệ sử dụng: {cleanupState.cleanupResult.storageEstimate.percentage.toFixed(1)}%
                     </div>
                   </div>
-                )}
+                ) : null}
                 
-                {cleanupState.cleanupResult.recommendedAction && (
+                {cleanupState.cleanupResult.recommendedAction ? (
                   <div className={`ml-2 ${cleanupState.cleanupResult.counts?.orphanedMessages && cleanupState.cleanupResult.counts.orphanedMessages > 0 ? 'text-amber-600' : 'text-green-700'}`}>
                     <strong>Đề xuất:</strong> {cleanupState.cleanupResult.recommendedAction === "No issues detected" ? "Không phát hiện vấn đề" : cleanupState.cleanupResult.recommendedAction}
                     
                     {/* Show cleanup button if orphaned messages are detected */}
-                    {cleanupState.cleanupResult.counts?.orphanedMessages && cleanupState.cleanupResult.counts.orphanedMessages > 0 && (
+                    {(cleanupState.cleanupResult.counts?.orphanedMessages && cleanupState.cleanupResult.counts.orphanedMessages > 0) ? (
                       <button
                         onClick={actions.cleanupOrphanedData}
                         disabled={cleanupState.isRunningCleanup}
@@ -282,15 +282,15 @@ const TailwindStorageSettings: React.FC<TailwindStorageSettingsProps> = ({
                       >
                         {cleanupState.isRunningCleanup ? 'Đang xử lý...' : 'Dọn dẹp dữ liệu ngay'}
                       </button>
-                    )}
+                    ) : null}
                   </div>
-                )}
+                ) : null}
               </div>
             ) : cleanupState.cleanupResult.type === 'orphaned-cleanup' ? (
               <div className="space-y-2">
                 <h4 className="font-medium text-green-800">Kết quả dọn dẹp dữ liệu:</h4>
                 
-                {cleanupState.cleanupResult.cleanupResult && (
+                {cleanupState.cleanupResult.cleanupResult ? (
                   <div className="ml-2">
                     <div className="text-green-700">
                       Đã xóa {cleanupState.cleanupResult.cleanupResult.deletedMessages || 0} tin nhắn mồ côi
@@ -298,16 +298,16 @@ const TailwindStorageSettings: React.FC<TailwindStorageSettingsProps> = ({
                     <div className="text-green-700">
                       Đã xóa {cleanupState.cleanupResult.cleanupResult.deletedTopics || 0} đề mục trống
                     </div>
-                    {cleanupState.cleanupResult.cleanupResult.deletedWordIndices > 0 && (
+                    {cleanupState.cleanupResult.cleanupResult.deletedWordIndices > 0 ? (
                       <div className="text-green-700">
                         Đã xóa {cleanupState.cleanupResult.cleanupResult.deletedWordIndices} chỉ mục từ mồ côi
                       </div>
-                    )}
+                    ) : null}
                   </div>
-                )}
+                ) : null}
                 
                 {/* Show updated analysis results if available */}
-                {cleanupState.cleanupResult.analysisResult && cleanupState.cleanupResult.analysisResult.counts && (
+                {cleanupState.cleanupResult.analysisResult && cleanupState.cleanupResult.analysisResult.counts ? (
                   <div className="mt-4">
                     <h5 className="font-medium text-green-800">Kết quả phân tích sau khi dọn dẹp:</h5>
                     <div className="ml-2">
@@ -330,24 +330,24 @@ const TailwindStorageSettings: React.FC<TailwindStorageSettingsProps> = ({
                       )}
                     </div>
                     
-                    {cleanupState.cleanupResult.analysisResult.storageEstimate && (
+                    {cleanupState.cleanupResult.analysisResult.storageEstimate ? (
                       <div className="ml-2 mt-2">
                         <div className="text-green-700">
                           Dung lượng sử dụng hiện tại: {(cleanupState.cleanupResult.analysisResult.storageEstimate.usage / (1024 * 1024)).toFixed(1)} MB
                         </div>
                       </div>
-                    )}
+                    ) : null}
                   </div>
-                )}
+                ) : null}
               </div>
             ) : cleanupState.cleanupResult.deletedCount !== undefined ? (
               <div className="text-green-700">Đã xóa {cleanupState.cleanupResult.deletedCount} cuộc trò chuyện.</div>
             ) : cleanupState.cleanupResult.compressedCount !== undefined ? (
               <div>
                 <div className="text-green-700">Đã nén {cleanupState.cleanupResult.compressedCount} tin nhắn.</div>
-                {cleanupState.cleanupResult.savingsPercentage !== undefined && (
+                {cleanupState.cleanupResult.savingsPercentage !== undefined ? (
                   <div className="text-green-700">Tiết kiệm {cleanupState.cleanupResult.savingsPercentage.toFixed(1)}% dung lượng.</div>
-                )}
+                ) : null}
               </div>
             ) : null}
           </div>
