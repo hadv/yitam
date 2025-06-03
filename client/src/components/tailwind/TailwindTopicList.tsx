@@ -147,24 +147,24 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
     
     return {
       today: topics.filter(topic => 
-        moment(topic.lastActive).isSameOrAfter(today)),
+        moment(topic.createdAt).isSameOrAfter(today)),
       yesterday: topics.filter(topic => 
-        moment(topic.lastActive).isSameOrAfter(yesterday) && 
-        moment(topic.lastActive).isBefore(today)),
+        moment(topic.createdAt).isSameOrAfter(yesterday) && 
+        moment(topic.createdAt).isBefore(today)),
       thisWeek: topics.filter(topic => 
-        moment(topic.lastActive).isSameOrAfter(thisWeekStart) && 
-        moment(topic.lastActive).isBefore(yesterday)),
+        moment(topic.createdAt).isSameOrAfter(thisWeekStart) && 
+        moment(topic.createdAt).isBefore(yesterday)),
       lastWeek: topics.filter(topic => 
-        moment(topic.lastActive).isSameOrAfter(lastWeekStart) && 
-        moment(topic.lastActive).isBefore(thisWeekStart)),
+        moment(topic.createdAt).isSameOrAfter(lastWeekStart) && 
+        moment(topic.createdAt).isBefore(thisWeekStart)),
       thisMonth: topics.filter(topic => 
-        moment(topic.lastActive).isSameOrAfter(thisMonthStart) && 
-        moment(topic.lastActive).isBefore(lastWeekStart)),
+        moment(topic.createdAt).isSameOrAfter(thisMonthStart) && 
+        moment(topic.createdAt).isBefore(lastWeekStart)),
       lastMonth: topics.filter(topic => 
-        moment(topic.lastActive).isSameOrAfter(lastMonthStart) && 
-        moment(topic.lastActive).isBefore(thisMonthStart)),
+        moment(topic.createdAt).isSameOrAfter(lastMonthStart) && 
+        moment(topic.createdAt).isBefore(thisMonthStart)),
       older: topics.filter(topic => 
-        moment(topic.lastActive).isBefore(lastMonthStart)),
+        moment(topic.createdAt).isBefore(lastMonthStart)),
     };
   }, []);
 
