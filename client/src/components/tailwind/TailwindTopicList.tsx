@@ -11,6 +11,7 @@ interface TopicListProps {
   onEditTopic: (topic: Topic) => void;
   onTopicSelect?: (topic: Topic) => void;
   currentTopicId?: number;
+  isEditing?: boolean;
 }
 
 interface GroupedTopics {
@@ -30,7 +31,8 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
   onDeleteTopic,
   onEditTopic,
   onTopicSelect,
-  currentTopicId
+  currentTopicId,
+  isEditing
 }) => {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [sortOption, setSortOption] = useState<'lastActive' | 'createdAt' | 'title'>('createdAt');
@@ -170,7 +172,7 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
 
   // Unified click handler function
   const handleTopicClick = (e: React.MouseEvent, topic: Topic) => {
-    if (!topic.id || clickRef.current.isProcessingClick) return;
+    if (!topic.id || clickRef.current.isProcessingClick || isEditing) return;
     
     // Set processing flag to prevent multiple rapid clicks
     clickRef.current.isProcessingClick = true;
@@ -257,6 +259,7 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
           <div className="flex space-x-1">
             <button 
               onClick={(e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 onEditTopic(topic);
               }}
@@ -268,6 +271,7 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
             </button>
             <button 
               onClick={(e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 topic.id && onDeleteTopic(topic.id);
               }}
