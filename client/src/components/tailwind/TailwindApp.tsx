@@ -85,6 +85,7 @@ function TailwindApp() {
   // UI state
   const inputRef = useRef<HTMLDivElement>(null);
   const [questionsLimit] = useState(6);
+  const [isTopicEditing, setIsTopicEditing] = useState(false);
   
   // Get modals state
   const { modals, notifications } = useModals();
@@ -381,6 +382,42 @@ function TailwindApp() {
     setTimeout(generateTestTopics, 1000);
   }, [user]);
 
+  // Handle topic edit mode
+  const handleTopicEditStart = useCallback(() => {
+    setIsTopicEditing(true);
+  }, []);
+
+  const handleTopicEditEnd = useCallback(() => {
+    // Use setTimeout to ensure the editing operation completes
+    // before resetting state
+    setTimeout(() => {
+      setIsTopicEditing(false);
+      // Refresh topic list if needed
+      if (window.triggerTopicListRefresh) {
+        window.triggerTopicListRefresh();
+      }
+    }, 100);
+  }, []);
+
+  // Handle topic selection with edit mode awareness
+  const handleSafeTopicSelect = useCallback((topicId: number) => {
+    // If we're in editing mode, don't select the topic to avoid navigation
+    if (isTopicEditing) {
+      return;
+    }
+    
+    // Check if the topicId is -1, which is a special value indicating no topics
+    // or when a topic was deleted but we don't want to select another automatically
+    if (topicId === -1) {
+      // Just stay on the topic manager page without selecting a topic
+      return;
+    }
+    
+    // Normal topic selection
+    handleTopicSelect(topicId);
+    modals.topicManager.close();
+  }, [isTopicEditing, handleTopicSelect, modals.topicManager]);
+
   // Rendering logic
   if (!isAuthenticated) {
     return (
@@ -564,18 +601,10 @@ function TailwindApp() {
                   <TailwindTopicManager
                     userId={user?.email || ''}
                     currentTopicId={currentTopicId}
-                    onSelectTopic={(topicId: number) => {
-                      // Check if the topicId is -1, which is a special value indicating no topics
-                      // or when a topic was deleted but we don't want to select another automatically
-                      if (topicId === -1) {
-                        // Just stay on the topic manager page without selecting a topic
-                        return;
-                      }
-                      
-                      // Normal topic selection
-                      handleTopicSelect(topicId);
-                      modals.topicManager.close();
-                    }}
+                    onSelectTopic={handleSafeTopicSelect}
+                    onTopicEditStart={handleTopicEditStart}
+                    onTopicEditEnd={handleTopicEditEnd}
+                    isEditing={isTopicEditing}
                     onTopicDeleted={(deletedTopicId: number) => {
                       // If the deleted topic is the currently selected one
                       if (deletedTopicId === currentTopicId) {

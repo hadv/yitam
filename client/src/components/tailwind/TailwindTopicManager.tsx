@@ -10,13 +10,19 @@ interface TopicManagerProps {
   currentTopicId?: number;
   onSelectTopic: (topicId: number) => void;
   onTopicDeleted?: (deletedTopicId: number) => void;
+  onTopicEditStart?: () => void;
+  onTopicEditEnd?: () => void;
+  isEditing?: boolean;
 }
 
 const TailwindTopicManager: React.FC<TopicManagerProps> = ({
   userId,
   currentTopicId,
   onSelectTopic,
-  onTopicDeleted
+  onTopicDeleted,
+  onTopicEditStart,
+  onTopicEditEnd,
+  isEditing
 }) => {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -176,6 +182,10 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
 
   // Handle editing an existing topic
   const handleEditTopic = (topic: Topic) => {
+    // Call parent component's edit start callback if provided
+    if (onTopicEditStart) {
+      onTopicEditStart();
+    }
     setTopicToEdit(topic);
     setIsEditorOpen(true);
   };
@@ -197,6 +207,14 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
       // Reload topics and switch to the saved topic
       await loadTopics();
       
+      // Close editor first
+      setIsEditorOpen(false);
+      
+      // Signal to parent that editing has completed
+      if (onTopicEditEnd) {
+        onTopicEditEnd();
+      }
+      
       // Call the parent component's topic selection handler
       onSelectTopic(topicId);
       
@@ -205,10 +223,13 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
       if (savedTopic) {
         setSelectedTopicDetails(savedTopic);
       }
-      
-      setIsEditorOpen(false);
     } catch (error) {
       console.error('Error saving topic:', error);
+      // Signal to parent that editing has completed even if there was an error
+      if (onTopicEditEnd) {
+        onTopicEditEnd();
+      }
+      setIsEditorOpen(false);
     }
   };
 
@@ -311,6 +332,7 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
             onEditTopic={handleEditTopic}
             onTopicSelect={handleTopicSelect}
             currentTopicId={activeTopicId}
+            isEditing={isEditing}
           />
         ) : (
           <TailwindTopicSearch 
@@ -370,7 +392,13 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
         userId={userId}
         topicToEdit={topicToEdit}
         onSave={handleSaveTopic}
-        onCancel={() => setIsEditorOpen(false)}
+        onCancel={() => {
+          setIsEditorOpen(false);
+          // Signal to parent that editing has been canceled
+          if (onTopicEditEnd) {
+            onTopicEditEnd();
+          }
+        }}
         isOpen={isEditorOpen}
       />
 
