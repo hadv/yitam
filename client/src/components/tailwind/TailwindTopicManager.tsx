@@ -22,8 +22,6 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [topicToEdit, setTopicToEdit] = useState<Topic | undefined>(undefined);
   const [selectedTopicDetails, setSelectedTopicDetails] = useState<Topic | null>(null);
-  const [hoveredTopicId, setHoveredTopicId] = useState<number | null>(null);
-  const [hoveredTopicDetails, setHoveredTopicDetails] = useState<Topic | null>(null);
   const [showConfirmDelete, setShowConfirmDelete] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'topics' | 'search'>('topics');
@@ -170,26 +168,6 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
     loadTopics();
   }, [userId]);
 
-  // Handle topic hover
-  useEffect(() => {
-    if (hoveredTopicId) {
-      db.topics.get(hoveredTopicId)
-        .then(topic => {
-          if (topic) {
-            setHoveredTopicDetails(topic);
-          } else {
-            setHoveredTopicDetails(null);
-          }
-        })
-        .catch(error => {
-          console.error(`[TOPIC MANAGER] Error fetching hovered topic ${hoveredTopicId}:`, error);
-          setHoveredTopicDetails(null);
-        });
-    } else {
-      setHoveredTopicDetails(null);
-    }
-  }, [hoveredTopicId]);
-
   // Handle creating a new topic
   const handleCreateTopic = () => {
     setTopicToEdit(undefined);
@@ -287,9 +265,9 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
     setShowConfirmDelete(null);
   };
 
-  // Handle topic hover
-  const handleTopicHover = (topicId: number | null) => {
-    setHoveredTopicId(topicId);
+  // Handle topic selection from list
+  const handleTopicSelect = (topic: Topic) => {
+    setSelectedTopicDetails(topic);
   };
 
   // Determine the current topic ID for display
@@ -327,24 +305,11 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
         {activeTab === 'topics' ? (
           <TailwindTopicList
             userId={userId}
-            onSelectTopic={(topicId) => {
-              // Call the parent component's topic selection handler
-              onSelectTopic(topicId);
-              
-              // Also update local state for immediate display
-              db.topics.get(topicId).then(topic => {
-                if (topic) {
-                  console.log(`[TOPIC MANAGER] Selected topic ${topicId}, updating local state`);
-                  setSelectedTopicDetails(topic);
-                } else {
-                  console.warn(`[TOPIC MANAGER] Selected topic ${topicId} not found in database`);
-                }
-              });
-            }}
+            onSelectTopic={onSelectTopic}
             onCreateTopic={handleCreateTopic}
             onDeleteTopic={handleDeleteTopic}
             onEditTopic={handleEditTopic}
-            onTopicHover={handleTopicHover}
+            onTopicSelect={handleTopicSelect}
             currentTopicId={activeTopicId}
           />
         ) : (
@@ -372,12 +337,7 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
       </div>
       
       <div className="md:col-span-2">
-        {hoveredTopicDetails ? (
-          <TailwindTopicMetadata 
-            topic={hoveredTopicDetails} 
-            className="sticky top-4"
-          />
-        ) : selectedTopicDetails ? (
+        {selectedTopicDetails ? (
           <TailwindTopicMetadata 
             topic={selectedTopicDetails} 
             className="sticky top-4"
@@ -387,6 +347,20 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
             <p className="text-gray-500">
               Chọn một chủ đề để xem chi tiết
             </p>
+          </div>
+        )}
+        
+        {selectedTopicDetails && (
+          <div className="mt-4 flex justify-center">
+            <button 
+              onClick={() => selectedTopicDetails.id && onSelectTopic(selectedTopicDetails.id)} 
+              className="px-4 py-2 bg-[#78A161] text-white rounded-md hover:bg-[#5D8A46] flex items-center"
+            >
+              <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              Xem trò chuyện
+            </button>
           </div>
         )}
       </div>

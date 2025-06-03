@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import db, { Topic } from '../../db/ChatHistoryDB';
 import TailwindTopicCreateButton from './TailwindTopicCreateButton';
+import moment from 'moment';
 
 interface TopicListProps {
   userId: string;
@@ -8,8 +9,18 @@ interface TopicListProps {
   onCreateTopic: () => void;
   onDeleteTopic: (topicId: number) => void;
   onEditTopic: (topic: Topic) => void;
-  onTopicHover?: (topicId: number | null) => void;
+  onTopicSelect?: (topic: Topic) => void;
   currentTopicId?: number;
+}
+
+interface GroupedTopics {
+  today: Topic[];
+  yesterday: Topic[];
+  thisWeek: Topic[];
+  lastWeek: Topic[];
+  thisMonth: Topic[];
+  lastMonth: Topic[];
+  older: Topic[];
 }
 
 const TailwindTopicList: React.FC<TopicListProps> = ({
@@ -18,14 +29,26 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
   onCreateTopic,
   onDeleteTopic,
   onEditTopic,
-  onTopicHover,
+  onTopicSelect,
   currentTopicId
 }) => {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [sortOption, setSortOption] = useState<'lastActive' | 'createdAt' | 'title'>('lastActive');
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedTopicId, setSelectedTopicId] = useState<number | undefined>(currentTopicId);
+  
+  // Store all topics in a ref to avoid unnecessary re-renders
+  const topicsRef = useRef<Topic[]>([]);
+  
+  // Use a ref to track click timing for double-click detection
+  const clickRef = useRef({
+    lastClickTime: 0,
+    lastClickedId: null as number | null,
+    isProcessingClick: false
+  });
 
-  const loadTopics = async () => {
+  // Memoize the loadTopics function to avoid recreating it on every render
+  const loadTopics = useCallback(async () => {
     try {
       setIsLoading(true);
       console.log('[TOPIC LIST] Loading topics for user', userId);
@@ -37,41 +60,43 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
         .toArray();
         
       console.log(`[TOPIC LIST] Loaded ${userTopics.length} topics`);
+      
+      // Update both the state and the ref
       setTopics(userTopics);
+      topicsRef.current = userTopics;
     } catch (error) {
       console.error('[TOPIC LIST] Error loading topics:', error);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [userId]);
 
-  // Only register a lightweight refresh function that only updates this component's state
-  // without overriding the main function from TopicManager
+  // Initial load and storage event listener setup
   useEffect(() => {
-    // Don't create or register a new refreshTopicList function
-    // Just load topics initially
     loadTopics();
     
-    // Listen for refreshTopicList calls but don't replace the function
+    // Listen for refreshTopicList calls
     const handleStorageEvent = () => {
       console.log('[TOPIC LIST] Detected refresh request, reloading topics');
       loadTopics();
     };
     
-    // Temporary event listener for testing topic list refresh
     window.addEventListener('storage:refreshTopics', handleStorageEvent);
     
     return () => {
       window.removeEventListener('storage:refreshTopics', handleStorageEvent);
     };
-  }, [userId]);
+  }, [userId, loadTopics]);
   
-  // Reload topics when currentTopicId changes
+  // Update selectedTopicId when currentTopicId changes
   useEffect(() => {
-    loadTopics();
-  }, [userId, currentTopicId]);
+    // Only update the selected ID, don't reload topics
+    if (currentTopicId !== selectedTopicId) {
+      setSelectedTopicId(currentTopicId);
+    }
+  }, [currentTopicId]);
 
-  const sortTopics = (topicsToSort: Topic[]) => {
+  const sortTopics = useCallback((topicsToSort: Topic[]) => {
     const sorted = [...topicsToSort];
     
     switch (sortOption) {
@@ -84,7 +109,7 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
       default:
         return sorted;
     }
-  };
+  }, [sortOption]);
 
   const handleSortChange = (option: 'lastActive' | 'createdAt' | 'title') => {
     setSortOption(option);
@@ -95,25 +120,168 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
     return date.toLocaleDateString('vi-VN', { year: 'numeric', month: '2-digit', day: '2-digit' });
   };
 
-  // Handle mouse enter event
-  const handleMouseEnter = (topicId: number) => {
-    if (onTopicHover) {
-      onTopicHover(topicId);
+  // Format relative time
+  const formatRelativeTime = (timestamp: number) => {
+    const now = moment();
+    const time = moment(timestamp);
+    
+    if (now.diff(time, 'minutes') < 5) {
+      return 'vừa xong';
+    } else if (now.diff(time, 'hours') < 1) {
+      return `${now.diff(time, 'minutes')} phút trước`;
+    } else if (now.diff(time, 'hours') < 24 && now.format('YYYY-MM-DD') === time.format('YYYY-MM-DD')) {
+      return `${now.diff(time, 'hours')} giờ trước`;
+    } else {
+      return formatDate(timestamp);
     }
   };
 
-  // Handle mouse leave event
-  const handleMouseLeave = () => {
-    if (onTopicHover) {
-      onTopicHover(null);
+  // Group topics by time periods - memoized to prevent recalculations
+  const groupTopicsByTime = useCallback((topics: Topic[]): GroupedTopics => {
+    const today = moment().startOf('day');
+    const yesterday = moment().subtract(1, 'days').startOf('day');
+    const thisWeekStart = moment().subtract(7, 'days').startOf('day');
+    const lastWeekStart = moment().subtract(14, 'days').startOf('day');
+    const thisMonthStart = moment().subtract(30, 'days').startOf('day');
+    const lastMonthStart = moment().subtract(60, 'days').startOf('day');
+    
+    return {
+      today: topics.filter(topic => 
+        moment(topic.lastActive).isSameOrAfter(today)),
+      yesterday: topics.filter(topic => 
+        moment(topic.lastActive).isSameOrAfter(yesterday) && 
+        moment(topic.lastActive).isBefore(today)),
+      thisWeek: topics.filter(topic => 
+        moment(topic.lastActive).isSameOrAfter(thisWeekStart) && 
+        moment(topic.lastActive).isBefore(yesterday)),
+      lastWeek: topics.filter(topic => 
+        moment(topic.lastActive).isSameOrAfter(lastWeekStart) && 
+        moment(topic.lastActive).isBefore(thisWeekStart)),
+      thisMonth: topics.filter(topic => 
+        moment(topic.lastActive).isSameOrAfter(thisMonthStart) && 
+        moment(topic.lastActive).isBefore(lastWeekStart)),
+      lastMonth: topics.filter(topic => 
+        moment(topic.lastActive).isSameOrAfter(lastMonthStart) && 
+        moment(topic.lastActive).isBefore(thisMonthStart)),
+      older: topics.filter(topic => 
+        moment(topic.lastActive).isBefore(lastMonthStart)),
+    };
+  }, []);
+
+  // Unified click handler function
+  const handleTopicClick = (e: React.MouseEvent, topic: Topic) => {
+    if (!topic.id || clickRef.current.isProcessingClick) return;
+    
+    // Set processing flag to prevent multiple rapid clicks
+    clickRef.current.isProcessingClick = true;
+    
+    // Prevent default behavior
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const now = Date.now();
+    const timeDiff = now - clickRef.current.lastClickTime;
+    const isDoubleClick = timeDiff < 300 && clickRef.current.lastClickedId === topic.id;
+    
+    // Set the click timing data for future comparisons
+    clickRef.current.lastClickTime = now;
+    clickRef.current.lastClickedId = topic.id;
+    
+    if (isDoubleClick) {
+      // Handle double click - load in chatbox
+      onSelectTopic(topic.id);
+    } else {
+      // Only update if actually changing
+      if (selectedTopicId !== topic.id) {
+        setSelectedTopicId(topic.id);
+        // Update the parent component if needed
+        if (onTopicSelect) {
+          onTopicSelect(topic);
+        }
+      }
     }
+    
+    // Release the processing flag after a short delay
+    setTimeout(() => {
+      clickRef.current.isProcessingClick = false;
+    }, 50);
   };
 
-  // Sort topics and then separate pinned topics to top
+  // Calculate sorted and grouped topics - only when topics or sort option changes
   const sortedTopicsRaw = sortTopics(topics);
   const pinnedTopics = sortedTopicsRaw.filter(topic => topic.pinnedState);
   const unpinnedTopics = sortedTopicsRaw.filter(topic => !topic.pinnedState);
-  const sortedTopics = [...pinnedTopics, ...unpinnedTopics];
+  const groupedTopics = groupTopicsByTime(unpinnedTopics);
+
+  // Render a topic item
+  const renderTopicItem = (topic: Topic) => {
+    if (!topic.id) return null;
+    
+    return (
+      <li 
+        key={`topic-${topic.id}`}
+        className={`p-4 hover:bg-[#F2EEE5] transition-colors duration-200 cursor-pointer ${
+          topic.id === selectedTopicId ? 'bg-[#F2EEE5]' : ''
+        }`}
+        onClick={(e) => handleTopicClick(e, topic)}
+      >
+        <div className="flex justify-between items-start">
+          <div className="flex-1 min-w-0 pr-4">
+            <h3 className="text-base font-medium truncate text-[#3A2E22] flex items-center">
+              {topic.pinnedState && (
+                <svg className="h-3 w-3 mr-1 text-[#5D4A38] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                </svg>
+              )}
+              <span>{topic.title}</span>
+            </h3>
+            <div className="flex items-center mt-1 text-xs text-gray-500">
+              <span>{formatRelativeTime(topic.lastActive)}</span>
+              {topic.messageCnt && (
+                <span className="ml-2 flex items-center">
+                  <svg className="h-3 w-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                  </svg>
+                  {topic.messageCnt}
+                </span>
+              )}
+              {topic.model && (
+                <span className="ml-2 bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full text-[10px]">
+                  {topic.model.includes('opus') ? 'Opus' : 
+                   topic.model.includes('sonnet') ? 'Sonnet' : 
+                   topic.model.includes('haiku') ? 'Haiku' : 'Claude'}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex space-x-1">
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditTopic(topic);
+              }}
+              className="p-1 text-gray-500 hover:text-[#5D4A38] focus:outline-none"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+            </button>
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                topic.id && onDeleteTopic(topic.id);
+              }}
+              className="p-1 text-gray-500 hover:text-red-500 focus:outline-none"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </li>
+    );
+  };
 
   return (
     <div className="w-full bg-white rounded-[8px] shadow-[0_1px_3px_rgba(0,0,0,0.1)] overflow-hidden">
@@ -140,83 +308,84 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
         </div>
       </div>
       
+      <div className="p-2 bg-blue-50 text-xs text-blue-700 font-medium text-center">
+        Nhấp 1 lần để xem chi tiết, nhấp đúp để chọn chủ đề
+      </div>
+      
       {isLoading ? (
         <div className="flex justify-center items-center p-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#5D4A38]"></div>
         </div>
-      ) : sortedTopics.length === 0 ? (
+      ) : pinnedTopics.length === 0 && Object.values(groupedTopics).every(group => group.length === 0) ? (
         <div className="p-8 text-center text-gray-500">
           <p className="mb-4">Chưa có chủ đề nào. Hãy tạo chủ đề mới để bắt đầu.</p>
           <TailwindTopicCreateButton onClick={onCreateTopic} variant="secondary" className="mx-auto" />
         </div>
       ) : (
         <ul className="divide-y divide-gray-200 max-h-[60vh] overflow-y-auto">
-          {sortedTopics.map(topic => (
-            <li 
-              key={topic.id} 
-              className={`p-4 hover:bg-[#F2EEE5] transition-colors duration-200 cursor-pointer ${
-                topic.id === currentTopicId ? 'bg-[#F2EEE5]' : ''
-              }`}
-              onClick={() => topic.id && onSelectTopic(topic.id)}
-              onMouseEnter={() => topic.id && handleMouseEnter(topic.id)}
-              onMouseLeave={handleMouseLeave}
-            >
-              <div className="flex justify-between items-start">
-                <div className="flex-1 min-w-0 pr-4">
-                  <h3 className="text-base font-medium truncate text-[#3A2E22] flex items-center">
-                    {topic.pinnedState && (
-                      <svg className="h-3 w-3 mr-1 text-[#5D4A38] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                      </svg>
-                    )}
-                    <span>{topic.title}</span>
-                  </h3>
-                  <div className="flex items-center mt-1 text-xs text-gray-500">
-                    <span>{formatDate(topic.lastActive)}</span>
-                    {topic.messageCnt && (
-                      <span className="ml-2 flex items-center">
-                        <svg className="h-3 w-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                        </svg>
-                        {topic.messageCnt}
-                      </span>
-                    )}
-                    {topic.model && (
-                      <span className="ml-2 bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full text-[10px]">
-                        {topic.model.includes('opus') ? 'Opus' : 
-                         topic.model.includes('sonnet') ? 'Sonnet' : 
-                         topic.model.includes('haiku') ? 'Haiku' : 'Claude'}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex space-x-1">
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEditTopic(topic);
-                    }}
-                    className="p-1 text-gray-500 hover:text-[#5D4A38] focus:outline-none"
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                    </svg>
-                  </button>
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      topic.id && onDeleteTopic(topic.id);
-                    }}
-                    className="p-1 text-gray-500 hover:text-red-500 focus:outline-none"
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            </li>
-          ))}
+          {/* Pinned topics section */}
+          {pinnedTopics.length > 0 && (
+            <>
+              <li className="p-2 bg-gray-50 font-medium text-sm text-gray-500">Đã ghim</li>
+              {pinnedTopics.map(topic => renderTopicItem(topic))}
+            </>
+          )}
+          
+          {/* Today section */}
+          {groupedTopics.today.length > 0 && (
+            <>
+              <li className="p-2 bg-gray-50 font-medium text-sm text-gray-500">Hôm nay</li>
+              {groupedTopics.today.map(topic => renderTopicItem(topic))}
+            </>
+          )}
+          
+          {/* Yesterday section */}
+          {groupedTopics.yesterday.length > 0 && (
+            <>
+              <li className="p-2 bg-gray-50 font-medium text-sm text-gray-500">Hôm qua</li>
+              {groupedTopics.yesterday.map(topic => renderTopicItem(topic))}
+            </>
+          )}
+          
+          {/* This Week section */}
+          {groupedTopics.thisWeek.length > 0 && (
+            <>
+              <li className="p-2 bg-gray-50 font-medium text-sm text-gray-500">Tuần này</li>
+              {groupedTopics.thisWeek.map(topic => renderTopicItem(topic))}
+            </>
+          )}
+          
+          {/* Last Week section */}
+          {groupedTopics.lastWeek.length > 0 && (
+            <>
+              <li className="p-2 bg-gray-50 font-medium text-sm text-gray-500">Tuần trước</li>
+              {groupedTopics.lastWeek.map(topic => renderTopicItem(topic))}
+            </>
+          )}
+          
+          {/* This Month section */}
+          {groupedTopics.thisMonth.length > 0 && (
+            <>
+              <li className="p-2 bg-gray-50 font-medium text-sm text-gray-500">Tháng này</li>
+              {groupedTopics.thisMonth.map(topic => renderTopicItem(topic))}
+            </>
+          )}
+          
+          {/* Last Month section */}
+          {groupedTopics.lastMonth.length > 0 && (
+            <>
+              <li className="p-2 bg-gray-50 font-medium text-sm text-gray-500">Tháng trước</li>
+              {groupedTopics.lastMonth.map(topic => renderTopicItem(topic))}
+            </>
+          )}
+          
+          {/* Older section */}
+          {groupedTopics.older.length > 0 && (
+            <>
+              <li className="p-2 bg-gray-50 font-medium text-sm text-gray-500">Cũ hơn</li>
+              {groupedTopics.older.map(topic => renderTopicItem(topic))}
+            </>
+          )}
         </ul>
       )}
     </div>
