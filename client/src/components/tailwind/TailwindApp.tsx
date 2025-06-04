@@ -20,7 +20,6 @@ import { useStorageWindowFunctions } from '../../hooks/useStorageWindowFunctions
 // UI Components
 import { TailwindAuth } from './TailwindAuth';
 import { TailwindApiKeySettings } from './TailwindApiKeySettings';
-import TailwindChatBox from './TailwindChatBox';
 import TailwindMessageInput from './TailwindMessageInput';
 import TailwindSampleQuestions from './TailwindSampleQuestions';
 import TailwindPersonaSelector from './TailwindPersonaSelector';
