@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { Message } from '../../types/chat';
 import { AVAILABLE_PERSONAS } from './TailwindPersonaSelector';
 import MessageBubble from './common/MessageBubble';
@@ -22,8 +22,11 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const endOfMessagesRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   
-  // Sort messages by timestamp
+  // Sort messages by timestamp - memoized to prevent unnecessary re-sorting
   const sortedMessages = useMemo(() => {
     return [...messages].sort((a, b) => {
       // Welcome message always first
@@ -50,26 +53,52 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
     });
   }, [messages]);
   
-  // Effect to update visible messages when sortedMessages changes
-  useEffect(() => {
+  // Detect if any message is streaming - memoized to prevent recalculations
+  const hasStreamingMessage = useMemo(() => {
+    return sortedMessages.some(msg => msg.isStreaming);
+  }, [sortedMessages]);
+
+  // Memoized function to determine what messages to show
+  const determineVisibleMessages = useCallback(() => {
     // If we have an ongoing chat, always show the latest messages
-    if (sortedMessages.length > 0 && sortedMessages[sortedMessages.length - 1].isStreaming) {
+    if (hasStreamingMessage) {
       // Always show all messages when streaming is happening
-      setVisibleMessages(sortedMessages);
-      return;
+      return sortedMessages;
     }
     
     // If total messages are less than pageSize, show all
     if (sortedMessages.length <= pageSize) {
-      setVisibleMessages(sortedMessages);
-      return;
+      return sortedMessages;
     }
     
     // Otherwise, show the latest page of messages
     const startIndex = Math.max(0, sortedMessages.length - (page * pageSize));
-    const messagesToShow = sortedMessages.slice(startIndex);
-    setVisibleMessages(messagesToShow);
-  }, [sortedMessages, page, pageSize]);
+    return sortedMessages.slice(startIndex);
+  }, [sortedMessages, page, pageSize, hasStreamingMessage]);
+  
+  // Effect to update visible messages when sortedMessages changes
+  useEffect(() => {
+    setVisibleMessages(determineVisibleMessages());
+    
+    // Auto-scroll to bottom when new message appears
+    if (shouldAutoScroll && endOfMessagesRef.current && scrollContainerRef.current) {
+      // Slight delay to ensure DOM is updated
+      setTimeout(() => {
+        endOfMessagesRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
+  }, [determineVisibleMessages, shouldAutoScroll]);
+
+  // Handle scroll to detect if user has scrolled up (to disable auto-scroll)
+  const handleScroll = useCallback(() => {
+    if (!scrollContainerRef.current) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
+    
+    // Only enable auto-scroll when user is at the bottom
+    setShouldAutoScroll(isAtBottom);
+  }, []);
 
   // Setup intersection observer for infinite scrolling
   useEffect(() => {
@@ -114,19 +143,16 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
   useEffect(() => {
     if (messages.length === 0) {
       setPage(1);
+      setShouldAutoScroll(true);
     }
-  }, [messages.length]);
-
-  // Debug: Log visible messages to identify issues
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log("Current messages:", visibleMessages.map(m => ({
-        id: m.id,
-        isBot: m.isBot,
-        text: m.text?.substring(0, 30) + (m.text?.length > 30 ? '...' : '')
-      })));
+    
+    // Setup scroll event listener
+    const scrollContainer = scrollContainerRef.current;
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', handleScroll);
+      return () => scrollContainer.removeEventListener('scroll', handleScroll);
     }
-  }, [visibleMessages]);
+  }, [messages.length, handleScroll]);
 
   if (messages.length === 0) {
     const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0];
@@ -138,7 +164,10 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
   }
 
   return (
-    <>
+    <div 
+      className="flex flex-col h-full overflow-y-auto" 
+      ref={scrollContainerRef}
+    >
       {/* Load more indicator for infinite scrolling */}
       {visibleMessages.length < sortedMessages.length && (
         <div 
@@ -162,26 +191,46 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
       )}
       
       {/* Messages */}
-      {visibleMessages.map((message) => (
-        <div 
-          key={message.id} 
-          className={`mb-3 ${message.isBot ? 'self-start' : 'self-end'} max-w-[80%] ${!message.isBot ? 'ml-auto' : ''}`}
-          style={{ display: 'block' }}
-          data-message-id={message.id}
-          data-message-type={message.isBot ? 'bot' : 'user'}
-          data-is-streaming={message.isStreaming ? 'true' : 'false'}
-          onMouseEnter={() => setShowActionsForId(message.id)}
-          onMouseLeave={() => setShowActionsForId(null)}
+      <div className="flex flex-col space-y-3 p-4">
+        {visibleMessages.map((message) => (
+          <div 
+            key={message.id} 
+            className={`mb-3 ${message.isBot ? 'self-start' : 'self-end'} max-w-[80%] ${!message.isBot ? 'ml-auto' : ''}`}
+            style={{ display: 'block' }}
+            data-message-id={message.id}
+            data-message-type={message.isBot ? 'bot' : 'user'}
+            data-is-streaming={message.isStreaming ? 'true' : 'false'}
+            onMouseEnter={() => setShowActionsForId(message.id)}
+            onMouseLeave={() => setShowActionsForId(null)}
+          >
+            <MessageBubble 
+              message={message}
+              currentPersonaId={currentPersonaId}
+              showActions={showActionsForId === message.id}
+              onDeleteMessage={onDeleteMessage}
+            />
+          </div>
+        ))}
+        {/* Invisible element for auto-scrolling */}
+        <div ref={endOfMessagesRef} />
+      </div>
+      
+      {/* Scroll to bottom button - only visible when not at bottom */}
+      {!shouldAutoScroll && visibleMessages.length > 5 && (
+        <button
+          onClick={() => {
+            endOfMessagesRef.current?.scrollIntoView({ behavior: 'smooth' });
+            setShouldAutoScroll(true);
+          }}
+          className="fixed bottom-20 right-8 bg-[#5D4A38] text-white rounded-full p-3 shadow-lg hover:bg-[#4A3A2B] transition-colors"
+          aria-label="Scroll to bottom"
         >
-          <MessageBubble 
-            message={message}
-            currentPersonaId={currentPersonaId}
-            showActions={showActionsForId === message.id}
-            onDeleteMessage={onDeleteMessage}
-          />
-        </div>
-      ))}
-    </>
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+          </svg>
+        </button>
+      )}
+    </div>
   );
 };
 

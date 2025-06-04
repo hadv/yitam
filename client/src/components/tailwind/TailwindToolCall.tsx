@@ -1,31 +1,32 @@
-import React from 'react';
+import React, { memo, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { ExpandablePanel, markdownComponents } from './common/UIComponents';
 
-// Arguments display component
-const ArgumentsDisplay: React.FC<{ args: string }> = ({ args }) => {
-  const formatArgs = (argsString: string) => {
+// Arguments display component - memoized for performance
+const ArgumentsDisplay = memo(({ args }: { args: string }) => {
+  // Memoize the formatting of arguments
+  const formattedArgs = useMemo(() => {
     try {
-      const parsed = JSON.parse(argsString);
+      const parsed = JSON.parse(args);
       return JSON.stringify(parsed, null, 2);
     } catch (e) {
       // If not valid JSON, return as is
-      return argsString;
+      return args;
     }
-  };
+  }, [args]);
 
   return (
     <div className="mb-3">
       <div className="font-medium text-sm text-gray-700 mb-1">Arguments:</div>
       <pre className="p-2 bg-gray-50 rounded border border-gray-200 text-xs overflow-x-auto text-gray-900">
-        {formatArgs(args)}
+        {formattedArgs}
       </pre>
     </div>
   );
-};
+});
 
-// Result display component
-const ResultDisplay: React.FC<{ result: string }> = ({ result }) => (
+// Result display component - memoized for performance
+const ResultDisplay = memo(({ result }: { result: string }) => (
   <div>
     <div className="font-medium text-sm text-gray-700 mb-1">Result:</div>
     <div className="prose prose-sm max-w-none p-2 bg-gray-50 rounded border border-gray-200">
@@ -34,7 +35,7 @@ const ResultDisplay: React.FC<{ result: string }> = ({ result }) => (
       </ReactMarkdown>
     </div>
   </div>
-);
+));
 
 interface ToolCallProps {
   toolName: string;
@@ -51,9 +52,12 @@ const TailwindToolCall: React.FC<ToolCallProps> = ({
   result,
   initialExpanded = false
 }) => {
+  // Memoize the title for the ExpandablePanel
+  const title = useMemo(() => header || toolName, [header, toolName]);
+  
   return (
     <ExpandablePanel
-      title={header || toolName}
+      title={title}
       icon="🔧"
       initialExpanded={initialExpanded}
       className="mb-3"
@@ -64,4 +68,13 @@ const TailwindToolCall: React.FC<ToolCallProps> = ({
   );
 };
 
-export default TailwindToolCall;
+// Memoize the entire component to prevent unnecessary re-renders
+export default memo(TailwindToolCall, (prevProps, nextProps) => {
+  return (
+    prevProps.toolName === nextProps.toolName &&
+    prevProps.header === nextProps.header &&
+    prevProps.args === nextProps.args &&
+    prevProps.result === nextProps.result &&
+    prevProps.initialExpanded === nextProps.initialExpanded
+  );
+});
