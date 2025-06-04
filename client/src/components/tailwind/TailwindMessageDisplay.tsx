@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { Message } from '../../types/chat';
-import TailwindToolCallParser from './TailwindToolCallParser';
 import { AVAILABLE_PERSONAS } from './TailwindPersonaSelector';
+import MessageBubble from './common/MessageBubble';
 
 interface TailwindMessageDisplayProps {
   messages: Message[];
@@ -22,8 +22,11 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const endOfMessagesRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   
-  // Sort messages by timestamp
+  // Sort messages by timestamp - memoized to prevent unnecessary re-sorting
   const sortedMessages = useMemo(() => {
     return [...messages].sort((a, b) => {
       // Welcome message always first
@@ -50,26 +53,52 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
     });
   }, [messages]);
   
-  // Effect to update visible messages when sortedMessages changes
-  useEffect(() => {
+  // Detect if any message is streaming - memoized to prevent recalculations
+  const hasStreamingMessage = useMemo(() => {
+    return sortedMessages.some(msg => msg.isStreaming);
+  }, [sortedMessages]);
+
+  // Memoized function to determine what messages to show
+  const determineVisibleMessages = useCallback(() => {
     // If we have an ongoing chat, always show the latest messages
-    if (sortedMessages.length > 0 && sortedMessages[sortedMessages.length - 1].isStreaming) {
+    if (hasStreamingMessage) {
       // Always show all messages when streaming is happening
-      setVisibleMessages(sortedMessages);
-      return;
+      return sortedMessages;
     }
     
     // If total messages are less than pageSize, show all
     if (sortedMessages.length <= pageSize) {
-      setVisibleMessages(sortedMessages);
-      return;
+      return sortedMessages;
     }
     
     // Otherwise, show the latest page of messages
     const startIndex = Math.max(0, sortedMessages.length - (page * pageSize));
-    const messagesToShow = sortedMessages.slice(startIndex);
-    setVisibleMessages(messagesToShow);
-  }, [sortedMessages, page, pageSize]);
+    return sortedMessages.slice(startIndex);
+  }, [sortedMessages, page, pageSize, hasStreamingMessage]);
+  
+  // Effect to update visible messages when sortedMessages changes
+  useEffect(() => {
+    setVisibleMessages(determineVisibleMessages());
+    
+    // Auto-scroll to bottom when new message appears
+    if (shouldAutoScroll && endOfMessagesRef.current && scrollContainerRef.current) {
+      // Slight delay to ensure DOM is updated
+      setTimeout(() => {
+        endOfMessagesRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
+  }, [determineVisibleMessages, shouldAutoScroll]);
+
+  // Handle scroll to detect if user has scrolled up (to disable auto-scroll)
+  const handleScroll = useCallback(() => {
+    if (!scrollContainerRef.current) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
+    
+    // Only enable auto-scroll when user is at the bottom
+    setShouldAutoScroll(isAtBottom);
+  }, []);
 
   // Setup intersection observer for infinite scrolling
   useEffect(() => {
@@ -112,8 +141,18 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
 
   // Reset pagination when messages change drastically (like switching topics)
   useEffect(() => {
-    setPage(1);
-  }, [messages.length === 0]);
+    if (messages.length === 0) {
+      setPage(1);
+      setShouldAutoScroll(true);
+    }
+    
+    // Setup scroll event listener
+    const scrollContainer = scrollContainerRef.current;
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', handleScroll);
+      return () => scrollContainer.removeEventListener('scroll', handleScroll);
+    }
+  }, [messages.length, handleScroll]);
 
   if (messages.length === 0) {
     const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0];
@@ -125,7 +164,10 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
   }
 
   return (
-    <>
+    <div 
+      className="flex flex-col h-full overflow-y-auto" 
+      ref={scrollContainerRef}
+    >
       {/* Load more indicator for infinite scrolling */}
       {visibleMessages.length < sortedMessages.length && (
         <div 
@@ -149,120 +191,46 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
       )}
       
       {/* Messages */}
-      {visibleMessages.map((message) => (
-        <div 
-          key={message.id} 
-          className={`mb-3 ${message.isBot ? 'self-start' : 'self-end'} max-w-[80%] ${!message.isBot ? 'ml-auto' : ''}`}
-          style={{ display: 'block' }}
-          data-message-id={message.id}
-          data-message-type={message.isBot ? 'bot' : 'user'}
-          data-is-streaming={message.isStreaming ? 'true' : 'false'}
-          onMouseEnter={() => setShowActionsForId(message.id)}
-          onMouseLeave={() => setShowActionsForId(null)}
-        >
-          <div className="relative">
-            {/* Delete button (visible on hover) */}
-            {onDeleteMessage && showActionsForId === message.id && !message.isStreaming && (
-              <button 
-                onClick={() => onDeleteMessage(message.id)}
-                className="absolute top-0 right-0 -mt-2 -mr-2 bg-white rounded-full p-1 shadow-md text-gray-500 hover:text-red-500 transition-colors z-10"
-                aria-label="Delete message"
-              >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
-            )}
-            
-            <div 
-              className={`p-[10px_14px] rounded-[8px] text-[0.95rem] leading-[1.5] ${
-                message.isBot 
-                  ? 'bg-[#F2EEE5] text-[#3A2E22] rounded-[0_8px_8px_8px]' 
-                  : 'bg-[#5D4A38] text-white rounded-[8px_8px_0_8px]'
-              }`}
-            >
-              {message.isBot ? (
-                <div className="prose prose-sm max-w-none prose-headings:my-2 prose-headings:font-semibold prose-p:my-2 prose-ul:my-2 prose-ul:pl-6 prose-ol:my-2 prose-ol:pl-6 prose-li:my-1 prose-code:bg-[rgba(93,74,56,0.1)] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono prose-pre:bg-[rgba(93,74,56,0.1)] prose-pre:p-4 prose-pre:rounded-lg prose-pre:my-2 prose-pre:overflow-x-auto prose-pre:code:bg-transparent prose-pre:code:p-0">
-                  {(() => {
-                    // Try to parse message text as JSON if it looks like JSON
-                    if (message.text && message.text.trim().startsWith('{')) {
-                      try {
-                        const parsedError = JSON.parse(message.text);
-                        if (parsedError.type && parsedError.message) {
-                          return (
-                            <div className={`flex items-start gap-3 ${
-                              parsedError.type === 'credit_balance' 
-                                ? 'text-red-700' 
-                                : parsedError.type === 'rate_limit' 
-                                  ? 'text-orange-700' 
-                                  : 'text-[#3A2E22]'
-                            }`}>
-                              {parsedError.type === 'credit_balance' && (
-                                <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h.01M11 15h.01M15 15h.01M19 15h.01M7 19h.01M11 19h.01M15 19h.01M19 19h.01M7 11h.01M11 11h.01M15 11h.01M19 11h.01M7 7h.01M11 7h.01M15 7h.01M19 7h.01" />
-                                </svg>
-                              )}
-                              {parsedError.type === 'rate_limit' && (
-                                <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                              )}
-                              <div className="flex-1">
-                                <p className="m-0">{parsedError.message}</p>
-                                {parsedError.type === 'credit_balance' && (
-                                  <a 
-                                    href="https://console.anthropic.com/account/billing" 
-                                    target="_blank" 
-                                    rel="noopener noreferrer" 
-                                    className="inline-flex items-center text-sm mt-2 text-red-700 hover:text-red-800 font-medium"
-                                  >
-                                    Đi đến trang thanh toán
-                                    <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                    </svg>
-                                  </a>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        }
-                      } catch (e) {
-                        // If parsing fails, fall back to regular message display
-                      }
-                    }
-                    
-                    // Default message display
-                    return <TailwindToolCallParser text={message.text || ''} />;
-                  })()}
-                  {message.isStreaming && (
-                    <span className="inline-flex items-center ml-1.5">
-                      <span className="typing-dot"></span>
-                      <span className="typing-dot"></span>
-                      <span className="typing-dot"></span>
-                    </span>
-                  )}
-                </div>
-              ) : (
-                <div className="whitespace-pre-wrap text-white">{message.text || ''}</div>
-              )}
-            </div>
-            <div className="text-xs text-gray-500 ml-2 mt-1">
-              {message.isBot 
-                ? (AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0]).displayName
-                : 'Bạn'
-              }
-            </div>
+      <div className="flex flex-col space-y-3 p-4">
+        {visibleMessages.map((message) => (
+          <div 
+            key={message.id} 
+            className={`mb-3 ${message.isBot ? 'self-start' : 'self-end'} max-w-[80%] ${!message.isBot ? 'ml-auto' : ''}`}
+            style={{ display: 'block' }}
+            data-message-id={message.id}
+            data-message-type={message.isBot ? 'bot' : 'user'}
+            data-is-streaming={message.isStreaming ? 'true' : 'false'}
+            onMouseEnter={() => setShowActionsForId(message.id)}
+            onMouseLeave={() => setShowActionsForId(null)}
+          >
+            <MessageBubble 
+              message={message}
+              currentPersonaId={currentPersonaId}
+              showActions={showActionsForId === message.id}
+              onDeleteMessage={onDeleteMessage}
+            />
           </div>
-        </div>
-      ))}
+        ))}
+        {/* Invisible element for auto-scrolling */}
+        <div ref={endOfMessagesRef} />
+      </div>
       
-      {/* Message count indicator */}
-      {sortedMessages.length > visibleMessages.length && (
-        <div className="text-center mb-2 text-xs text-gray-500">
-          Hiển thị {visibleMessages.length} trong tổng số {sortedMessages.length} tin nhắn
-        </div>
+      {/* Scroll to bottom button - only visible when not at bottom */}
+      {!shouldAutoScroll && visibleMessages.length > 5 && (
+        <button
+          onClick={() => {
+            endOfMessagesRef.current?.scrollIntoView({ behavior: 'smooth' });
+            setShouldAutoScroll(true);
+          }}
+          className="fixed bottom-20 right-8 bg-[#5D4A38] text-white rounded-full p-3 shadow-lg hover:bg-[#4A3A2B] transition-colors"
+          aria-label="Scroll to bottom"
+        >
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+          </svg>
+        </button>
       )}
-    </>
+    </div>
   );
 };
 

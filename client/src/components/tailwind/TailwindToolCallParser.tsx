@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import TailwindToolCall from './TailwindToolCall';
@@ -14,7 +14,7 @@ function robustNormalizeBlockquotes(text: string): string {
   return normalized;
 }
 
-// Custom renderers for markdown elements
+// Custom renderers for markdown elements - moved outside component to prevent recreation
 const customRenderers = {
   // Make heading styles more consistent
   h1: (props: any) => <h1 className="text-2xl font-bold my-4" {...props} />,
@@ -58,14 +58,29 @@ interface ToolCallParserProps {
 }
 
 const TailwindToolCallParser: React.FC<ToolCallParserProps> = ({ text }) => {
-  // Normalize blockquotes in the text
-  const normalizedText = robustNormalizeBlockquotes(text);
-
-  // Check if message contains any tool call tags
-  if (normalizedText.includes('<tool-call')) {
+  // Normalize blockquotes in the text - memoized to prevent recomputation on rerenders
+  const normalizedText = useMemo(() => {
+    if (!text) return '';
+    return robustNormalizeBlockquotes(text);
+  }, [text]);
+  
+  // Parse content with tool calls - memoized for performance
+  const parsedContent = useMemo(() => {
+    // Check if message contains any tool call tags
+    if (!normalizedText || !normalizedText.includes('<tool-call')) {
+      // Regular message without tool calls
+      return (
+        <div className="prose max-w-none">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={customRenderers}>
+            {normalizedText}
+          </ReactMarkdown>
+        </div>
+      );
+    }
+    
     try {
       // Create a more robust parsing method
-      const parsedContent: React.ReactNode[] = [];
+      const contentParts: React.ReactNode[] = [];
       let lastIndex = 0;
       
       // Regular expression to match tool-call blocks with their content
@@ -77,7 +92,7 @@ const TailwindToolCallParser: React.FC<ToolCallParserProps> = ({ text }) => {
         if (match.index > lastIndex) {
           const beforeText = normalizedText.substring(lastIndex, match.index);
           if (beforeText.trim()) {
-            parsedContent.push(
+            contentParts.push(
               <div key={`text-${lastIndex}`} className="prose max-w-none">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} components={customRenderers}>
                   {beforeText}
@@ -106,7 +121,7 @@ const TailwindToolCallParser: React.FC<ToolCallParserProps> = ({ text }) => {
         const result = resultMatch ? resultMatch[1] : '';
         
         // Add the ToolCall component
-        parsedContent.push(
+        contentParts.push(
           <TailwindToolCall
             key={`tool-${match.index}`}
             toolName={toolName}
@@ -123,7 +138,7 @@ const TailwindToolCallParser: React.FC<ToolCallParserProps> = ({ text }) => {
       if (lastIndex < normalizedText.length) {
         const afterText = normalizedText.substring(lastIndex);
         if (afterText.trim()) {
-          parsedContent.push(
+          contentParts.push(
             <div key="text-end" className="prose max-w-none">
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={customRenderers}>
                 {afterText}
@@ -133,7 +148,7 @@ const TailwindToolCallParser: React.FC<ToolCallParserProps> = ({ text }) => {
         }
       }
       
-      return <>{parsedContent}</>;
+      return <>{contentParts}</>;
     } catch (error) {
       console.error("Error parsing tool calls:", error);
       // Fallback to regular markdown if parsing fails
@@ -142,19 +157,20 @@ const TailwindToolCallParser: React.FC<ToolCallParserProps> = ({ text }) => {
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={customRenderers}>
             {normalizedText}
           </ReactMarkdown>
+          {process.env.NODE_ENV === 'development' && (
+            <div className="mt-1 p-1 bg-red-100 text-red-700 text-xs rounded">
+              Error parsing tool calls: {error instanceof Error ? error.message : String(error)}
+            </div>
+          )}
         </div>
       );
     }
-  }
+  }, [normalizedText]);
   
-  // Regular message without tool calls
-  return (
-    <div className="prose max-w-none">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={customRenderers}>
-        {normalizedText}
-      </ReactMarkdown>
-    </div>
-  );
+  return parsedContent;
 };
 
-export default TailwindToolCallParser; 
+// Use memo to prevent unnecessary re-renders when text hasn't changed
+export default memo(TailwindToolCallParser, (prevProps, nextProps) => {
+  return prevProps.text === nextProps.text;
+}); 
