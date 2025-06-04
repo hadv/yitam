@@ -119,11 +119,13 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
 
   // Debug: Log visible messages to identify issues
   useEffect(() => {
-    console.log("Current messages:", visibleMessages.map(m => ({
-      id: m.id,
-      isBot: m.isBot,
-      text: m.text?.substring(0, 30) + (m.text?.length > 30 ? '...' : '')
-    })));
+    if (process.env.NODE_ENV === 'development') {
+      console.log("Current messages:", visibleMessages.map(m => ({
+        id: m.id,
+        isBot: m.isBot,
+        text: m.text?.substring(0, 30) + (m.text?.length > 30 ? '...' : '')
+      })));
+    }
   }, [visibleMessages]);
 
   if (messages.length === 0) {
