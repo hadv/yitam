@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { Message } from '../../types/chat';
 import { AVAILABLE_PERSONAS } from './TailwindPersonaSelector';
 import MessageBubble from './common/MessageBubble';
@@ -17,7 +17,6 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
   pageSize = 30 // Default to 30 messages per page
 }) => {
   const [showActionsForId, setShowActionsForId] = useState<string | null>(null);
-  const [visibleMessages, setVisibleMessages] = useState<Message[]>([]);
   const [page, setPage] = useState(1);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -50,26 +49,34 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
     });
   }, [messages]);
   
-  // Effect to update visible messages when sortedMessages changes
-  useEffect(() => {
+  // Compute visible messages directly instead of using state
+  const visibleMessages = useMemo(() => {
     // If we have an ongoing chat, always show the latest messages
     if (sortedMessages.length > 0 && sortedMessages[sortedMessages.length - 1].isStreaming) {
-      // Always show all messages when streaming is happening
-      setVisibleMessages(sortedMessages);
-      return;
+      return sortedMessages;
     }
     
     // If total messages are less than pageSize, show all
     if (sortedMessages.length <= pageSize) {
-      setVisibleMessages(sortedMessages);
-      return;
+      return sortedMessages;
     }
     
     // Otherwise, show the latest page of messages
     const startIndex = Math.max(0, sortedMessages.length - (page * pageSize));
-    const messagesToShow = sortedMessages.slice(startIndex);
-    setVisibleMessages(messagesToShow);
+    return sortedMessages.slice(startIndex);
   }, [sortedMessages, page, pageSize]);
+
+  // Memoized handler for loading more messages
+  const handleLoadMore = useCallback(() => {
+    if (isLoadingMore) return;
+    
+    setIsLoadingMore(true);
+    // Simulate loading delay to prevent rapid loading
+    setTimeout(() => {
+      setPage((prevPage) => prevPage + 1);
+      setIsLoadingMore(false);
+    }, 300);
+  }, [isLoadingMore]);
 
   // Setup intersection observer for infinite scrolling
   useEffect(() => {
@@ -82,13 +89,8 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
     observerRef.current = new IntersectionObserver(
       (entries) => {
         const [entry] = entries;
-        if (entry.isIntersecting && !isLoadingMore && visibleMessages.length < sortedMessages.length) {
-          setIsLoadingMore(true);
-          // Simulate loading delay to prevent rapid loading
-          setTimeout(() => {
-            setPage((prevPage) => prevPage + 1);
-            setIsLoadingMore(false);
-          }, 300);
+        if (entry.isIntersecting && visibleMessages.length < sortedMessages.length) {
+          handleLoadMore();
         }
       },
       {
@@ -108,22 +110,36 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
         observerRef.current.disconnect();
       }
     };
-  }, [isLoadingMore, visibleMessages.length, sortedMessages.length]);
+  }, [handleLoadMore, visibleMessages.length, sortedMessages.length]);
 
   // Reset pagination when messages change drastically (like switching topics)
   useEffect(() => {
-    setPage(1);
-  }, [messages.length === 0]);
+    if (messages.length === 0) {
+      setPage(1);
+    }
+  }, [messages.length]);
 
-  // Debug: Log visible messages to identify issues
+  // Debug logging separated from render cycle
   useEffect(() => {
-    console.log("Current messages:", visibleMessages.map(m => ({
-      id: m.id,
-      isBot: m.isBot,
-      text: m.text?.substring(0, 30) + (m.text?.length > 30 ? '...' : '')
-    })));
+    if (process.env.NODE_ENV === 'development') {
+      console.log("Current messages:", visibleMessages.map(m => ({
+        id: m.id,
+        isBot: m.isBot,
+        text: m.text?.substring(0, 30) + (m.text?.length > 30 ? '...' : '')
+      })));
+    }
   }, [visibleMessages]);
 
+  // Handle message hover
+  const handleMessageHover = useCallback((messageId: string) => {
+    setShowActionsForId(messageId);
+  }, []);
+  
+  const handleMessageLeave = useCallback(() => {
+    setShowActionsForId(null);
+  }, []);
+
+  // Empty state rendering
   if (messages.length === 0) {
     const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0];
     return (
@@ -132,6 +148,27 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
       </div>
     );
   }
+
+  // Memoized message rendering
+  const renderMessage = useCallback((message: Message) => (
+    <div 
+      key={message.id} 
+      className={`mb-3 ${message.isBot ? 'self-start' : 'self-end'} max-w-[80%] ${!message.isBot ? 'ml-auto' : ''}`}
+      style={{ display: 'block' }}
+      data-message-id={message.id}
+      data-message-type={message.isBot ? 'bot' : 'user'}
+      data-is-streaming={message.isStreaming ? 'true' : 'false'}
+      onMouseEnter={() => handleMessageHover(message.id)}
+      onMouseLeave={handleMessageLeave}
+    >
+      <MessageBubble 
+        message={message}
+        currentPersonaId={currentPersonaId}
+        showActions={showActionsForId === message.id}
+        onDeleteMessage={onDeleteMessage}
+      />
+    </div>
+  ), [currentPersonaId, handleMessageHover, handleMessageLeave, onDeleteMessage, showActionsForId]);
 
   return (
     <>
@@ -148,7 +185,7 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
             </div>
           ) : (
             <button 
-              onClick={() => setPage(prev => prev + 1)}
+              onClick={handleLoadMore}
               className="px-3 py-1 bg-[#F2EEE5] hover:bg-[#E6DFD1] rounded-md text-[#5D4A38] transition-colors"
             >
               Tải thêm tin nhắn
@@ -158,25 +195,7 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
       )}
       
       {/* Messages */}
-      {visibleMessages.map((message) => (
-        <div 
-          key={message.id} 
-          className={`mb-3 ${message.isBot ? 'self-start' : 'self-end'} max-w-[80%] ${!message.isBot ? 'ml-auto' : ''}`}
-          style={{ display: 'block' }}
-          data-message-id={message.id}
-          data-message-type={message.isBot ? 'bot' : 'user'}
-          data-is-streaming={message.isStreaming ? 'true' : 'false'}
-          onMouseEnter={() => setShowActionsForId(message.id)}
-          onMouseLeave={() => setShowActionsForId(null)}
-        >
-          <MessageBubble 
-            message={message}
-            currentPersonaId={currentPersonaId}
-            showActions={showActionsForId === message.id}
-            onDeleteMessage={onDeleteMessage}
-          />
-        </div>
-      ))}
+      {visibleMessages.map(renderMessage)}
     </>
   );
 };
