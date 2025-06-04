@@ -200,7 +200,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
           </div>
         ) : (
           // User message - with correct text color
-          <div className="whitespace-pre-wrap">
+          <div className="whitespace-pre-wrap text-white">
             {message.text}
           </div>
         )}
