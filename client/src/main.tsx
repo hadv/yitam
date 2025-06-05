@@ -1,21 +1,31 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import AppSelector from './AppSelector';
-import { UnleashProvider } from './contexts/UnleashContext';
-import { ChatHistoryProvider } from './contexts/ChatHistoryContext';
-import { PersonaProvider } from './contexts/PersonaContext';
 import './index.css';
+import App from './App';
+import AppSelector from './AppSelector';
+import { PersonaProvider } from './contexts/PersonaContext';
+import { ChatHistoryProvider } from './contexts/ChatHistoryContext';
+import { ConsentProvider } from './contexts/ConsentContext';
+import { ApiKeyProvider } from './contexts/ApiKeyContext';
+import { UnleashProvider } from './contexts/UnleashContext';
+import { ModalProvider } from './contexts/ModalContext';
 
 console.log('Main.tsx initializing - rendering AppSelector with providers');
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <UnleashProvider>
-      <ChatHistoryProvider>
-        <PersonaProvider>
-          <AppSelector />
-        </PersonaProvider>
-      </ChatHistoryProvider>
+      <ApiKeyProvider>
+        <ChatHistoryProvider>
+          <PersonaProvider>
+            <ConsentProvider>
+              <ModalProvider>
+                <AppSelector />
+              </ModalProvider>
+            </ConsentProvider>
+          </PersonaProvider>
+        </ChatHistoryProvider>
+      </ApiKeyProvider>
     </UnleashProvider>
-  </React.StrictMode>
+  </React.StrictMode>,
 ); 

@@ -14,6 +14,7 @@ import { useSocket } from '../../hooks/useSocket';
 import { useMessages } from '../../hooks/useMessages';
 import { useAuth } from '../../hooks/useAuth';
 import { useModals } from '../../hooks/useModals';
+import useModalSystem from '../../hooks/useModalSystem';
 import { useMessageDeletion } from '../../hooks/useMessageDeletion';
 import { useDebugFunctions } from '../../hooks/useDebugFunctions';
 import { useStorageWindowFunctions } from '../../hooks/useStorageWindowFunctions';
@@ -27,7 +28,7 @@ import TailwindMessagePersistence, { useMessagePersistence } from './TailwindMes
 import TailwindHeader from './TailwindHeader';
 import TailwindFooter from './TailwindFooter';
 import TailwindMessageDisplay from './TailwindMessageDisplay';
-import TailwindModalManager from './TailwindModalManager';
+import ModalManager from './common/ModalManager';
 import { BetaBanner, ApiKeyWarning } from './TailwindBanners';
 
 // Extracted Components
@@ -82,7 +83,19 @@ function TailwindApp() {
   const [isTopicEditing, setIsTopicEditing] = useState(false);
   
   // Get modals state
-  const { modals, notifications } = useModals();
+  const { 
+    openApiSettings, 
+    openTopicManager, 
+    openDataExportImport, 
+    openStorageSettings, 
+    openPrivacyControls, 
+    openPrivacyPolicy,
+    openMessageDelete,
+    closeModal
+  } = useModalSystem();
+  
+  // Use the old useModals hook just for notifications until we create a notification system
+  const { notifications } = useModals();
   
   // Get context hooks
   const { isDBReady, dbError, storageUsage, forceDBInit } = useChatHistory();
@@ -217,17 +230,17 @@ function TailwindApp() {
     startNewChat();
     setCurrentTopicId(undefined);
 
-    // Close privacy controls modal
-    modals.privacyControls.close();
+    // Close privacy controls modal using the new system
+    closeModal('privacyControls');
     
-    // Show in-app notification
+    // Show in-app notification using the old system
     notifications.dataDeleted.show();
 
     // Trigger topic list refresh if available
     if (window.triggerTopicListRefresh) {
       window.triggerTopicListRefresh();
     }
-  }, [startNewChat, setCurrentTopicId, modals.privacyControls, notifications.dataDeleted]);
+  }, [startNewChat, setCurrentTopicId, closeModal, notifications.dataDeleted]);
 
   // Auto-generate test topics in development mode
   useEffect(() => {
@@ -272,8 +285,8 @@ function TailwindApp() {
     
     // Normal topic selection
     handleTopicSelect(topicId);
-    modals.topicManager.close();
-  }, [isTopicEditing, handleTopicSelect, modals.topicManager]);
+    closeModal('topicManager');
+  }, [isTopicEditing, handleTopicSelect, closeModal]);
 
   // Rendering logic
   if (!isAuthenticated) {
@@ -299,12 +312,12 @@ function TailwindApp() {
                     handleLogout();
                     startNewChat();
                   }}
-                  onOpenTopicManager={modals.topicManager.open}
-                  onOpenApiSettings={modals.apiSettings.open}
-                  onOpenDataExportImport={modals.dataExportImport.open}
-                  onOpenStorageSettings={modals.storageSettings.open}
-                  onOpenPrivacyControls={modals.privacyControls.open}
-                  onOpenPrivacyPolicy={modals.privacyPolicy.open}
+                  onOpenTopicManager={openTopicManager}
+                  onOpenApiSettings={openApiSettings}
+                  onOpenDataExportImport={openDataExportImport}
+                  onOpenStorageSettings={openStorageSettings}
+                  onOpenPrivacyControls={openPrivacyControls}
+                  onOpenPrivacyPolicy={openPrivacyPolicy}
                 />
                 
                 {/* GDPR data deleted notification */}
@@ -318,13 +331,13 @@ function TailwindApp() {
                 
                 {/* API Key warning banner */}
                 {!hasStoredApiKey() && (
-                  <ApiKeyWarning onSetup={modals.apiSettings.open} />
+                  <ApiKeyWarning onSetup={openApiSettings} />
                 )}
                 
                 {/* Storage warning banner for high usage */}
                 <StorageWarningBanner 
                   storageUsage={storageUsage} 
-                  onOpenStorageSettings={modals.storageSettings.open}
+                  onOpenStorageSettings={openStorageSettings}
                 />
                 
                 {/* Persona selector container */}
@@ -384,14 +397,12 @@ function TailwindApp() {
               </div>
 
               {/* All modals */}
-              <TailwindModalManager
-                modals={modals}
+              <ModalManager
                 socket={socket}
                 user={user}
                 currentTopicId={currentTopicId}
                 isTopicEditing={isTopicEditing}
                 storageUsage={storageUsage}
-                messageToDelete={messageToDelete}
                 connectSocket={connectSocket}
                 handleSafeTopicSelect={handleSafeTopicSelect}
                 handleTopicEditStart={handleTopicEditStart}
@@ -399,7 +410,6 @@ function TailwindApp() {
                 startNewChat={startNewChat}
                 setCurrentTopicId={setCurrentTopicId}
                 confirmDeleteMessage={confirmDeleteMessage}
-                cancelDeleteMessage={cancelDeleteMessage}
                 handleDataDeleted={handleDataDeleted}
               />
             </div>
