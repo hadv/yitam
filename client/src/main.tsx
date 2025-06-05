@@ -9,6 +9,8 @@ import { ConsentProvider } from './contexts/ConsentContext';
 import { ApiKeyProvider } from './contexts/ApiKeyContext';
 import { UnleashProvider } from './contexts/UnleashContext';
 import { ModalProvider } from './contexts/ModalContext';
+import { LoadingProvider } from './contexts/LoadingContext';
+import { DataProvider } from './contexts/DataContext';
 
 console.log('Main.tsx initializing - rendering AppSelector with providers');
 
@@ -19,9 +21,13 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <ChatHistoryProvider>
           <PersonaProvider>
             <ConsentProvider>
-              <ModalProvider>
-                <AppSelector />
-              </ModalProvider>
+              <LoadingProvider>
+                <DataProvider>
+                  <ModalProvider>
+                    <AppSelector />
+                  </ModalProvider>
+                </DataProvider>
+              </LoadingProvider>
             </ConsentProvider>
           </PersonaProvider>
         </ChatHistoryProvider>
