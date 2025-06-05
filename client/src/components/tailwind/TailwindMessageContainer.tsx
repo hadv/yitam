@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import TailwindMessageThread from './TailwindMessageThread';
 import TailwindMessageSender from './TailwindMessageSender';
 import TailwindMessagePersistence from './TailwindMessagePersistence';
 import db, { Topic } from '../../db/ChatHistoryDB';
+import { useLoading } from '../../contexts/LoadingContext';
+import LoadingState from './common/LoadingState';
 
 interface MessageContainerProps {
   userId: string;
@@ -17,9 +19,9 @@ const TailwindMessageContainer: React.FC<MessageContainerProps> = ({
   onSend,
   className = ''
 }) => {
-  const [currentTopic, setCurrentTopic] = useState<Topic | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-
+  const { startLoading, stopLoading, setError } = useLoading();
+  const [currentTopic, setCurrentTopic] = React.useState<Topic | null>(null);
+  
   // Load topic details when topicId changes
   useEffect(() => {
     const loadTopic = async () => {
@@ -28,19 +30,26 @@ const TailwindMessageContainer: React.FC<MessageContainerProps> = ({
         return;
       }
       
-      setIsLoading(true);
+      const loadingKey = `topic-load-${topicId}`;
+      startLoading(loadingKey);
+      
       try {
         const topic = await db.topics.get(topicId);
         setCurrentTopic(topic || null);
+        setError(loadingKey, null);
       } catch (error) {
         console.error('Error loading topic:', error);
+        setError(loadingKey, 'Không thể tải chủ đề. Vui lòng thử lại sau.');
       } finally {
-        setIsLoading(false);
+        stopLoading(loadingKey);
       }
     };
     
     loadTopic();
-  }, [topicId]);
+  }, [topicId, startLoading, stopLoading, setError]);
+
+  // Generate a unique loading key for this topic
+  const loadingKey = topicId ? `topic-load-${topicId}` : 'no-topic';
 
   return (
     <TailwindMessagePersistence>
@@ -72,30 +81,26 @@ const TailwindMessageContainer: React.FC<MessageContainerProps> = ({
           </div>
         )}
         
-        {/* Loading state */}
-        {isLoading && (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#5D4A38]"></div>
-          </div>
-        )}
-        
-        {/* Message thread */}
-        {!isLoading && (
-          <div className="flex-1 overflow-hidden">
+        {/* Message thread with loading state */}
+        <div className="flex-1 overflow-hidden">
+          <LoadingState 
+            loadingKey={loadingKey}
+            loadingMessage="Đang tải tin nhắn..."
+          >
             <TailwindMessageThread
               userId={userId}
               topicId={topicId}
               className="h-full"
             />
-          </div>
-        )}
+          </LoadingState>
+        </div>
         
         {/* Message input */}
         <div className="p-4">
           <TailwindMessageSender
             topicId={topicId}
             onSend={onSend}
-            disabled={!topicId || isLoading}
+            disabled={!topicId}
             placeholder={topicId ? "Nhập tin nhắn của bạn..." : "Chọn một chủ đề để bắt đầu"}
           />
         </div>
