@@ -355,7 +355,10 @@ function TailwindApp() {
                     <TailwindMessageDisplay 
                       messages={messages}
                       currentPersonaId={currentPersonaId}
-                      onDeleteMessage={handleDeleteMessage}
+                      onDeleteMessage={(messageId) => {
+                        handleDeleteMessage(messageId);
+                        openMessageDelete(messageId);
+                      }}
                       pageSize={30} // Default value, could be made configurable
                     />
                   </div>
