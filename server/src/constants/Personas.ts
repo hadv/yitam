@@ -44,7 +44,7 @@ export const availablePersonas: Persona[] = [
     id: 'lan-ong',
     name: 'lan_ong',
     displayName: 'Lãn Ông',
-    domains: ['y học cổ truyền', 'y tông tâm lĩnh', 'đông y', 'hải thượng lãn ông'],
+    domains: ['y tông tâm lĩnh', 'hải thượng lãn ông'],
     voiceTone: {
       style: 'Traditional Vietnamese medical scholar',
       characteristics: [
