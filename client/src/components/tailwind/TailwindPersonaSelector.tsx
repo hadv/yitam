@@ -36,7 +36,7 @@ export const AVAILABLE_PERSONAS: Persona[] = [
     id: 'lan-ong',
     displayName: 'Lãn Ông',
     description: 'Danh y nổi tiếng với kiệt tác "Y Tông Tâm Lĩnh"',
-    domains: ['y học cổ truyền', 'y tông tâm lĩnh', 'đông y', 'hải thượng lãn ông'],
+    domains: ['y tông tâm lĩnh', 'hải thượng lãn ông'],
     voiceTone: {
       style: 'Traditional Vietnamese medical scholar',
       characteristics: [
