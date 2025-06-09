@@ -50,14 +50,14 @@ const TailwindTopicEditor: React.FC<TopicEditorProps> = ({
       const now = Date.now();
       
       // Prepare topic object
-      const topicData: Topic = topicToEdit 
+      const topicData: Topic = topicToEdit
         ? {
             ...topicToEdit,
             title: title.trim(),
             systemPrompt: systemPrompt.trim() || undefined,
             pinnedState: isPinned,
             model: model || undefined,
-            lastActive: now
+            lastActive: now // Update lastActive when user edits topic information
           }
         : {
             userId,

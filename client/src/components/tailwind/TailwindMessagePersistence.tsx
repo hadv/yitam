@@ -406,7 +406,7 @@ const TailwindMessagePersistence: React.FC<MessagePersistenceProps> = ({ childre
       // Calculate token count (this is approximate as we'd need to load all messages to be exact)
       let newTokenCount = (topic.totalTokens || 0) - (message.tokens || 0);
       if (newTokenCount < 0) newTokenCount = 0;
-      
+
       // Use transaction to ensure atomicity
       await db.transaction('rw', db.topics, async () => {
         await db.topics.update(topicId, {
@@ -414,9 +414,9 @@ const TailwindMessagePersistence: React.FC<MessagePersistenceProps> = ({ childre
           userMessageCnt: actualUserCount,
           assistantMessageCnt: actualAssistantCount,
           totalTokens: newTokenCount,
-          lastActive: Date.now()
+          lastActive: Date.now() // Update lastActive - deleting messages is user activity
         });
-        
+
         console.log(`[STATS DEBUG] Topic ${topicId} stats updated with accurate counts`);
       });
       

@@ -798,13 +798,12 @@ export const useMessages = (socket: ChatSocket, user: any) => {
         // Verify topic has a persona ID
         if (!topic.personaId) {
           console.warn(`[PERSONA DEBUG] Topic ${topicId} has no persona ID, will assign current UI persona: ${currentPersonaId}`);
-          
-          // Update the topic with the current persona
-          await db.topics.update(topicId, { 
-            personaId: currentPersonaId,
-            lastActive: Date.now() 
+
+          // Update the topic with the current persona (but don't update lastActive)
+          await db.topics.update(topicId, {
+            personaId: currentPersonaId
           });
-          
+
           // Re-fetch the topic to ensure we have the updated version
           const updatedTopic = await db.topics.get(topicId);
           if (updatedTopic && updatedTopic.personaId) {
@@ -813,9 +812,9 @@ export const useMessages = (socket: ChatSocket, user: any) => {
           }
         } else {
           console.log(`[PERSONA DEBUG] Topic ${topicId} has persona ID: ${topic.personaId}`);
-          
-          // Just update the last active timestamp
-          await db.topics.update(topicId, { lastActive: Date.now() });
+
+          // No need to update anything when just loading an existing topic
+          // lastActive should only be updated when new messages are added
         }
         
         // First set the topic ID so it's updated before we do anything else

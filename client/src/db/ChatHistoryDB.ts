@@ -499,12 +499,11 @@ class ChatHistoryDB extends Dexie {
         return true;
       }
       
-      // Update the topic with accurate counts
+      // Update the topic with accurate counts (don't update lastActive - this is just maintenance)
       await this.topics.update(topicId, {
         messageCnt: actualMessageCount,
-        userMessageCnt: actualUserCount, 
-        assistantMessageCnt: actualAssistantCount,
-        lastActive: Date.now()
+        userMessageCnt: actualUserCount,
+        assistantMessageCnt: actualAssistantCount
       });
       
       console.log(`[DB] Topic ${topicId} message count updated successfully`);

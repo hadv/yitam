@@ -99,14 +99,20 @@ export const useMessageDeletion = (
               window.triggerTopicListRefresh();
             }
           } else {
-            // Update topic count in the database
-            await db.updateTopicMessageCount(topicToCheck);
-            
+            // Update topic count and lastActive in the database
+            const topic = await db.topics.get(topicToCheck);
+            if (topic) {
+              await db.topics.update(topicToCheck, {
+                messageCnt: remainingMessages,
+                lastActive: Date.now() // Update lastActive - deleting messages is user activity
+              });
+            }
+
             // Trigger UI updates
             if (window.updateTopicMessageCount) {
               window.updateTopicMessageCount(topicToCheck, remainingMessages);
             }
-            
+
             if (window.triggerTopicListRefresh) {
               window.triggerTopicListRefresh();
             }
