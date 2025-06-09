@@ -138,24 +138,25 @@ const TailwindMessageThread: React.FC<MessageThreadProps> = ({
         // Delete the message from database
         await db.messages.delete(showDeleteModal);
         
-        // Update topic message counts
+        // Update topic message counts (update lastActive - deletion is user activity)
         if (topicId) {
           const topic = await db.topics.get(topicId);
           if (topic) {
             const updateData: Partial<typeof topic> = {
-              messageCnt: (topic.messageCnt || 0) - 1
+              messageCnt: (topic.messageCnt || 0) - 1,
+              lastActive: Date.now()
             };
-            
+
             if (messageToDelete.role === 'user') {
               updateData.userMessageCnt = (topic.userMessageCnt || 0) - 1;
             } else {
               updateData.assistantMessageCnt = (topic.assistantMessageCnt || 0) - 1;
             }
-            
+
             if (messageToDelete.tokens) {
               updateData.totalTokens = (topic.totalTokens || 0) - messageToDelete.tokens;
             }
-            
+
             await db.topics.update(topicId, updateData);
           }
         }

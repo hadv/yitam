@@ -299,21 +299,22 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const topic = await db.topics.get(topicId);
       if (topic) {
         const updateData: Partial<Topic> = {
-          messageCnt: Math.max((topic.messageCnt || 0) - 1, 0)
+          messageCnt: Math.max((topic.messageCnt || 0) - 1, 0),
+          lastActive: Date.now() // Update lastActive - deleting messages is user activity
         };
-        
+
         if (message.role === 'user') {
           updateData.userMessageCnt = Math.max((topic.userMessageCnt || 0) - 1, 0);
         } else {
           updateData.assistantMessageCnt = Math.max((topic.assistantMessageCnt || 0) - 1, 0);
         }
-        
+
         if (message.tokens) {
           updateData.totalTokens = Math.max((topic.totalTokens || 0) - message.tokens, 0);
         }
-        
+
         await db.topics.update(topicId, updateData);
-        
+
         // Invalidate topic cache
         invalidateCache(`topic-${topicId}`);
       }
