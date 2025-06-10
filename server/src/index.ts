@@ -118,7 +118,7 @@ const ERROR_MESSAGES = {
 io.on('connection', (socket: Socket) => {
   console.log('A user connected:', socket.id);
 
-  // Initialize Anthropic client only when API key is available
+  // Initialize Anthropic client only when API key is available (for backward compatibility)
   let anthropic: Anthropic | null = null;
   if (socket.data.user.apiKey) {
     anthropic = new Anthropic({
@@ -132,6 +132,21 @@ io.on('connection', (socket: Socket) => {
     anthropic = new Anthropic({
       apiKey: apiKey,
     });
+
+    // Reinitialize MCP client with new API key if needed
+    if (mcpClient) {
+      mcpClient = new MCPClient(apiKey, config.llm.provider);
+      if (process.env.MCP_SERVER_PATH && process.env.MCP_SERVER_PATH.trim() !== '') {
+        mcpClient.connectToServer(process.env.MCP_SERVER_PATH)
+          .then(connected => {
+            mcpConnected = connected;
+            console.log(connected ? 'Successfully reconnected to MCP server' : 'Failed to reconnect to MCP server');
+          })
+          .catch(err => {
+            console.error('Error reconnecting to MCP server:', err);
+          });
+      }
+    }
   });
 
   // Initialize MCP client for this connection if needed
@@ -140,22 +155,22 @@ io.on('connection', (socket: Socket) => {
 
   // Only try to connect to MCP if path is provided and not empty and API key is available
   if (process.env.MCP_SERVER_PATH && process.env.MCP_SERVER_PATH.trim() !== '' && socket.data.user.apiKey) {
-    mcpClient = new MCPClient(socket.data.user.apiKey);
+    mcpClient = new MCPClient(socket.data.user.apiKey, config.llm.provider);
     mcpClient.connectToServer(process.env.MCP_SERVER_PATH)
       .then(connected => {
         mcpConnected = connected;
         if (connected) {
-          console.log('Successfully connected to MCP server');
+          console.log(`Successfully connected to MCP server using ${config.llm.provider} provider`);
         } else {
-          console.log('Failed to connect to MCP server, falling back to direct Claude API');
+          console.log(`Failed to connect to MCP server, falling back to direct ${config.llm.provider} API`);
         }
       })
       .catch(err => {
         console.error('Error connecting to MCP server:', err);
-        console.log('Falling back to direct Claude API');
+        console.log(`Falling back to direct ${config.llm.provider} API`);
       });
   } else {
-    console.log('No MCP server path provided or API key not available, using direct Claude API when key is provided');
+    console.log(`No MCP server path provided or API key not available, using direct ${config.llm.provider} API when key is provided`);
   }
 
   // Handle legal document requests

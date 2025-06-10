@@ -1,10 +1,20 @@
-# TypeScript Claude Chat Bot with MCP Integration
+# Multi-LLM Chat Bot with MCP Integration
 
-A modern chat bot application built with TypeScript that uses Claude AI API to power conversations, with Model Context Protocol (MCP) integration for enhanced AI capabilities.
+A modern chat bot application built with TypeScript that supports multiple LLM providers (Anthropic Claude, OpenAI GPT, Google Gemini) with Model Context Protocol (MCP) integration for enhanced AI capabilities.
+
+## Features
+
+- **🤖 Multi-LLM Support**: Choose from Anthropic Claude, OpenAI GPT, or Google Gemini
+- **🔄 Automatic Fallback**: Seamless switching between providers for maximum reliability
+- **⚡ Real-time Streaming**: Live response generation with WebSocket communication
+- **🛠️ Tool Integration**: Enhanced AI capabilities through MCP protocol
+- **🔒 Content Safety**: Built-in moderation and safety checks
+- **📱 Responsive Design**: Works seamlessly on desktop and mobile devices
+- **🌐 Production Ready**: Docker deployment with SSL support
 
 ## Components
 
-- **Server**: Node.js Express server that connects to Claude AI API using the Anthropic SDK
+- **Server**: Node.js Express server with multi-LLM provider support
 - **Client**: React-based web application that provides a chat interface
 - **MCP Integration**: Model Context Protocol integration for enhanced AI tool capabilities
 
@@ -13,7 +23,10 @@ A modern chat bot application built with TypeScript that uses Claude AI API to p
 - Node.js (LTS version) - recommended to use `nvm use --lts`
 - npm - for package management
 - Docker and Docker Compose - for production deployment
-- Anthropic API key
+- **LLM API Keys** (at least one required):
+  - Anthropic API key (for Claude models)
+  - OpenAI API key (for GPT models)
+  - Google API key (for Gemini models)
 - MCP integration setup
 
 ## Setup
@@ -27,7 +40,20 @@ A modern chat bot application built with TypeScript that uses Claude AI API to p
    ```
 3. Configure environment variables:
    - Copy `server/.env.example` to `server/.env`
-   - Add your Anthropic API key to `server/.env`
+   - Add your LLM provider API keys to `server/.env`:
+     ```bash
+     # Choose your primary provider
+     LLM_PROVIDER=anthropic  # or openai, google
+
+     # Add API keys (at least one required)
+     ANTHROPIC_API_KEY=your_anthropic_key_here
+     OPENAI_API_KEY=your_openai_key_here
+     GOOGLE_API_KEY=your_google_key_here
+
+     # Enable fallback for reliability
+     LLM_FALLBACK_ENABLED=true
+     LLM_FALLBACK_PROVIDERS=anthropic,openai,google
+     ```
    - Configure MCP-related environment variables
 
 ### Docker Production Deployment
@@ -122,6 +148,43 @@ Then to run the server:
 ```
 cd server && npm start
 ```
+
+## Multi-LLM Provider System
+
+This application supports multiple LLM providers with automatic fallback capabilities:
+
+### Supported Providers
+
+| Provider | Models | Features |
+|----------|--------|----------|
+| **Anthropic** | Claude-3.7-Sonnet, Claude-3-Haiku, Claude-3-Sonnet, Claude-3-Opus | Tool calling, Streaming, Function calling |
+| **OpenAI** | GPT-4o, GPT-4o-mini, GPT-4-turbo, GPT-4, GPT-3.5-turbo | Tool calling, Streaming, Function calling |
+| **Google** | Gemini-1.5-pro, Gemini-1.5-flash, Gemini-1.0-pro | Tool calling, Streaming, Function calling |
+
+### Configuration Examples
+
+```bash
+# Use OpenAI as primary with Anthropic fallback
+LLM_PROVIDER=openai
+LLM_FALLBACK_ENABLED=true
+LLM_FALLBACK_PROVIDERS=openai,anthropic
+
+# Use Anthropic with Google fallback
+LLM_PROVIDER=anthropic
+LLM_FALLBACK_PROVIDERS=anthropic,google
+
+# Model-specific configuration
+LLM_MODEL=gpt-4o
+LLM_MAX_TOKENS=4000
+LLM_TEMPERATURE=0.7
+```
+
+### Benefits
+
+- **Reliability**: Automatic fallback when primary provider fails
+- **Cost Optimization**: Choose providers based on cost and performance
+- **Rate Limit Handling**: Seamless switching during rate limits
+- **Unified Interface**: Same API regardless of provider
 
 ## Server API
 

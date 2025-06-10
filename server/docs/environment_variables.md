@@ -9,9 +9,19 @@ NODE_ENV=development
 CLIENT_URL=http://localhost:3000
 ```
 
-## API Keys
+## LLM Provider Configuration
 ```
+# Primary LLM provider (anthropic, openai, or google)
+LLM_PROVIDER=anthropic
+
+# API Keys for different providers
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
+OPENAI_API_KEY=your_openai_api_key_here
+GOOGLE_API_KEY=your_google_api_key_here
+
+# Fallback configuration
+LLM_FALLBACK_ENABLED=true
+LLM_FALLBACK_PROVIDERS=anthropic,openai
 ```
 
 ## Access Control
@@ -30,6 +40,13 @@ SIGNING_SECRET=replace_with_secure_random_string_in_production
 
 ## Model Configuration
 ```
+# Model selection (provider-specific)
+LLM_MODEL=claude-3-7-sonnet-20250219
+LLM_MAX_TOKENS=10000
+LLM_TEMPERATURE=0.7
+LLM_TOP_P=1.0
+
+# Legacy configuration (for backward compatibility)
 ANTHROPIC_MODEL=claude-3-7-sonnet-20250219
 MODEL_MAX_TOKENS=10000
 ```
