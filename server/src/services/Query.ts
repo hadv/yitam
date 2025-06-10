@@ -1,4 +1,3 @@
-import { Anthropic } from "@anthropic-ai/sdk";
 import { config } from '../config';
 import { SystemPrompts } from '../constants/SystemPrompts';
 import { availableDomains } from '../constants/Domains';
@@ -7,9 +6,11 @@ import { Conversation } from './Conversation';
 import { MCPServer } from './MCPServer';
 import { Tool } from './Tool';
 import { ModerationService } from './ModerationService';
+import { LLMService } from './LLMService';
+import { LLMMessage, LLMTool, LLMError, LLMRateLimitError, LLMQuotaExceededError } from '../types/LLMTypes';
 
 export class Query {
-  private anthropic: Anthropic;
+  private llmService: LLMService;
   private conversation: Conversation;
   private mcpServer: MCPServer;
   private tool: Tool;
@@ -17,19 +18,21 @@ export class Query {
   private readonly RATE_LIMIT_WINDOW = 60000; // 1 minute
   private readonly MAX_REQUESTS_PER_WINDOW = 6; // Reduced from 10 to 6 to avoid hitting API rate limits
   private requestTimestamps: number[] = [];
-  
+
   // Static tracking of global API usage to prevent rate limits
   private static globalRequestTimestamps: number[] = [];
   private static readonly GLOBAL_RATE_LIMIT_WINDOW = 60000; // 1 minute
   private static readonly GLOBAL_MAX_REQUESTS = 15; // Maximum requests per minute across all users
-  
+
   constructor(
     apiKey: string,
     conversation: Conversation,
     mcpServer: MCPServer,
-    tool: Tool
+    tool: Tool,
+    providerType?: string
   ) {
-    this.anthropic = new Anthropic({ apiKey });
+    // Initialize LLM service with the provided API key and provider type
+    this.llmService = new LLMService(apiKey, providerType || config.llm.provider);
     this.conversation = conversation;
     this.mcpServer = mcpServer;
     this.tool = tool;
@@ -111,26 +114,24 @@ export class Query {
       const isDefaultPersona = currentPersona.id === 'yitam';
       
       // Extract search query in all cases
-      const extractionResponse = await this.anthropic.messages.create({
-        model: config.model.name,
-        max_tokens: 150,  // Small token limit is sufficient for extraction
-        system: SystemPrompts.SEARCH_EXTRACTION,
-        messages: [{
-          role: "user",
-          content: query
-        }]
-      });
+      const extractionMessages: LLMMessage[] = [
+        { role: 'system', content: SystemPrompts.SEARCH_EXTRACTION },
+        { role: 'user', content: query }
+      ];
+
+      const extractionResponse = await this.llmService.generateResponse(
+        extractionMessages,
+        { maxTokens: 150 } // Small token limit is sufficient for extraction
+      );
       
       console.timeEnd('search-query-extraction');
 
       let extractedText = query;
-      if (extractionResponse.content[0]?.type === "text") {
-        const text = extractionResponse.content[0].text.trim();
-        if (text && text.length > 0) {
-          console.log(`Original query: "${query.substring(0, 50)}..."`);
-          console.log(`Extracted search query: "${text}"`);
-          extractedText = text;
-        }
+      if (extractionResponse.content && extractionResponse.content.trim().length > 0) {
+        const text = extractionResponse.content.trim();
+        console.log(`Original query: "${query.substring(0, 50)}..."`);
+        console.log(`Extracted search query: "${text}"`);
+        extractedText = text;
       }
       
       let domains: string[];
@@ -306,66 +307,96 @@ export class Query {
       
       console.log(`Using persona: ${currentPersona.displayName} for response`);
 
-      const response = await this.anthropic.messages.create({
-        model: config.model.name,
-        max_tokens: config.model.maxTokens,
-        system: personaSystemPrompt,
-        messages,
-        tools: tools.length > 0 ? tools : undefined,
-      });
+      // Convert conversation messages to LLM format
+      const llmMessages: LLMMessage[] = [
+        { role: 'system', content: personaSystemPrompt },
+        ...messages.map(msg => ({
+          role: msg.role as 'user' | 'assistant',
+          content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+        }))
+      ];
+
+      // Convert tools to LLM format
+      const llmTools: LLMTool[] = tools.map(tool => ({
+        name: tool.name,
+        description: tool.description || '',
+        input_schema: tool.input_schema as any
+      }));
+
+      const response = await this.llmService.generateResponse(
+        llmMessages,
+        {
+          model: config.model.name,
+          maxTokens: config.model.maxTokens
+        },
+        llmTools.length > 0 ? llmTools : undefined
+      );
 
       const finalText: string[] = [];
       const toolResults: any[] = [];
 
-      for (const content of response.content) {
-        if (content.type === "text") {
-          // Customize the response if needed based on persona
-          let textContent = content.text;
-          
-          // For non-default personas, ensure responses are properly formatted
-          if (currentPersona.id !== 'yitam' && !textContent.startsWith(currentPersona.displayName)) {
-            textContent = `${currentPersona.displayName}: ${textContent}`;
-          }
-          
-          finalText.push(textContent);
-          // Add assistant's response to conversation history
-          this.conversation.addAssistantMessage(textContent);
-        } else if (content.type === "tool_use") {
-          const { toolResult, formattedToolCall } = await this._handleToolUse(content, { searchQuery, domains });
+      // Handle text content
+      if (response.content) {
+        // Customize the response if needed based on persona
+        let textContent = response.content;
+
+        // For non-default personas, ensure responses are properly formatted
+        if (currentPersona.id !== 'yitam' && !textContent.startsWith(currentPersona.displayName)) {
+          textContent = `${currentPersona.displayName}: ${textContent}`;
+        }
+
+        finalText.push(textContent);
+        // Add assistant's response to conversation history
+        this.conversation.addAssistantMessage(textContent);
+      }
+
+      // Handle tool calls
+      if (response.tool_calls && response.tool_calls.length > 0) {
+        for (const toolCall of response.tool_calls) {
+          const { toolResult, formattedToolCall } = await this._handleToolUse(
+            { id: toolCall.id, name: toolCall.name, input: toolCall.arguments },
+            { searchQuery, domains }
+          );
           toolResults.push(toolResult);
           finalText.push(formattedToolCall);
 
           // Add tool interactions to conversation history
-          this.conversation.addToolUseMessage(content.id, content.name, content.input);
-          this.conversation.addToolResultMessage(content.id, toolResult.content);
+          this.conversation.addToolUseMessage(toolCall.id, toolCall.name, toolCall.arguments);
+          this.conversation.addToolResultMessage(toolCall.id, toolResult.content);
 
           // Add delay before follow-up to avoid rate limiting
           await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
 
           // Update system prompt for follow-up based on persona
           const personaFollowUpPrompt = getPersonaSystemPrompt(SystemPrompts.FOLLOW_UP, currentPersona);
-          
-          const followUpResponse = await this.anthropic.messages.create({
-            model: config.model.name,
-            // Reduce token limits for follow-up to avoid rate limits
-            max_tokens: Math.min(2000, config.model.maxTokens),
-            system: personaFollowUpPrompt,
-            messages: this.conversation.getConversationHistory(),
-          });
 
-          if (followUpResponse.content && followUpResponse.content.length > 0) {
-            if (followUpResponse.content[0].type === "text") {
-              let followUpText = followUpResponse.content[0].text;
-              
-              // For non-default personas, ensure follow-up responses are properly formatted
-              if (currentPersona.id !== 'yitam' && !followUpText.startsWith(currentPersona.displayName)) {
-                followUpText = `${currentPersona.displayName}: ${followUpText}`;
-              }
-              
-              finalText.push(followUpText);
-              // Add follow-up response to conversation history
-              this.conversation.addAssistantMessage(followUpText);
+          const followUpMessages: LLMMessage[] = [
+            { role: 'system', content: personaFollowUpPrompt },
+            ...this.conversation.getConversationHistory().map(msg => ({
+              role: msg.role as 'user' | 'assistant',
+              content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+            }))
+          ];
+
+          const followUpResponse = await this.llmService.generateResponse(
+            followUpMessages,
+            {
+              model: config.model.name,
+              maxTokens: Math.min(2000, config.model.maxTokens)
             }
+          );
+
+          if (followUpResponse.content) {
+            let followUpText = followUpResponse.content;
+
+            // For non-default personas, ensure follow-up responses are properly formatted
+            if (currentPersona.id !== 'yitam' && !followUpText.startsWith(currentPersona.displayName)) {
+              followUpText = `${currentPersona.displayName}: ${followUpText}`;
+            }
+
+            finalText.push(followUpText);
+            // Add follow-up response to conversation history
+            this.conversation.addAssistantMessage(followUpText);
           } else {
             console.log("Follow-up response has no content");
           }
@@ -441,361 +472,199 @@ export class Query {
       
       console.log(`Using persona: ${currentPersona.displayName} for streaming response`);
 
-      let stream: AsyncIterable<any>;
+      // Convert conversation messages to LLM format
+      const llmMessages: LLMMessage[] = [
+        { role: 'system', content: personaSystemPrompt },
+        ...messages.map(msg => ({
+          role: msg.role as 'user' | 'assistant',
+          content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+        }))
+      ];
+
+      // Convert tools to LLM format
+      const llmTools: LLMTool[] = tools.map(tool => ({
+        name: tool.name,
+        description: tool.description || '',
+        input_schema: tool.input_schema as any
+      }));
+
+      const toolCalls: Record<string, any> = {};
+      let assistantResponse = ""; // Collect the assistant's response for history
+
       try {
-        stream = await this.anthropic.messages.stream({
-          model: config.model.name,
-          max_tokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000),
-          system: personaSystemPrompt,
-          messages,
-          tools: tools.length > 0 ? tools : undefined,
-        });
+        // Use the LLM service for streaming
+        await this.llmService.generateStreamingResponse(
+          llmMessages,
+          async (chunk) => {
+            if (chunk.type === 'text' && chunk.content) {
+              assistantResponse += chunk.content;
+              return await sendChunk(chunk.content);
+            } else if (chunk.type === 'tool_call' && chunk.tool_call) {
+              // Handle tool calls in streaming mode
+              toolCalls[chunk.tool_call.id] = chunk.tool_call;
+            } else if (chunk.type === 'error') {
+              console.error('LLM streaming error:', chunk.error);
+              return false; // Stop streaming on error
+            }
+            return true; // Continue streaming
+          },
+          {
+            model: config.model.name,
+            maxTokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000)
+          },
+          llmTools.length > 0 ? llmTools : undefined
+        );
       } catch (streamError: any) {
-        // Handle stream creation errors separately 
+        // Handle stream creation errors separately
         console.error("Error creating stream:", streamError);
         throw streamError; // Re-throw to be handled by the outer catch
       }
 
-      const toolCalls: Record<string, any> = {};
-      let assistantResponse = ""; // Collect the assistant's response for history
-      
-      try {
-        for await (const chunk of stream) {
-          if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-            // Send text chunks directly to the client with proper escaping
-            const shouldContinue = await sendChunk(chunk.delta.text);
+      // Add assistant response to conversation history if we got one
+      if (assistantResponse) {
+        // For non-default personas, add persona prefix if needed
+        if (currentPersona.id !== 'yitam' && !assistantResponse.startsWith(currentPersona.displayName)) {
+          assistantResponse = `${currentPersona.displayName}: ${assistantResponse}`;
+        }
+
+        this.conversation.addAssistantMessage(assistantResponse);
+        console.log(`Added assistant text response to history (${assistantResponse.length} chars)`);
+      }
+
+      // Process any collected tool calls after streaming completes
+      if (Object.keys(toolCalls).length > 0) {
+        // Process all collected tool calls
+        for (const toolUseId in toolCalls) {
+          try {
+            const toolUse = toolCalls[toolUseId];
+            const { toolResult, formattedToolCall } = await this._handleToolUse(toolUse, { searchQuery, domains });
+
+            // Send the formatted tool call to the client
+            const shouldContinue = await callback(formattedToolCall);
             if (!shouldContinue) {
-              console.log('Streaming stopped by callback returning false');
-              break; // Exit the streaming loop
+              console.log('Streaming stopped during tool call results');
+              return; // Exit the function entirely
             }
-            
-            // Collect the unescaped response for history
-            assistantResponse += chunk.delta.text;
-          } else if (chunk.type === 'content_block_start' && chunk.content_block.type === 'tool_use') {
-            // Handle tool use
-            const toolUse = chunk.content_block;
-            toolCalls[toolUse.id] = {
-              id: toolUse.id,
-              name: toolUse.name,
-              input: toolUse.input
-            };
-          } else if (chunk.type === 'message_stop') {
-            // If we have collected text from the assistant, add it to history
-            if (assistantResponse) {
-              // For non-default personas, check if response needs persona prefix
-              if (currentPersona.id !== 'yitam' && !assistantResponse.startsWith(currentPersona.displayName)) {
-                assistantResponse = `${currentPersona.displayName}: ${assistantResponse}`;
-              }
-              
-              this.conversation.addAssistantMessage(assistantResponse);
-              console.log(`Added assistant text response to history (${assistantResponse.length} chars)`);
-            }
-            
-            // Process all collected tool calls
-            for (const toolUseId in toolCalls) {
-              try {
-                const toolUse = toolCalls[toolUseId];
-                const { toolResult, formattedToolCall } = await this._handleToolUse(toolUse, { searchQuery, domains });
-                
-                // Send the formatted tool call to the client
-                const shouldContinue = await callback(formattedToolCall);
-                if (!shouldContinue) {
-                  console.log('Streaming stopped during tool call results');
-                  return; // Exit the function entirely
-                }
-                
-                // Add tool interactions to conversation history
-                this.conversation.addToolUseMessage(toolUse.id, toolUse.name, toolUse.input);
-                this.conversation.addToolResultMessage(toolUse.id, toolResult.content);
-                
-                console.log(`Added tool call and result to history for ${toolUse.name}`);
-              } catch (toolError) {
-                console.error(`Error handling tool call ${toolUseId}:`, toolError);
-                const errorMessage = `\n\nError executing tool: ${String(toolError instanceof Error ? toolError.message : String(toolError)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}\n\n`;
-                const shouldContinue = await callback(errorMessage);
-                if (!shouldContinue) return;
-              }
-            }
-            
-            // If we had tool calls, generate a follow-up response
-            if (Object.keys(toolCalls).length > 0) {
-              try {
-                // Always generate follow-up responses, regardless of tool type
-                console.time('follow-up-response');
-                
-                // Add delay before follow-up to avoid rate limiting
-                await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
-                
-                // Try up to 3 times to get a complete follow-up response
-                let retryCount = 0;
-                const maxRetries = 2;
-                let successfulCompletion = false;
-                
-                // Keep track of the best response across retries
-                let bestResponseBuffer = "";
-                let currentResponseBuffer = "";
-                
-                // Update system prompt for follow-up based on persona
-                const personaFollowUpPrompt = getPersonaSystemPrompt(SystemPrompts.FOLLOW_UP, currentPersona);
-                
-                while (retryCount <= maxRetries && !successfulCompletion) {
-                  if (retryCount > 0) {
-                    console.log(`Retrying follow-up response (attempt ${retryCount} of ${maxRetries})`);
-                    // Reset current buffer for this attempt
-                    currentResponseBuffer = "";
-                  }
-                  
-                  try {
-                    const followUpStream = await this.anthropic.messages.stream({
-                      model: config.model.name,
-                      // Reduce token limits for follow-up to avoid rate limits
-                      max_tokens: Math.min(2000, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 2000),
-                      system: personaFollowUpPrompt,
-                      messages: this.conversation.getConversationHistory(),
-                    });
-                    
-                    let hasReceivedContent = false;
-                    let isStreamActive = true;
-                    let displayBuffer = ""; // For immediate display
-                    let lastActivityTime = Date.now();
-                    
-                    // Set up stream timeout detection with longer duration
-                    const streamTimeout = setInterval(() => {
-                      const inactivityDuration = Date.now() - lastActivityTime;
-                      if (isStreamActive && inactivityDuration > 10000) { // 10 second inactivity check
-                        console.warn(`Follow-up stream inactivity detected (${inactivityDuration}ms)`);
-                        
-                        if (inactivityDuration > 30000) { // 30 second hard timeout
-                          console.error("Follow-up stream timed out completely");
-                          isStreamActive = false;
-                          clearInterval(streamTimeout);
-                        }
-                      }
-                    }, 5000); // Check every 5 seconds
-                    
-                    try {
-                      for await (const followUpChunk of followUpStream) {
-                        lastActivityTime = Date.now(); // Update activity timestamp
-                        
-                        if (followUpChunk.type === 'content_block_delta' && followUpChunk.delta.type === 'text_delta') {
-                          hasReceivedContent = true;
-                          
-                          // Add to both the display buffer and full response buffer
-                          const chunkText = followUpChunk.delta.text;
-                          displayBuffer += chunkText;
-                          currentResponseBuffer += chunkText;
-                          
-                          // Send content in reasonable chunks to avoid UI lag
-                          if (displayBuffer.length > 50 || displayBuffer.includes("\n")) {
-                            const shouldContinue = await sendChunk(displayBuffer);
-                            if (!shouldContinue) {
-                              console.log('Streaming stopped during follow-up response');
-                              return;
-                            }
-                            displayBuffer = "";
-                          }
-                        } else if (followUpChunk.type === 'content_block_start' && followUpChunk.content_block.type === 'text') {
-                          hasReceivedContent = true;
-                        } else if (followUpChunk.type === 'message_stop') {
-                          // Message completion - send any remaining display content
-                          if (displayBuffer.length > 0) {
-                            const shouldContinue = await sendChunk(displayBuffer);
-                            if (!shouldContinue) {
-                              console.log('Streaming stopped during follow-up response');
-                              return;
-                            }
-                            displayBuffer = "";
-                          }
-                          console.log('Follow-up message completed successfully');
-                          successfulCompletion = true;
-                          
-                          // Store this as our best response
-                          bestResponseBuffer = currentResponseBuffer;
-                          break;
-                        }
-                      }
-                      
-                      // If we got here without errors and received content
-                      if (hasReceivedContent) {
-                        // Check if this response is better than previous attempts
-                        if (currentResponseBuffer.length > bestResponseBuffer.length) {
-                          bestResponseBuffer = currentResponseBuffer;
-                        }
-                        
-                        // Check if the response appears complete (ends with sentence-ending punctuation)
-                        const endsWithPunctuation = /[.!?。？！][\s"']*$/.test(currentResponseBuffer.trim());
-                        const hasReasonableLength = currentResponseBuffer.length > 10;
-                        
-                        if (endsWithPunctuation && hasReasonableLength) {
-                          successfulCompletion = true;
-                        }
-                      }
-                      
-                    } catch (streamError) {
-                      console.error("Follow-up stream processing error:", streamError);
-                      
-                      // Check if it's a rate limit error and propagate it
-                      if (streamError instanceof Error && 
-                          (streamError.message.includes('rate limit') || 
-                           (streamError as any)?.type === 'rate_limit_error' ||
-                           streamError.message.includes('429'))) {
-                        // Rethrow rate limit errors to be handled at a higher level
-                        throw streamError;
-                      }
-                      
-                      // Store this partial response if it's the best we have so far
-                      if (currentResponseBuffer.length > bestResponseBuffer.length) {
-                        bestResponseBuffer = currentResponseBuffer;
-                      }
-                    } finally {
-                      isStreamActive = false;
-                      clearInterval(streamTimeout);
-                      
-                      // If we didn't receive any content or didn't complete successfully, retry
-                      if (!hasReceivedContent || !successfulCompletion) {
-                        retryCount++;
-                      } else {
-                        break; // Success, exit retry loop
-                      }
-                    }
-                  } catch (innerError) {
-                    console.error("Error creating follow-up stream:", innerError);
-                    retryCount++;
-                  }
-                }
-                
-                // If we have a successful response, add it to conversation history
-                if (bestResponseBuffer) {
-                  // For non-default personas, add persona prefix if needed
-                  if (currentPersona.id !== 'yitam' && !bestResponseBuffer.startsWith(currentPersona.displayName)) {
-                    bestResponseBuffer = `${currentPersona.displayName}: ${bestResponseBuffer}`;
-                  }
-                  
-                  // Log the response content for debugging
-                  console.log(`Follow-up response content (${bestResponseBuffer.length} chars): "${bestResponseBuffer.substring(0, 100)}${bestResponseBuffer.length > 100 ? '...' : ''}"`);
-                  
-                  // Check if the response is empty or too short
-                  if (bestResponseBuffer.trim().length < 20) {
-                    console.warn("Follow-up response is too short or empty, forcing a new response");
-                    // Force a new response with a more specific prompt
-                    try {
-                      const forcedPersonaPrompt = getPersonaSystemPrompt(
-                        SystemPrompts.FOLLOW_UP + "\n\nYOU MUST GENERATE A DETAILED RESPONSE. EMPTY OR SHORT RESPONSES ARE UNACCEPTABLE.", 
-                        currentPersona
-                      );
-                      
-                      const forceResponse = await this.anthropic.messages.create({
-                        model: config.model.name,
-                        max_tokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000),
-                        system: forcedPersonaPrompt,
-                        messages: this.conversation.getConversationHistory(),
-                        temperature: 1.0, // Increase temperature to encourage different response
-                      });
-                      
-                      if (forceResponse.content[0]?.type === "text") {
-                        let forcedText = forceResponse.content[0].text.trim();
-                        
-                        // For non-default personas, add persona prefix if needed
-                        if (currentPersona.id !== 'yitam' && !forcedText.startsWith(currentPersona.displayName)) {
-                          forcedText = `${currentPersona.displayName}: ${forcedText}`;
-                        }
-                        
-                        if (forcedText.length > bestResponseBuffer.trim().length) {
-                          console.log(`Using forced follow-up response (${forcedText.length} chars): "${forcedText.substring(0, 100)}${forcedText.length > 100 ? '...' : ''}"`);
-                          bestResponseBuffer = forcedText;
-                        }
-                      }
-                    } catch (error) {
-                      console.error("Error forcing new follow-up response:", error);
-                    }
-                  }
-                  
-                  this.conversation.addAssistantMessage(bestResponseBuffer);
-                  console.log(`Added follow-up response to history (${bestResponseBuffer.length} chars)`);
-                }
-                
-                // If we have partial content but no successful completion, check if we can use the best response
-                if (!successfulCompletion && bestResponseBuffer.length > 0) {
-                  console.log("Using best partial response after all retries");
-                  
-                  // Apply a simple sentence completion heuristic if it was cut off mid-sentence
-                  const lastSentenceBreak = bestResponseBuffer.search(/[.!?。？！][^.!?。？！]*$/);
-                  
-                  if (lastSentenceBreak !== -1) {
-                    // Get the completed portion up to the last sentence end
-                    const completedPortion = bestResponseBuffer.substring(0, lastSentenceBreak + 1);
-                    
-                    // If we have a significant completed portion
-                    if (completedPortion.length > bestResponseBuffer.length * 0.7) {
-                      // Send a clean, complete response with just the full sentences
-                      const shouldContinue = await sendChunk("\n\n[Continuing with complete information]\n" + completedPortion);
-                      if (!shouldContinue) {
-                        console.log('Streaming stopped during follow-up response');
-                        return;
-                      }
-                    }
-                  }
-                }
-                
-                console.timeEnd('follow-up-response');
-              } catch (followUpError) {
-                console.error("Error in follow-up response:", followUpError);
-                console.timeEnd('follow-up-response');
-              }
-            }
+
+            // Add tool interactions to conversation history
+            this.conversation.addToolUseMessage(toolUse.id, toolUse.name, toolUse.input);
+            this.conversation.addToolResultMessage(toolUse.id, toolResult.content);
+
+            console.log(`Added tool call and result to history for ${toolUse.name}`);
+          } catch (toolError) {
+            console.error(`Error handling tool call ${toolUseId}:`, toolError);
+            const errorMessage = `\n\nError executing tool: ${String(toolError instanceof Error ? toolError.message : String(toolError)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}\n\n`;
+            const shouldContinue = await callback(errorMessage);
+            if (!shouldContinue) return;
           }
         }
-      } catch (streamProcessingError: any) {
-        // Handle errors during stream processing
-        console.error("Error processing stream:", streamProcessingError);
-        
-        // Check for credit balance error
-        if (streamProcessingError?.error?.error?.message?.toLowerCase().includes('credit balance') ||
-            streamProcessingError?.message?.toLowerCase().includes('credit balance')) {
-          const errorMessage = {
-            type: 'credit_balance',
-            message: 'Số dư tín dụng API Anthropic của bạn quá thấp. Vui lòng truy cập Kế hoạch & Thanh toán để nâng cấp hoặc mua thêm tín dụng.'
-          };
-          const shouldContinue = await callback(JSON.stringify(errorMessage));
-          if (!shouldContinue) return;
-        } 
-        // Check for rate limit error
-        else if (streamProcessingError?.message?.includes('rate limit') || 
-                 streamProcessingError?.type === 'rate_limit_error' ||
-                 streamProcessingError?.message?.includes('429')) {
-          const errorMessage = {
-            type: 'rate_limit',
-            message: 'Bạn đã gửi quá nhiều yêu cầu. Vui lòng đợi một lát rồi thử lại.'
-          };
-          const shouldContinue = await callback(JSON.stringify(errorMessage));
-          if (!shouldContinue) return;
-        }
-        // Check for overloaded error
-        else if (streamProcessingError?.error?.error?.type === 'overloaded_error' ||
-                 streamProcessingError?.message?.includes('Overloaded')) {
-          const errorMessage = {
-            type: 'overloaded',
-            message: 'Dịch vụ AI hiện đang quá tải. Đây có thể là vấn đề từ nhà cung cấp dịch vụ LLM API. Vui lòng thử lại sau ít phút.'
-          };
-          const shouldContinue = await callback(JSON.stringify(errorMessage));
-          if (!shouldContinue) return;
-        }
-        // Default error message
-        else {
-          const errorMessage = {
-            type: 'other',
-            message: 'Xin lỗi, đã xảy ra lỗi khi xử lý phản hồi. Vui lòng thử lại.'
-          };
-          const shouldContinue = await callback(JSON.stringify(errorMessage));
-          if (!shouldContinue) return;
+
+        // If we had tool calls, generate a follow-up response
+        try {
+          console.time('follow-up-response');
+
+          // Add delay before follow-up to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
+
+          // Update system prompt for follow-up based on persona
+          const personaFollowUpPrompt = getPersonaSystemPrompt(SystemPrompts.FOLLOW_UP, currentPersona);
+
+          const followUpMessages: LLMMessage[] = [
+            { role: 'system', content: personaFollowUpPrompt },
+            ...this.conversation.getConversationHistory().map(msg => ({
+              role: msg.role as 'user' | 'assistant',
+              content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+            }))
+          ];
+
+          let followUpResponse = "";
+
+          await this.llmService.generateStreamingResponse(
+            followUpMessages,
+            async (chunk) => {
+              if (chunk.type === 'text' && chunk.content) {
+                followUpResponse += chunk.content;
+                return await sendChunk(chunk.content);
+              } else if (chunk.type === 'error') {
+                console.error('Follow-up streaming error:', chunk.error);
+                return false;
+              }
+              return true;
+            },
+            {
+              model: config.model.name,
+              maxTokens: Math.min(2000, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 2000)
+            }
+          );
+
+          // Add follow-up response to conversation history if we got one
+          if (followUpResponse) {
+            // For non-default personas, add persona prefix if needed
+            if (currentPersona.id !== 'yitam' && !followUpResponse.startsWith(currentPersona.displayName)) {
+              followUpResponse = `${currentPersona.displayName}: ${followUpResponse}`;
+            }
+
+            this.conversation.addAssistantMessage(followUpResponse);
+            console.log(`Added follow-up response to history (${followUpResponse.length} chars)`);
+          }
+
+          console.timeEnd('follow-up-response');
+        } catch (followUpError) {
+          console.error("Error in follow-up response:", followUpError);
+          console.timeEnd('follow-up-response');
         }
       }
-    } catch (error: any) {
-      console.error("Error processing query with streaming:", error);
-      const errorMessage = {
-        type: 'other',
-        message: "Kính thưa quý khách, hệ thống đang gặp trục trặc kỹ thuật khi xử lý yêu cầu. Xin quý khách vui lòng thử lại sau. Chúng tôi chân thành xin lỗi vì sự bất tiện này."
-      };
+
+    } catch (streamProcessingError: any) {
+      // Handle errors during stream processing
+      console.error("Error processing stream:", streamProcessingError);
+
+      let errorMessage: any;
+
+      // Check for LLM-specific errors
+      if (streamProcessingError instanceof LLMRateLimitError) {
+        errorMessage = {
+          type: 'rate_limit',
+          message: 'Bạn đã gửi quá nhiều yêu cầu. Vui lòng đợi một lát rồi thử lại.'
+        };
+      } else if (streamProcessingError instanceof LLMQuotaExceededError) {
+        errorMessage = {
+          type: 'credit_balance',
+          message: `Số dư tín dụng ${streamProcessingError.provider} của bạn quá thấp. Vui lòng truy cập Kế hoạch & Thanh toán để nâng cấp hoặc mua thêm tín dụng.`
+        };
+      } else if (streamProcessingError instanceof LLMError) {
+        errorMessage = {
+          type: 'llm_error',
+          message: `Lỗi từ ${streamProcessingError.provider}: ${streamProcessingError.message}`
+        };
+      }
+      // Legacy error handling for backward compatibility
+      else if (streamProcessingError?.error?.error?.message?.toLowerCase().includes('credit balance') ||
+               streamProcessingError?.message?.toLowerCase().includes('credit balance')) {
+        errorMessage = {
+          type: 'credit_balance',
+          message: 'Số dư tín dụng API của bạn quá thấp. Vui lòng truy cập Kế hoạch & Thanh toán để nâng cấp hoặc mua thêm tín dụng.'
+        };
+      } else if (streamProcessingError?.message?.includes('rate limit') ||
+                 streamProcessingError?.type === 'rate_limit_error' ||
+                 streamProcessingError?.message?.includes('429')) {
+        errorMessage = {
+          type: 'rate_limit',
+          message: 'Bạn đã gửi quá nhiều yêu cầu. Vui lòng đợi một lát rồi thử lại.'
+        };
+      } else if (streamProcessingError?.error?.error?.type === 'overloaded_error' ||
+                 streamProcessingError?.message?.includes('Overloaded')) {
+        errorMessage = {
+          type: 'overloaded',
+          message: 'Dịch vụ AI hiện đang quá tải. Đây có thể là vấn đề từ nhà cung cấp dịch vụ LLM API. Vui lòng thử lại sau ít phút.'
+        };
+      } else {
+        errorMessage = {
+          type: 'other',
+          message: 'Xin lỗi, đã xảy ra lỗi khi xử lý phản hồi. Vui lòng thử lại.'
+        };
+      }
+
       const shouldContinue = await callback(JSON.stringify(errorMessage));
       if (!shouldContinue) return;
     }
@@ -812,10 +681,10 @@ export class Query {
       // Create the domain list for the system prompt
       const domainOptions = availableDomains.map(domain => `- ${domain}`).join('\n');
       
-      const domainResponse = await this.anthropic.messages.create({
-        model: "claude-3-haiku-20240307",  // Use a smaller, faster model
-        max_tokens: 50,  // Small token limit for domain extraction
-        system: `You are a domain classification expert specialized in traditional Eastern medicine, philosophy, and spiritual practices. Your task is to identify the relevant knowledge domains that a query belongs to.
+      const domainMessages: LLMMessage[] = [
+        {
+          role: 'system',
+          content: `You are a domain classification expert specialized in traditional Eastern medicine, philosophy, and spiritual practices. Your task is to identify the relevant knowledge domains that a query belongs to.
 Respond ONLY with a comma-separated list of domains (no explanation). Choose from these domains:
 ${domainOptions}
 
@@ -823,27 +692,34 @@ Only include domains that are directly relevant to the query. Return between 1-3
 Example responses:
 "đông y, nội kinh"
 "lão tử, dịch lý"
-"đạo phật, thích nhất hạnh"`,
-        messages: [{
-          role: "user",
+"đạo phật, thích nhất hạnh"`
+        },
+        {
+          role: 'user',
           content: `What domains does this query belong to? "${query}"`
-        }]
-      });
+        }
+      ];
+
+      const domainResponse = await this.llmService.generateResponse(
+        domainMessages,
+        {
+          model: "claude-3-haiku-20240307",  // Use a smaller, faster model
+          maxTokens: 50  // Small token limit for domain extraction
+        }
+      );
       
       console.timeEnd('domain-detection');
 
-      if (domainResponse.content[0]?.type === "text") {
-        const domainsText = domainResponse.content[0].text.trim();
-        if (domainsText && domainsText.length > 0) {
-          // Split on commas and clean up any extra spacing
-          const domains = domainsText.split(',').map(d => d.trim()).filter(Boolean);
-          
-          // Validate that all returned domains are in our available domains list
-          const validDomains = domains.filter(domain => availableDomains.includes(domain));
-          
-          console.log(`Detected domains for query: ${validDomains.join(', ')}`);
-          return validDomains;
-        }
+      if (domainResponse.content && domainResponse.content.trim().length > 0) {
+        const domainsText = domainResponse.content.trim();
+        // Split on commas and clean up any extra spacing
+        const domains = domainsText.split(',').map(d => d.trim()).filter(Boolean);
+
+        // Validate that all returned domains are in our available domains list
+        const validDomains = domains.filter(domain => availableDomains.includes(domain));
+
+        console.log(`Detected domains for query: ${validDomains.join(', ')}`);
+        return validDomains;
       }
       return [];
     } catch (error) {

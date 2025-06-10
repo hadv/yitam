@@ -10,8 +10,8 @@ export class MCPClient {
   private mcpServer: MCPServer;
   private tool: Tool;
   private query: Query;
-  
-  constructor(apiKey: string) {
+
+  constructor(apiKey: string, providerType?: string) {
     this.conversation = new Conversation();
     this.mcpServer = new MCPServer();
     this.tool = new Tool();
@@ -19,7 +19,8 @@ export class MCPClient {
       apiKey,
       this.conversation,
       this.mcpServer,
-      this.tool
+      this.tool,
+      providerType
     );
   }
 
