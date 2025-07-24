@@ -18,7 +18,14 @@ export const availableDomains = [
   'phong thủy',
   'đạo phật',
   'thích nhất hạnh',
-  'viên minh'
+  'viên minh',
+  'khí công',
+  'kinh dịch',
+  'dịch cân kinh',
+  'thái cực khí công',
+  'bát đoạn cẩm',
+  'ngũ cầm hí',
+  'phí tường trúc'
 ];
 
 /**
@@ -45,7 +52,16 @@ export const domainKeywordMappings: Record<string, string[]> = {
   // Buddhist and spiritual domains
   'đạo phật': ['đạo phật', 'phật giáo', 'phật đà', 'thiền', 'thiền định', 'giới luật', 'tam tạng', 'bát nhã', 'kinh phật'],
   'thích nhất hạnh': ['thích nhất hạnh', 'làng mai', 'chánh niệm', 'thiền hành', 'thiền quán'],
-  'viên minh': ['viên minh', 'giác ngộ', 'tuệ giác', 'định tuệ', 'thiền quán']
+  'viên minh': ['viên minh', 'giác ngộ', 'tuệ giác', 'định tuệ', 'thiền quán'],
+
+  // Martial arts and qigong domains
+  'khí công': ['khí công', 'khí', 'công pháp', 'luyện khí', 'tu luyện', 'nội công', 'ngoại công', 'dưỡng khí'],
+  'kinh dịch': ['kinh dịch', 'dịch kinh', 'chu dịch', 'bát quái', 'quẻ', 'hà đồ', 'lạc thư', 'âm dương'],
+  'dịch cân kinh': ['dịch cân kinh', 'dịch cân', 'cân kinh', 'luyện cân', 'cường cân', 'đạt ma', 'thiếu lâm'],
+  'thái cực khí công': ['thái cực khí công', 'thái cực', 'thái chi', 'thái cực quyền', 'nội gia quyền', 'âm dương thái cực'],
+  'bát đoạn cẩm': ['bát đoạn cẩm', 'bát đoạn', 'đoạn cẩm', 'dưỡng sinh công', 'khí công dưỡng sinh', 'tám đoạn gấm'],
+  'ngũ cầm hí': ['ngũ cầm hí', 'ngũ cầm', 'cầm hí', 'hoa đà', 'ngũ cầm hí thuật', 'động vật quyền'],
+  'phí tường trúc': ['phí tường trúc', 'tường trúc', 'võ thuật', 'nội công tâm pháp', 'võ học', 'quyền thuật']
 };
 
 /**
