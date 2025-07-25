@@ -87,42 +87,7 @@ function TailwindApp() {
   const [sharedConversationInfo, setSharedConversationInfo] = useState<{shareId: string, shareUrl: string} | null>(null);
   const [copySuccess, setCopySuccess] = useState(false);
 
-  // Check if current conversation is shared
-  const checkIfConversationIsShared = useCallback(async (topicId: number) => {
-    if (!user?.email) return;
 
-    try {
-      const result = await sharedConversationService.getOwnedConversations(user.email);
-      if (result.success && result.conversations) {
-        // Find if current topic is in the shared conversations
-        const sharedConv = result.conversations.find(conv =>
-          conv.title === messages.find(m => m.id === 'welcome')?.content ||
-          conv.id === topicId.toString()
-        );
-
-        if (sharedConv) {
-          setSharedConversationInfo({
-            shareId: sharedConv.id,
-            shareUrl: `http://localhost:3001/shared/${sharedConv.id}`
-          });
-        } else {
-          setSharedConversationInfo(null);
-        }
-      }
-    } catch (error) {
-      console.error('Error checking if conversation is shared:', error);
-      setSharedConversationInfo(null);
-    }
-  }, [user?.email, messages]);
-
-  // Check if conversation is shared when topic changes
-  useEffect(() => {
-    if (currentTopicId && messages.length > 1) {
-      checkIfConversationIsShared(currentTopicId);
-    } else {
-      setSharedConversationInfo(null);
-    }
-  }, [currentTopicId, messages.length, checkIfConversationIsShared]);
 
   // Copy shared link to clipboard
   const copySharedLink = async () => {
@@ -201,7 +166,75 @@ function TailwindApp() {
     setMessages,
     setCurrentTopicId
   } = useMessages(socket, user);
-  
+
+  // Check if current conversation is shared
+  const checkIfConversationIsShared = useCallback(async (topicId: number) => {
+    if (!user?.email) return;
+
+    try {
+      const result = await sharedConversationService.getOwnedConversations(user.email);
+      if (result.success && result.conversations) {
+        // Find if current topic is in the shared conversations
+        const sharedConv = result.conversations.find(conv =>
+          conv.title === messages.find(m => m.id === 'welcome')?.content ||
+          conv.id === topicId.toString()
+        );
+
+        if (sharedConv) {
+          setSharedConversationInfo({
+            shareId: sharedConv.id,
+            shareUrl: `http://localhost:3001/shared/${sharedConv.id}`
+          });
+        } else {
+          setSharedConversationInfo(null);
+        }
+      }
+    } catch (error) {
+      console.error('Error checking if conversation is shared:', error);
+      setSharedConversationInfo(null);
+    }
+  }, [user?.email, messages]);
+
+  // Copy shared link to clipboard
+  const copySharedLink = async () => {
+    if (!sharedConversationInfo) return;
+
+    try {
+      await navigator.clipboard.writeText(sharedConversationInfo.shareUrl);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy link:', err);
+    }
+  };
+
+  // Unshare conversation
+  const unshareConversation = async () => {
+    if (!sharedConversationInfo || !user?.email) return;
+
+    try {
+      const result = await sharedConversationService.unshareConversation(
+        sharedConversationInfo.shareId,
+        user.email
+      );
+
+      if (result.success) {
+        setSharedConversationInfo(null);
+      }
+    } catch (error) {
+      console.error('Error unsharing conversation:', error);
+    }
+  };
+
+  // Check if conversation is shared when topic changes
+  useEffect(() => {
+    if (currentTopicId && messages.length > 1) {
+      checkIfConversationIsShared(currentTopicId);
+    } else {
+      setSharedConversationInfo(null);
+    }
+  }, [currentTopicId, messages.length, checkIfConversationIsShared]);
+
   // Message deletion hook
   const {
     messageToDelete,
