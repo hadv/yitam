@@ -89,36 +89,6 @@ function TailwindApp() {
 
 
 
-  // Copy shared link to clipboard
-  const copySharedLink = async () => {
-    if (!sharedConversationInfo) return;
-
-    try {
-      await navigator.clipboard.writeText(sharedConversationInfo.shareUrl);
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy link:', err);
-    }
-  };
-
-  // Unshare conversation
-  const unshareConversation = async () => {
-    if (!sharedConversationInfo || !user?.email) return;
-
-    try {
-      const result = await sharedConversationService.unshareConversation(
-        sharedConversationInfo.shareId,
-        user.email
-      );
-
-      if (result.success) {
-        setSharedConversationInfo(null);
-      }
-    } catch (error) {
-      console.error('Error unsharing conversation:', error);
-    }
-  };
   
   // Get modals state
   const {
