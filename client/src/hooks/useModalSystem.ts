@@ -26,8 +26,8 @@ export const useModalSystem = () => {
   };
 
   // Open manage shared conversations modal
-  const openManageSharedConversations = (ownerId?: string, accessCode?: string) => {
-    openModal('manageSharedConversations', { ownerId, accessCode });
+  const openManageSharedConversations = (ownerId?: string) => {
+    openModal('manageSharedConversations', { ownerId });
   };
   
   // Open a generic confirmation modal
