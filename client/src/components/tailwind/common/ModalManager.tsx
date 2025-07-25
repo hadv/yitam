@@ -32,6 +32,7 @@ interface ModalManagerProps {
   setCurrentTopicId: (topicId?: number) => void;
   confirmDeleteMessage: () => void;
   handleDataDeleted: () => void;
+  onConversationShared?: () => void;
 }
 
 const ModalManager: React.FC<ModalManagerProps> = ({
@@ -47,7 +48,8 @@ const ModalManager: React.FC<ModalManagerProps> = ({
   startNewChat,
   setCurrentTopicId,
   confirmDeleteMessage,
-  handleDataDeleted
+  handleDataDeleted,
+  onConversationShared
 }) => {
   const { activeModals, modalData, closeModal, openModal } = useModal();
 
@@ -181,6 +183,11 @@ const ModalManager: React.FC<ModalManagerProps> = ({
                 ownerId: user?.email, // Regular users only need their email
                 refreshKey: Date.now()
               });
+            }
+
+            // Notify parent component to refresh shared conversation info
+            if (onConversationShared) {
+              onConversationShared();
             }
           }}
         />
