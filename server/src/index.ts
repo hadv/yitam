@@ -25,10 +25,11 @@ const app: Express = express();
 app.use(cors(config.server.cors));
 app.use(express.json());
 
-// Apply access control middleware to all routes except health check and shared conversation viewing
+// Apply access control middleware to all routes except health check, shared conversation viewing, and sharing
 app.use((req, res, next) => {
   if (req.path === '/health' ||
-      (req.path.startsWith('/api/conversations/shared/') && req.method === 'GET')) {
+      (req.path.startsWith('/api/conversations/shared/') && req.method === 'GET') ||
+      (req.path === '/api/conversations/share' && req.method === 'POST')) {
     return next();
   }
   validateAccessCode(req, res, next);

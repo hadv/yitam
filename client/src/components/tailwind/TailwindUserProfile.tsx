@@ -62,7 +62,7 @@ const TailwindUserProfile: React.FC<TailwindUserProfileProps> = ({
       </button>
 
       {/* Dropdown menu */}
-      <div className="absolute right-0 top-full mt-1 w-64 py-1 bg-white rounded-lg shadow-lg border border-[#E6DFD1] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-20">
+      <div className="absolute right-0 top-full mt-1 w-72 py-1 bg-white rounded-lg shadow-lg border border-[#E6DFD1] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-20">
         <button
           onClick={onOpenTopicManager}
           className="w-full flex items-center px-4 py-2 text-sm text-[#5D4A38] hover:bg-[#78A16115] transition-colors"
