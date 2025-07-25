@@ -300,4 +300,61 @@ router.post('/unshare/batch', async (req: Request, res: Response): Promise<void>
   }
 });
 
+// Get cache statistics
+router.get('/cache/stats', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const stats = await sharedConversationService.getCacheStats();
+
+    res.json({
+      success: true,
+      stats
+    });
+
+  } catch (error) {
+    console.error('Error fetching cache stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// Get cache health
+router.get('/cache/health', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const health = await sharedConversationService.getCacheHealth();
+
+    res.json({
+      success: true,
+      health
+    });
+
+  } catch (error) {
+    console.error('Error checking cache health:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// Clear cache (admin endpoint)
+router.delete('/cache/clear', async (req: Request, res: Response): Promise<void> => {
+  try {
+    await sharedConversationService.clearCache();
+
+    res.json({
+      success: true,
+      message: 'Cache cleared successfully'
+    });
+
+  } catch (error) {
+    console.error('Error clearing cache:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
 export default router;

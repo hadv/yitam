@@ -15,6 +15,7 @@ import { validateAccessCode } from './middleware/AccessControl';
 import { verifyRequestSignature } from './utils/crypto';
 import { initializeDatabase } from './db/database';
 import conversationRoutes from './routes/conversations';
+import { redisCache } from './cache/RedisCache';
 
 // Load environment variables
 dotenv.config();
@@ -666,17 +667,37 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
-// Initialize database and start the server
-initializeDatabase()
+// Initialize database and Redis cache, then start the server
+Promise.all([
+  initializeDatabase(),
+  redisCache.connect()
+])
   .then(() => {
-    console.log('Database initialized successfully');
+    console.log('Database and Redis cache initialized successfully');
 
     // Start the server
     server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
+      console.log(`Redis cache status: ${redisCache.isAvailable() ? 'Connected' : 'Disconnected (fallback mode)'}`);
     });
   })
   .catch((error) => {
-    console.error('Failed to initialize database:', error);
-    process.exit(1);
+    console.error('Failed to initialize services:', error);
+    // Start server anyway with degraded functionality
+    server.listen(PORT, () => {
+      console.log(`Server running on port ${PORT} (degraded mode - no Redis cache)`);
+    });
   });
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  await redisCache.disconnect();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received, shutting down gracefully');
+  await redisCache.disconnect();
+  process.exit(0);
+});
