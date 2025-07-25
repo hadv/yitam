@@ -47,9 +47,54 @@ app.use('/api/conversations', conversationRoutes);
 
 // Add public route for shared conversations (serves frontend)
 app.get('/shared/:shareId', (req, res) => {
-  // This should serve the frontend application
-  // For now, redirect to the API endpoint to return JSON data
-  res.redirect(`/api/conversations/shared/${req.params.shareId}`);
+  // Serve a simple HTML page that loads the frontend React app
+  // The React router will handle the /shared/:shareId route
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Shared Conversation - Yitam</title>
+      <style>
+        body {
+          margin: 0;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+          background: #f5f5f5;
+        }
+        .loading {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+          flex-direction: column;
+        }
+        .spinner {
+          border: 4px solid #f3f3f3;
+          border-top: 4px solid #5D4A38;
+          border-radius: 50%;
+          width: 40px;
+          height: 40px;
+          animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="loading">
+        <div class="spinner"></div>
+        <p style="margin-top: 20px; color: #5D4A38;">Loading shared conversation...</p>
+      </div>
+      <script>
+        // Redirect to the frontend application
+        window.location.href = 'http://localhost:3001/shared/${req.params.shareId}';
+      </script>
+    </body>
+    </html>
+  `);
 });
 
 const PORT = config.server.port;
