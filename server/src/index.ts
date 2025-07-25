@@ -15,7 +15,7 @@ import { validateAccessCode } from './middleware/AccessControl';
 import { verifyRequestSignature } from './utils/crypto';
 import { initializeDatabase } from './db/database';
 import conversationRoutes from './routes/conversations';
-import { redisCache } from './cache/RedisCache';
+import CacheFactory from './cache/CacheFactory';
 
 // Load environment variables
 dotenv.config();
@@ -667,37 +667,45 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
-// Initialize database and Redis cache, then start the server
+// Initialize database and cache, then start the server
 Promise.all([
   initializeDatabase(),
-  redisCache.connect()
+  CacheFactory.createCache()
 ])
-  .then(() => {
-    console.log('Database and Redis cache initialized successfully');
+  .then(([, cache]) => {
+    const cacheInfo = CacheFactory.getCacheInfo();
+    console.log('Database and cache initialized successfully');
+    console.log(`Cache type: ${cacheInfo.type} (${cacheInfo.environment} environment)`);
 
     // Start the server
     server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
-      console.log(`Redis cache status: ${redisCache.isAvailable() ? 'Connected' : 'Disconnected (fallback mode)'}`);
+      console.log(`Cache status: ${cache.isAvailable() ? 'Available' : 'Unavailable'} (${cacheInfo.type})`);
     });
   })
   .catch((error) => {
     console.error('Failed to initialize services:', error);
     // Start server anyway with degraded functionality
     server.listen(PORT, () => {
-      console.log(`Server running on port ${PORT} (degraded mode - no Redis cache)`);
+      console.log(`Server running on port ${PORT} (degraded mode - no cache)`);
     });
   });
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully');
-  await redisCache.disconnect();
+  const cache = CacheFactory.getInstance();
+  if (cache) {
+    await cache.disconnect();
+  }
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down gracefully');
-  await redisCache.disconnect();
+  const cache = CacheFactory.getInstance();
+  if (cache) {
+    await cache.disconnect();
+  }
   process.exit(0);
 });

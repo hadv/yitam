@@ -1,9 +1,10 @@
 import { getDatabase, SharedConversation, ShareConversationRequest, ConversationMessage } from '../db/database';
 import { v4 as uuidv4 } from 'uuid';
-import { redisCache } from '../cache/RedisCache';
+import CacheFactory, { CacheInterface } from '../cache/CacheFactory';
 
 export class SharedConversationService {
   private static instance: SharedConversationService;
+  private cache: CacheInterface | null = null;
 
   private constructor() {}
 
@@ -12,6 +13,21 @@ export class SharedConversationService {
       SharedConversationService.instance = new SharedConversationService();
     }
     return SharedConversationService.instance;
+  }
+
+  /**
+   * Get cache instance (lazy initialization)
+   */
+  private async getCache(): Promise<CacheInterface | null> {
+    if (!this.cache) {
+      try {
+        this.cache = await CacheFactory.createCache();
+      } catch (error) {
+        console.error('Failed to initialize cache:', error);
+        return null;
+      }
+    }
+    return this.cache;
   }
 
   /**
@@ -38,6 +54,7 @@ export class SharedConversationService {
 
       const messagesJson = JSON.stringify(request.messages);
 
+      const self = this; // Capture 'this' context
       db.run(
         query,
         [shareId, request.title, messagesJson, request.persona_id, request.user_email, request.owner_id, request.access_code, expiresAt],
@@ -65,7 +82,10 @@ export class SharedConversationService {
           };
 
           // Cache for 1 hour by default
-          await redisCache.setConversation(shareId, conversation, 3600);
+          const cache = await self.getCache();
+          if (cache) {
+            await cache.setConversation(shareId, conversation, 3600);
+          }
 
           console.log(`Created shared conversation with ID: ${shareId}`);
           resolve(shareId);
@@ -79,12 +99,15 @@ export class SharedConversationService {
    */
   public async getSharedConversation(shareId: string): Promise<SharedConversation | null> {
     try {
-      // Try Redis cache first
-      const cached = await redisCache.getConversation(shareId);
+      // Try cache first
+      const cache = await this.getCache();
+      const cached = cache ? await cache.getConversation(shareId) : null;
       if (cached) {
         // Verify it's still active and not expired
         if (!cached.is_active || !cached.is_public) {
-          await redisCache.deleteConversation(shareId);
+          if (cache) {
+            await cache.deleteConversation(shareId);
+          }
           return null;
         }
 
@@ -93,7 +116,9 @@ export class SharedConversationService {
           const now = new Date();
 
           if (now > expirationDate) {
-            await redisCache.deleteConversation(shareId);
+            if (cache) {
+              await cache.deleteConversation(shareId);
+            }
             return null;
           }
         }
@@ -141,7 +166,9 @@ export class SharedConversationService {
             Math.floor((new Date(row.expires_at).getTime() - Date.now()) / 1000) :
             3600; // 1 hour default
 
-          await redisCache.setConversation(shareId, row, Math.max(ttl, 60)); // Minimum 1 minute
+          if (cache) {
+            await cache.setConversation(shareId, row, Math.max(ttl, 60)); // Minimum 1 minute
+          }
 
           // Increment view count
           this.incrementViewCount(shareId).catch(console.error);
@@ -313,6 +340,7 @@ export class SharedConversationService {
           WHERE id = ?
         `;
 
+        const self = this; // Capture 'this' context
         db.run(updateQuery, [shareId], async function(err) {
           if (err) {
             console.error('Error unsharing conversation:', err);
@@ -320,8 +348,11 @@ export class SharedConversationService {
             return;
           }
 
-          // Remove from Redis cache
-          await redisCache.deleteConversation(shareId);
+          // Remove from cache
+          const cache = await self.getCache();
+          if (cache) {
+            await cache.deleteConversation(shareId);
+          }
 
           console.log(`Conversation ${shareId} unshared successfully`);
           resolve(this.changes > 0);
@@ -371,11 +402,31 @@ export class SharedConversationService {
   }
 
   /**
-   * Get Redis cache statistics
+   * Get cache statistics
    */
   public async getCacheStats(): Promise<any> {
     try {
-      return await redisCache.getStats();
+      const cache = await this.getCache();
+      if (cache) {
+        const stats = await cache.getStats();
+        const cacheInfo = CacheFactory.getCacheInfo();
+        return {
+          ...stats,
+          cacheType: cacheInfo.type,
+          environment: cacheInfo.environment
+        };
+      } else {
+        return {
+          totalKeys: 0,
+          memoryUsage: '0B',
+          hitCount: 0,
+          missCount: 0,
+          hitRate: 0,
+          uptime: 0,
+          cacheType: 'none',
+          status: 'unavailable'
+        };
+      }
     } catch (error) {
       console.error('Error getting cache stats:', error);
       return {
@@ -385,7 +436,9 @@ export class SharedConversationService {
         missCount: 0,
         hitRate: 0,
         uptime: 0,
-        status: 'unavailable'
+        cacheType: 'error',
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
   }
@@ -395,22 +448,46 @@ export class SharedConversationService {
    */
   public async clearCache(): Promise<void> {
     try {
-      await redisCache.clearAll();
-      console.log('Cache cleared successfully');
+      const cache = await this.getCache();
+      if (cache) {
+        await cache.clearAll();
+        console.log('Cache cleared successfully');
+      } else {
+        console.log('No cache available to clear');
+      }
     } catch (error) {
       console.error('Error clearing cache:', error);
     }
   }
 
   /**
-   * Check Redis health
+   * Check cache health
    */
   public async getCacheHealth(): Promise<any> {
     try {
-      return await redisCache.healthCheck();
+      const cache = await this.getCache();
+      if (cache) {
+        const health = await cache.healthCheck();
+        const cacheInfo = CacheFactory.getCacheInfo();
+        return {
+          ...health,
+          cacheType: cacheInfo.type,
+          environment: cacheInfo.environment
+        };
+      } else {
+        return {
+          status: 'unhealthy',
+          error: 'No cache available',
+          cacheType: 'none'
+        };
+      }
     } catch (error) {
       console.error('Error checking cache health:', error);
-      return { status: 'unhealthy', error: 'Health check failed' };
+      return {
+        status: 'unhealthy',
+        error: 'Health check failed',
+        cacheType: 'error'
+      };
     }
   }
 
