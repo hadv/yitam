@@ -123,13 +123,14 @@ const TailwindManageSharedConversations: React.FC<ManageSharedConversationsProps
     });
   };
 
-  const copyShareUrl = (shareId: string) => {
-    const url = `${window.location.origin}/shared/${shareId}`;
-    navigator.clipboard.writeText(url).then(() => {
-      alert('Share URL copied to clipboard!');
-    }).catch(() => {
-      alert('Failed to copy URL');
-    });
+  const copyShareUrl = async (shareId: string) => {
+    const url = `http://localhost:3001/shared/${shareId}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      // Could add a toast notification here instead of alert
+    } catch (err) {
+      console.error('Failed to copy URL:', err);
+    }
   };
 
   const activeConversations = conversations.filter(c => c.is_active);

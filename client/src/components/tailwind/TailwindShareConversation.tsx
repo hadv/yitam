@@ -6,6 +6,7 @@ interface ShareConversationProps {
   topicId: number;
   onClose: () => void;
   onManageShared?: () => void;
+  onConversationShared?: () => void; // Callback when conversation is successfully shared
 }
 
 interface ConversationMessage {
@@ -16,11 +17,12 @@ interface ConversationMessage {
   persona_id?: string;
 }
 
-const TailwindShareConversation: React.FC<ShareConversationProps> = ({ topicId, onClose, onManageShared }) => {
+const TailwindShareConversation: React.FC<ShareConversationProps> = ({ topicId, onClose, onManageShared, onConversationShared }) => {
   const [isSharing, setIsSharing] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expirationDays, setExpirationDays] = useState<number>(30);
+  const [copySuccess, setCopySuccess] = useState(false);
 
   const handleShare = async () => {
     try {
@@ -67,6 +69,11 @@ const TailwindShareConversation: React.FC<ShareConversationProps> = ({ topicId, 
       }
 
       setShareUrl(result.shareUrl!);
+
+      // Notify parent that conversation was shared successfully
+      if (onConversationShared) {
+        onConversationShared();
+      }
     } catch (err) {
       console.error('Error sharing conversation:', err);
       setError(err instanceof Error ? err.message : 'Failed to share conversation');
@@ -80,8 +87,8 @@ const TailwindShareConversation: React.FC<ShareConversationProps> = ({ topicId, 
 
     try {
       await navigator.clipboard.writeText(shareUrl);
-      // You could add a toast notification here
-      alert('Link đã được sao chép vào clipboard!');
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000); // Hide after 2 seconds
     } catch (err) {
       console.error('Failed to copy to clipboard:', err);
       // Fallback for older browsers
@@ -91,7 +98,8 @@ const TailwindShareConversation: React.FC<ShareConversationProps> = ({ topicId, 
       textArea.select();
       document.execCommand('copy');
       document.body.removeChild(textArea);
-      alert('Link đã được sao chép vào clipboard!');
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
     }
   };
 
@@ -180,9 +188,13 @@ const TailwindShareConversation: React.FC<ShareConversationProps> = ({ topicId, 
               />
               <button
                 onClick={copyToClipboard}
-                className="px-4 py-2 bg-[#5D4A38] text-white rounded-lg hover:bg-[#4A3A2A] transition-colors text-sm"
+                className={`px-4 py-2 rounded-lg transition-colors text-sm ${
+                  copySuccess
+                    ? 'bg-green-500 text-white'
+                    : 'bg-[#5D4A38] text-white hover:bg-[#4A3A2A]'
+                }`}
               >
-                Sao chép
+                {copySuccess ? '✓ Đã sao chép' : 'Sao chép'}
               </button>
             </div>
           </div>
@@ -200,9 +212,13 @@ const TailwindShareConversation: React.FC<ShareConversationProps> = ({ topicId, 
           <div className="flex gap-3">
             <button
               onClick={copyToClipboard}
-              className="flex-1 bg-[#5D4A38] text-white px-4 py-2 rounded-lg hover:bg-[#4A3A2A] transition-colors"
+              className={`flex-1 px-4 py-2 rounded-lg transition-colors ${
+                copySuccess
+                  ? 'bg-green-500 text-white'
+                  : 'bg-[#5D4A38] text-white hover:bg-[#4A3A2A]'
+              }`}
             >
-              Sao chép liên kết
+              {copySuccess ? '✓ Đã sao chép liên kết' : 'Sao chép liên kết'}
             </button>
             {onManageShared && (
               <button
