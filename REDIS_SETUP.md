@@ -6,23 +6,23 @@ This document explains how to set up and use the Redis-based server-side caching
 
 ### Development Environment
 
-1. **Start Redis using Docker Compose:**
-   ```bash
-   docker-compose -f docker-compose.dev.yml up -d
-   ```
+**Default (No Redis Required):**
+```bash
+cd server
+npm run dev
+```
+The server uses in-memory cache by default - no setup required!
 
-2. **Verify Redis is running:**
-   ```bash
-   docker ps | grep redis
-   ```
+**Optional Redis Testing:**
+```bash
+# Start Redis (optional)
+docker run -d --name redis-dev -p 6379:6379 redis:7-alpine
 
-3. **Start the server:**
-   ```bash
-   cd server
-   npm run dev
-   ```
+# Start server with Redis
+REDIS_URL=redis://localhost:6379 npm run dev
+```
 
-The server will automatically connect to Redis and fall back gracefully if Redis is unavailable.
+The server will automatically detect and use Redis when available, or fall back to in-memory cache.
 
 ### Production Environment
 
@@ -66,10 +66,17 @@ Conversations are automatically removed from cache when:
 
 ## 🛠️ Management Tools
 
-### Redis Commander (Development)
+### Redis Commander (Optional)
 
-Access the Redis web interface at: http://localhost:8081
+If using Redis, you can optionally run Redis Commander for web interface:
 
+```bash
+docker run -d --name redis-commander -p 8081:8081 \
+  --env REDIS_HOSTS=local:host.docker.internal:6379 \
+  rediscommander/redis-commander:latest
+```
+
+Access at: http://localhost:8081
 - View all cached data
 - Monitor memory usage
 - Execute Redis commands

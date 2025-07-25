@@ -18,12 +18,11 @@ The server will automatically use in-memory RAM cache. Perfect for development -
 If you want to test Redis functionality:
 
 ```bash
-# Start Redis using Docker
-docker-compose -f docker-compose.dev.yml up -d
+# Start Redis using Docker (you can use any Redis setup)
+docker run -d --name redis-dev -p 6379:6379 redis:7-alpine
 
-# Start the server (will auto-detect and use Redis)
-cd server
-npm run dev
+# Set Redis URL and start the server
+REDIS_URL=redis://localhost:6379 npm run dev
 ```
 
 ## 🎯 Cache Selection Logic
@@ -154,8 +153,8 @@ curl http://localhost:5001/api/conversations/cache/health
 
 ### Test Redis Cache
 ```bash
-# Start Redis
-docker-compose -f docker-compose.dev.yml up -d
+# Start Redis (simple Docker command)
+docker run -d --name redis-dev -p 6379:6379 redis:7-alpine
 
 # Set Redis URL and start server
 REDIS_URL=redis://localhost:6379 npm run dev
@@ -170,7 +169,7 @@ curl http://localhost:5001/api/conversations/cache/health
 REDIS_URL=redis://localhost:6379 npm run dev
 
 # Stop Redis while server is running
-docker-compose -f docker-compose.dev.yml down
+docker stop redis-dev
 
 # Server continues with memory cache fallback
 ```
