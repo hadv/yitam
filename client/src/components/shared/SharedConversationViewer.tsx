@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useSharedConversationCache } from '../../contexts/SharedConversationCacheContext';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import TailwindToolCallParser from '../tailwind/TailwindToolCallParser';
 
 interface ConversationMessage {
   id: string;
@@ -215,11 +214,8 @@ const SharedConversationViewer: React.FC = () => {
                 >
                   <div className="break-words">
                     {message.role === 'assistant' ? (
-                      <div className="prose prose-sm max-w-none prose-headings:my-2 prose-headings:font-semibold prose-p:my-2 prose-ul:my-2 prose-ul:pl-6 prose-ol:my-2 prose-ol:pl-6 prose-li:my-1 prose-code:bg-gray-200 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono prose-pre:bg-gray-200 prose-pre:p-4 prose-pre:rounded-lg prose-pre:my-2 prose-pre:overflow-x-auto prose-pre:code:bg-transparent prose-pre:code:p-0">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {message.content}
-                        </ReactMarkdown>
-                      </div>
+                      // Use the same advanced parser as the main app for full markdown and tool call support
+                      <TailwindToolCallParser text={message.content} />
                     ) : (
                       <div className="whitespace-pre-wrap">
                         {message.content}
