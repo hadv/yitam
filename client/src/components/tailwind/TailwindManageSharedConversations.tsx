@@ -79,11 +79,7 @@ const TailwindManageSharedConversations: React.FC<ManageSharedConversationsProps
         await fetchOwnedConversations();
         setSelectedConversations(new Set());
         
-        if (result.successful && result.failed) {
-          alert(`${result.successful} conversations unshared successfully, ${result.failed} failed`);
-        } else {
-          alert('Conversations unshared successfully');
-        }
+        // Conversations unshared successfully - no alert needed
       } else {
         setError(result.error || 'Failed to unshare conversations');
       }
@@ -102,7 +98,7 @@ const TailwindManageSharedConversations: React.FC<ManageSharedConversationsProps
       if (result.success) {
         // Refresh the list
         await fetchOwnedConversations();
-        alert('Conversation unshared successfully');
+        // Conversation unshared successfully - no alert needed
       } else {
         setError(result.error || 'Failed to unshare conversation');
       }

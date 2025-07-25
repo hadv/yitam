@@ -142,12 +142,18 @@ function TailwindApp() {
     if (!user?.email) return;
 
     try {
+      // Get the current topic from database to get its title
+      const topic = await db.topics.get(topicId);
+      if (!topic) {
+        setSharedConversationInfo(null);
+        return;
+      }
+
       const result = await sharedConversationService.getOwnedConversations(user.email);
       if (result.success && result.conversations) {
-        // Find if current topic is in the shared conversations
+        // Find if current topic is in the shared conversations by matching title
         const sharedConv = result.conversations.find(conv =>
-          conv.title === messages.find(m => m.id === 'welcome')?.content ||
-          conv.id === topicId.toString()
+          conv.title === topic.title && conv.is_active
         );
 
         if (sharedConv) {
@@ -163,7 +169,7 @@ function TailwindApp() {
       console.error('Error checking if conversation is shared:', error);
       setSharedConversationInfo(null);
     }
-  }, [user?.email, messages]);
+  }, [user?.email]);
 
   // Copy shared link to clipboard
   const copySharedLink = async () => {
