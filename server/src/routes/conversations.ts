@@ -70,7 +70,7 @@ router.post('/share', async (req: Request, res: Response): Promise<void> => {
     res.json({
       success: true,
       shareId,
-      shareUrl: `${req.protocol}://${req.get('host')}/shared/${shareId}`,
+      shareUrl: `http://localhost:3001/shared/${shareId}`,
       unshareUrl: `${req.protocol}://${req.get('host')}/api/conversations/unshare/${shareId}`
     });
 
