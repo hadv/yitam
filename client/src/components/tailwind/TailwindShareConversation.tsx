@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { sharedConversationService } from '../../services/SharedConversationService';
 import db, { Topic, Message } from '../../db/ChatHistoryDB';
+import { useAuth } from '../../hooks/useAuth';
 
 interface ShareConversationProps {
   topicId: number;
@@ -23,6 +24,9 @@ const TailwindShareConversation: React.FC<ShareConversationProps> = ({ topicId, 
   const [error, setError] = useState<string | null>(null);
   const [expirationDays, setExpirationDays] = useState<number>(30);
   const [copySuccess, setCopySuccess] = useState(false);
+
+  // Get user information for ownership tracking
+  const { user } = useAuth();
 
   const handleShare = async () => {
     try {
@@ -61,8 +65,8 @@ const TailwindShareConversation: React.FC<ShareConversationProps> = ({ topicId, 
         expires_in_days: expirationDays > 0 ? expirationDays : undefined
       };
 
-      // Use the cached service to share conversation
-      const result = await sharedConversationService.shareConversation(shareRequest);
+      // Use the cached service to share conversation with user identification
+      const result = await sharedConversationService.shareConversation(shareRequest, user?.email);
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to share conversation');
