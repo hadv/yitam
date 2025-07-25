@@ -73,7 +73,17 @@ const createTables = (): Promise<void> => {
         reject(err);
         return;
       }
-      
+
+      // Add missing columns if they don't exist (migration)
+      if (db) {
+        const addOwnerIdColumn = `ALTER TABLE shared_conversations ADD COLUMN owner_id TEXT`;
+        db.run(addOwnerIdColumn, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            console.error('Error adding owner_id column:', err);
+          }
+        });
+      }
+
       console.log('Database tables created successfully');
       resolve();
     });
