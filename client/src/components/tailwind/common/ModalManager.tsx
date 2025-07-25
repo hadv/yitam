@@ -178,8 +178,7 @@ const ModalManager: React.FC<ModalManagerProps> = ({
             // Refresh the manage shared conversations modal if it's open
             if (isModalActive('manageSharedConversations')) {
               openModal('manageSharedConversations', {
-                ownerId: modalData.manageSharedConversations?.ownerId || user?.email,
-                accessCode: modalData.manageSharedConversations?.accessCode,
+                ownerId: user?.email, // Regular users only need their email
                 refreshKey: Date.now()
               });
             }
@@ -198,7 +197,7 @@ const ModalManager: React.FC<ModalManagerProps> = ({
           key={modalData.manageSharedConversations?.refreshKey || 'default'}
           onClose={() => closeModal('manageSharedConversations')}
           ownerId={modalData.manageSharedConversations?.ownerId}
-          accessCode={modalData.manageSharedConversations?.accessCode}
+          // accessCode is only needed for admin operations, not for regular users
         />
       </Modal>
 
