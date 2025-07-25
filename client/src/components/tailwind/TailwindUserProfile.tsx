@@ -10,6 +10,7 @@ interface TailwindUserProfileProps {
   onOpenStorageSettings?: () => void;
   onOpenPrivacyControls?: () => void;
   onOpenPrivacyPolicy?: () => void;
+  onOpenManageSharedConversations?: () => void;
 }
 
 const TailwindUserProfile: React.FC<TailwindUserProfileProps> = ({
@@ -20,7 +21,8 @@ const TailwindUserProfile: React.FC<TailwindUserProfileProps> = ({
   onOpenDataExportImport,
   onOpenStorageSettings,
   onOpenPrivacyControls,
-  onOpenPrivacyPolicy
+  onOpenPrivacyPolicy,
+  onOpenManageSharedConversations
 }) => {
   const [imageError, setImageError] = useState(false);
   
@@ -60,7 +62,7 @@ const TailwindUserProfile: React.FC<TailwindUserProfileProps> = ({
       </button>
 
       {/* Dropdown menu */}
-      <div className="absolute right-0 top-full mt-1 w-64 py-1 bg-white rounded-lg shadow-lg border border-[#E6DFD1] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-20">
+      <div className="absolute right-0 top-full mt-1 w-72 py-1 bg-white rounded-lg shadow-lg border border-[#E6DFD1] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-20">
         <button
           onClick={onOpenTopicManager}
           className="w-full flex items-center px-4 py-2 text-sm text-[#5D4A38] hover:bg-[#78A16115] transition-colors"
@@ -110,6 +112,17 @@ const TailwindUserProfile: React.FC<TailwindUserProfileProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
             Chính sách quyền riêng tư
+          </button>
+        )}
+        {onOpenManageSharedConversations && (
+          <button
+            onClick={onOpenManageSharedConversations}
+            className="w-full flex items-center px-4 py-2 text-sm text-[#5D4A38] hover:bg-[#78A16115] transition-colors"
+          >
+            <svg className="w-4 h-4 mr-2 text-[#78A161]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+            </svg>
+            Quản lý cuộc trò chuyện đã chia sẻ
           </button>
         )}
         <button
