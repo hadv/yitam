@@ -13,6 +13,8 @@ import { LegalService } from './services/LegalService';
 import { handleLegalDocumentRequest } from './routes/legal';
 import { validateAccessCode } from './middleware/AccessControl';
 import { verifyRequestSignature } from './utils/crypto';
+import { initializeDatabase } from './db/database';
+import conversationRoutes from './routes/conversations';
 
 // Load environment variables
 dotenv.config();
@@ -22,13 +24,17 @@ const app: Express = express();
 app.use(cors(config.server.cors));
 app.use(express.json());
 
-// Apply access control middleware to all routes except health check
+// Apply access control middleware to all routes except health check and shared conversation viewing
 app.use((req, res, next) => {
-  if (req.path === '/health') {
+  if (req.path === '/health' ||
+      (req.path.startsWith('/api/conversations/shared/') && req.method === 'GET')) {
     return next();
   }
   validateAccessCode(req, res, next);
 });
+
+// Add conversation sharing routes (public access)
+app.use('/api/conversations', conversationRoutes);
 
 const PORT = config.server.port;
 
@@ -660,7 +666,17 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
-// Start the server
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-}); 
+// Initialize database and start the server
+initializeDatabase()
+  .then(() => {
+    console.log('Database initialized successfully');
+
+    // Start the server
+    server.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  })
+  .catch((error) => {
+    console.error('Failed to initialize database:', error);
+    process.exit(1);
+  });
