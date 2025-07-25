@@ -76,10 +76,23 @@ const createTables = (): Promise<void> => {
 
       // Add missing columns if they don't exist (migration)
       if (db) {
-        const addOwnerIdColumn = `ALTER TABLE shared_conversations ADD COLUMN owner_id TEXT`;
-        db.run(addOwnerIdColumn, (err) => {
-          if (err && !err.message.includes('duplicate column name')) {
-            console.error('Error adding owner_id column:', err);
+        const migrations = [
+          'ALTER TABLE shared_conversations ADD COLUMN owner_id TEXT',
+          'ALTER TABLE shared_conversations ADD COLUMN access_code TEXT',
+          'ALTER TABLE shared_conversations ADD COLUMN is_active INTEGER DEFAULT 1',
+          'ALTER TABLE shared_conversations ADD COLUMN is_public INTEGER DEFAULT 1',
+          'ALTER TABLE shared_conversations ADD COLUMN view_count INTEGER DEFAULT 0'
+        ];
+
+        migrations.forEach((migration, index) => {
+          if (db) {
+            db.run(migration, (err) => {
+              if (err && !err.message.includes('duplicate column name')) {
+                console.error(`Error running migration ${index + 1}:`, err);
+              } else if (!err) {
+                console.log(`Migration ${index + 1} completed successfully`);
+              }
+            });
           }
         });
       }
