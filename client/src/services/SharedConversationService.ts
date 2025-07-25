@@ -56,13 +56,20 @@ class SharedConversationService {
   /**
    * Share a conversation (create a new shared conversation)
    */
-  async shareConversation(request: ShareConversationRequest): Promise<ShareConversationResponse> {
+  async shareConversation(request: ShareConversationRequest, ownerId?: string): Promise<ShareConversationResponse> {
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      // Add user identification for ownership tracking
+      if (ownerId) {
+        headers['x-user-id'] = ownerId;
+      }
+
       const response = await fetch(`${this.baseUrl}/api/conversations/share`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify(request)
       });
 
