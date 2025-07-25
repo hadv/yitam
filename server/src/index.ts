@@ -25,13 +25,19 @@ const app: Express = express();
 app.use(cors(config.server.cors));
 app.use(express.json());
 
-// Apply access control middleware to all routes except health check, shared conversation viewing, and sharing
+// Apply access control middleware only to specific routes that need it
+// Most conversation management should be available to authenticated users
 app.use((req, res, next) => {
+  // Skip access code validation for:
+  // - Health check
+  // - Viewing shared conversations (public)
+  // - All conversation management (sharing, unsharing, etc.) - users manage their own conversations
   if (req.path === '/health' ||
-      (req.path.startsWith('/api/conversations/shared/') && req.method === 'GET') ||
-      (req.path === '/api/conversations/share' && req.method === 'POST')) {
+      req.path.startsWith('/api/conversations/')) {
     return next();
   }
+
+  // Only require access codes for other sensitive operations
   validateAccessCode(req, res, next);
 });
 
