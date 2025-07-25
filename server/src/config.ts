@@ -40,6 +40,8 @@ export const config = {
         'X-User-Email',
         'X-User-Name',
         'X-User-ID',
+        'x-user-id',
+        'x-access-code',
         'x-api-key'
       ]
     }

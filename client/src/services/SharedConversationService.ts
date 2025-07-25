@@ -299,10 +299,10 @@ class SharedConversationService {
       };
 
       if (ownerId) {
-        headers['X-User-ID'] = ownerId;
+        headers['x-user-id'] = ownerId;
       }
       if (accessCode) {
-        headers['X-Access-Code'] = accessCode;
+        headers['x-access-code'] = accessCode;
       }
 
       const response = await fetch(`${this.baseUrl}/api/conversations/unshare/${shareId}`, {
@@ -346,10 +346,10 @@ class SharedConversationService {
       };
 
       if (ownerId) {
-        headers['X-User-ID'] = ownerId;
+        headers['x-user-id'] = ownerId;
       }
       if (accessCode) {
-        headers['X-Access-Code'] = accessCode;
+        headers['x-access-code'] = accessCode;
       }
 
       const response = await fetch(`${this.baseUrl}/api/conversations/owned`, {
@@ -390,10 +390,10 @@ class SharedConversationService {
       };
 
       if (ownerId) {
-        headers['X-User-ID'] = ownerId;
+        headers['x-user-id'] = ownerId;
       }
       if (accessCode) {
-        headers['X-Access-Code'] = accessCode;
+        headers['x-access-code'] = accessCode;
       }
 
       const response = await fetch(`${this.baseUrl}/api/conversations/unshare/batch`, {
