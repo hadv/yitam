@@ -34,6 +34,7 @@ import { BetaBanner, ApiKeyWarning } from './TailwindBanners';
 // Extracted Components
 import GDPRNotification from './notifications/GDPRNotification';
 import StorageWarningBanner from './notifications/StorageWarningBanner';
+import CacheDebugPanel from '../debug/CacheDebugPanel';
 
 // Utilities
 import { decryptApiKey } from '../../utils/encryption';
@@ -81,16 +82,19 @@ function TailwindApp() {
   const inputRef = useRef<HTMLDivElement>(null);
   const [questionsLimit] = useState(6);
   const [isTopicEditing, setIsTopicEditing] = useState(false);
+  const [showCacheDebug, setShowCacheDebug] = useState(false);
   
   // Get modals state
-  const { 
-    openApiSettings, 
-    openTopicManager, 
-    openDataExportImport, 
-    openStorageSettings, 
-    openPrivacyControls, 
+  const {
+    openApiSettings,
+    openTopicManager,
+    openDataExportImport,
+    openStorageSettings,
+    openPrivacyControls,
     openPrivacyPolicy,
     openMessageDelete,
+    openShareConversation,
+    openManageSharedConversations,
     closeModal
   } = useModalSystem();
   
@@ -142,6 +146,19 @@ function TailwindApp() {
     user,
     currentTopicId
   );
+
+  // Cache debug panel keyboard shortcut (Ctrl+Shift+C)
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.shiftKey && event.key === 'C') {
+        event.preventDefault();
+        setShowCacheDebug(prev => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
   
   // Setup storage window functions
   useStorageWindowFunctions(user?.email);
@@ -318,6 +335,7 @@ function TailwindApp() {
                   onOpenStorageSettings={openStorageSettings}
                   onOpenPrivacyControls={openPrivacyControls}
                   onOpenPrivacyPolicy={openPrivacyPolicy}
+                  onOpenManageSharedConversations={() => openManageSharedConversations(user?.email)}
                 />
                 
                 {/* GDPR data deleted notification */}
@@ -346,13 +364,33 @@ function TailwindApp() {
                 </div>
 
                 {/* Scrollable chat area - takes remaining height */}
-                <div 
+                <div
                   className="flex-1 overflow-y-auto my-[10px] pb-[80px] relative bg-white/50 rounded-lg"
                   onScroll={handleChatScroll}
                 >
+                  {/* Conversation header with share button */}
+                  {messages.length > 1 && currentTopicId && (
+                    <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+                      <div className="flex-1">
+                        <h3 className="text-lg font-medium text-[#3A2E22]">Cuộc trò chuyện</h3>
+                        <p className="text-sm text-[#5D4A38]">{messages.length - 1} tin nhắn</p>
+                      </div>
+                      <button
+                        onClick={() => openShareConversation(currentTopicId)}
+                        className="flex items-center px-3 py-2 text-sm text-[#5D4A38] hover:text-[#4A3A2A] hover:bg-gray-100 rounded-md transition-colors"
+                        title="Chia sẻ cuộc trò chuyện"
+                      >
+                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+                        </svg>
+                        Chia sẻ
+                      </button>
+                    </div>
+                  )}
+
                   {/* Chat display */}
                   <div id="yitam-chat-container" className="flex flex-col p-2.5 bg-white rounded-[8px] shadow-[0_1px_3px_rgba(0,0,0,0.1)] chat-messages-container">
-                    <TailwindMessageDisplay 
+                    <TailwindMessageDisplay
                       messages={messages}
                       currentPersonaId={currentPersonaId}
                       onDeleteMessage={(messageId) => {
@@ -414,6 +452,12 @@ function TailwindApp() {
                 setCurrentTopicId={setCurrentTopicId}
                 confirmDeleteMessage={confirmDeleteMessage}
                 handleDataDeleted={handleDataDeleted}
+              />
+
+              {/* Cache Debug Panel */}
+              <CacheDebugPanel
+                isOpen={showCacheDebug}
+                onClose={() => setShowCacheDebug(false)}
               />
             </div>
           </TailwindMessagePersistence>

@@ -9,6 +9,8 @@ import TailwindDataExportImport from '../TailwindDataExportImport';
 import TailwindPrivacyControls from '../TailwindPrivacyControls';
 import TailwindPrivacyPolicy from '../TailwindPrivacyPolicy';
 import TailwindStorageSettings from '../settings/TailwindStorageSettings';
+import TailwindShareConversation from '../TailwindShareConversation';
+import TailwindManageSharedConversations from '../TailwindManageSharedConversations';
 
 // Types
 import { Socket } from 'socket.io-client';
@@ -155,8 +157,39 @@ const ModalManager: React.FC<ModalManagerProps> = ({
         />
       </Modal>
       
+      {/* Share Conversation Modal */}
+      <Modal
+        isOpen={isModalActive('shareConversation')}
+        onClose={() => closeModal('shareConversation')}
+        title="Chia sẻ cuộc trò chuyện"
+        maxWidth="max-w-2xl"
+      >
+        <TailwindShareConversation
+          topicId={modalData.shareConversation?.topicId || 0}
+          onClose={() => closeModal('shareConversation')}
+          onManageShared={() => {
+            closeModal('shareConversation');
+            openModal('manageSharedConversations', {});
+          }}
+        />
+      </Modal>
+
+      {/* Manage Shared Conversations Modal */}
+      <Modal
+        isOpen={isModalActive('manageSharedConversations')}
+        onClose={() => closeModal('manageSharedConversations')}
+        title="Quản lý cuộc trò chuyện đã chia sẻ"
+        maxWidth="max-w-4xl"
+      >
+        <TailwindManageSharedConversations
+          onClose={() => closeModal('manageSharedConversations')}
+          ownerId={modalData.manageSharedConversations?.ownerId}
+          accessCode={modalData.manageSharedConversations?.accessCode}
+        />
+      </Modal>
+
       {/* Message Delete Confirmation Modal */}
-      <MessageDeleteModal 
+      <MessageDeleteModal
         isOpen={isModalActive('messageDelete')}
         messageId={(modalData.messageDelete?.messageId as string) || ''}
         onConfirm={() => {
