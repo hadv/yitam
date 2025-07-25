@@ -29,7 +29,7 @@ export const config = {
           callback(null, true); // Allow all in development
         }
       },
-      methods: ['GET', 'POST'],
+      methods: ['GET', 'POST', 'DELETE'],
       credentials: true,
       allowedHeaders: [
         'Content-Type',
