@@ -169,12 +169,19 @@ const ModalManager: React.FC<ModalManagerProps> = ({
           onClose={() => closeModal('shareConversation')}
           onManageShared={() => {
             closeModal('shareConversation');
-            openModal('manageSharedConversations', { refreshKey: Date.now() });
+            openModal('manageSharedConversations', {
+              ownerId: user?.email,
+              refreshKey: Date.now()
+            });
           }}
           onConversationShared={() => {
             // Refresh the manage shared conversations modal if it's open
             if (isModalActive('manageSharedConversations')) {
-              openModal('manageSharedConversations', { refreshKey: Date.now() });
+              openModal('manageSharedConversations', {
+                ownerId: modalData.manageSharedConversations?.ownerId || user?.email,
+                accessCode: modalData.manageSharedConversations?.accessCode,
+                refreshKey: Date.now()
+              });
             }
           }}
         />
