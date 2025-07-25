@@ -21,11 +21,15 @@ export default defineConfig(({ mode }) => ({
     }] : [])
   ],
   server: {
-    port: 3000,
+    port: 3001,
     proxy: {
       '/socket.io': {
         target: 'http://localhost:5001',
         ws: true,
+      },
+      '/api': {
+        target: 'http://localhost:5001',
+        changeOrigin: true,
       },
     },
     // Override any CSP with a permissive one for development
