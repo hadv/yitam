@@ -30,10 +30,11 @@ app.use(express.json());
 app.use((req, res, next) => {
   // Skip access code validation for:
   // - Health check
-  // - Viewing shared conversations (public)
+  // - Viewing shared conversations (public) - both /shared/ and /api/conversations/shared/
   // - All conversation management (sharing, unsharing, etc.) - users manage their own conversations
   if (req.path === '/health' ||
-      req.path.startsWith('/api/conversations/')) {
+      req.path.startsWith('/api/conversations/') ||
+      req.path.startsWith('/shared/')) {
     return next();
   }
 
@@ -43,6 +44,13 @@ app.use((req, res, next) => {
 
 // Add conversation sharing routes (public access)
 app.use('/api/conversations', conversationRoutes);
+
+// Add public route for shared conversations (serves frontend)
+app.get('/shared/:shareId', (req, res) => {
+  // This should serve the frontend application
+  // For now, redirect to the API endpoint to return JSON data
+  res.redirect(`/api/conversations/shared/${req.params.shareId}`);
+});
 
 const PORT = config.server.port;
 
