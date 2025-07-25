@@ -39,6 +39,7 @@ export const config = {
         'X-Request-Timestamp',
         'X-User-Email',
         'X-User-Name',
+        'X-User-ID',
         'x-api-key'
       ]
     }
