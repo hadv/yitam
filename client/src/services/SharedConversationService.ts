@@ -184,10 +184,65 @@ class SharedConversationService {
   }
 
   /**
-   * Get cache statistics
+   * Get cache statistics from server
    */
-  getCacheStats() {
+  async getCacheStats() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/conversations/cache/stats`);
+      const data = await response.json();
+
+      if (data.success) {
+        return data.stats;
+      } else {
+        console.warn('Failed to get cache stats:', data.error);
+        return this.getLocalCacheStats();
+      }
+    } catch (error) {
+      console.warn('Error fetching server cache stats, using local:', error);
+      return this.getLocalCacheStats();
+    }
+  }
+
+  /**
+   * Get local cache statistics as fallback
+   */
+  private getLocalCacheStats() {
     return sharedConversationCache.getStats();
+  }
+
+  /**
+   * Get cache health from server
+   */
+  async getCacheHealth() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/conversations/cache/health`);
+      const data = await response.json();
+
+      if (data.success) {
+        return data.health;
+      } else {
+        return { status: 'unhealthy', error: data.error };
+      }
+    } catch (error) {
+      return { status: 'unhealthy', error: 'Failed to check cache health' };
+    }
+  }
+
+  /**
+   * Clear server cache
+   */
+  async clearServerCache() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/conversations/cache/clear`, {
+        method: 'DELETE'
+      });
+      const data = await response.json();
+
+      return data.success;
+    } catch (error) {
+      console.error('Error clearing server cache:', error);
+      return false;
+    }
   }
 
   /**

@@ -24,11 +24,18 @@ const CacheDebugPanel: React.FC<CacheDebugPanelProps> = ({ isOpen, onClose }) =>
     exportCacheData
   } = useSharedConversationCache();
 
+  const [serverCacheStats, setServerCacheStats] = useState<any>(null);
+  const [serverCacheHealth, setServerCacheHealth] = useState<any>(null);
+
   useEffect(() => {
     if (isOpen) {
       refreshStats();
+      fetchServerCacheStats();
       // Auto-refresh stats every 2 seconds when panel is open
-      const interval = setInterval(refreshStats, 2000);
+      const interval = setInterval(() => {
+        refreshStats();
+        fetchServerCacheStats();
+      }, 2000);
       setRefreshInterval(interval);
     } else {
       if (refreshInterval) {
@@ -44,9 +51,43 @@ const CacheDebugPanel: React.FC<CacheDebugPanelProps> = ({ isOpen, onClose }) =>
     };
   }, [isOpen, refreshStats]);
 
+  const fetchServerCacheStats = async () => {
+    try {
+      // Import the service dynamically to avoid circular dependencies
+      const { sharedConversationService } = await import('../../services/SharedConversationService');
+
+      const [stats, health] = await Promise.all([
+        sharedConversationService.getCacheStats(),
+        sharedConversationService.getCacheHealth()
+      ]);
+
+      setServerCacheStats(stats);
+      setServerCacheHealth(health);
+    } catch (error) {
+      console.error('Error fetching server cache stats:', error);
+    }
+  };
+
   const handleClearCache = () => {
     clearCache();
     refreshStats();
+  };
+
+  const handleClearServerCache = async () => {
+    try {
+      const { sharedConversationService } = await import('../../services/SharedConversationService');
+      const success = await sharedConversationService.clearServerCache();
+
+      if (success) {
+        alert('Server cache cleared successfully');
+        fetchServerCacheStats();
+      } else {
+        alert('Failed to clear server cache');
+      }
+    } catch (error) {
+      console.error('Error clearing server cache:', error);
+      alert('Error clearing server cache');
+    }
   };
 
   const handleInvalidateConversation = (shareId: string) => {
@@ -87,13 +128,26 @@ const CacheDebugPanel: React.FC<CacheDebugPanelProps> = ({ isOpen, onClose }) =>
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
           <div>
-            <h2 className="text-xl font-semibold text-[#3A2E22]">Global Cache Debug Panel</h2>
-            <div className="flex items-center gap-2 mt-1">
-              <div className={`w-2 h-2 rounded-full ${isGlobalCacheReady ? 'bg-green-500' : 'bg-red-500'}`}></div>
-              <span className="text-sm text-gray-600">
-                {isGlobalCacheReady ? 'Global Cache Ready' : 'Initializing...'}
-              </span>
-              <div className={`ml-2 px-2 py-1 text-xs rounded-full ${
+            <h2 className="text-xl font-semibold text-[#3A2E22]">Server-Side Cache Debug Panel</h2>
+            <div className="flex items-center gap-4 mt-1">
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${isGlobalCacheReady ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <span className="text-sm text-gray-600">
+                  Client: {isGlobalCacheReady ? 'Ready' : 'Initializing...'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${
+                  serverCacheHealth?.status === 'healthy' ? 'bg-green-500' : 'bg-red-500'
+                }`}></div>
+                <span className="text-sm text-gray-600">
+                  Redis: {serverCacheHealth?.status === 'healthy' ? 'Connected' : 'Disconnected'}
+                </span>
+                {serverCacheHealth?.latency && (
+                  <span className="text-xs text-gray-500">({serverCacheHealth.latency}ms)</span>
+                )}
+              </div>
+              <div className={`px-2 py-1 text-xs rounded-full ${
                 cacheHealth.status === 'healthy' ? 'bg-green-100 text-green-800' :
                 cacheHealth.status === 'warning' ? 'bg-yellow-100 text-yellow-800' :
                 'bg-red-100 text-red-800'
@@ -141,10 +195,48 @@ const CacheDebugPanel: React.FC<CacheDebugPanelProps> = ({ isOpen, onClose }) =>
             </div>
           )}
 
-          {/* Cache Statistics */}
+          {/* Server Cache Statistics */}
+          {serverCacheStats && (
+            <div className="mb-6">
+              <h3 className="text-lg font-medium text-[#3A2E22] mb-3">Redis Server Cache Statistics</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <div className="text-sm text-blue-600">Total Keys</div>
+                  <div className="text-2xl font-bold text-blue-800">{serverCacheStats.totalKeys}</div>
+                </div>
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <div className="text-sm text-blue-600">Memory Usage</div>
+                  <div className="text-2xl font-bold text-blue-800">{serverCacheStats.memoryUsage}</div>
+                </div>
+                <div className="bg-green-50 p-3 rounded-lg">
+                  <div className="text-sm text-green-600">Hit Rate</div>
+                  <div className="text-2xl font-bold text-green-700">{serverCacheStats.hitRate.toFixed(1)}%</div>
+                </div>
+                <div className="bg-purple-50 p-3 rounded-lg">
+                  <div className="text-sm text-purple-600">Uptime</div>
+                  <div className="text-2xl font-bold text-purple-700">
+                    {Math.round(serverCacheStats.uptime / (1000 * 60))}m
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <div className="bg-green-50 p-3 rounded-lg">
+                  <div className="text-sm text-green-600">Cache Hits</div>
+                  <div className="text-xl font-bold text-green-700">{serverCacheStats.hitCount}</div>
+                </div>
+                <div className="bg-red-50 p-3 rounded-lg">
+                  <div className="text-sm text-red-600">Cache Misses</div>
+                  <div className="text-xl font-bold text-red-700">{serverCacheStats.missCount}</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Client Cache Statistics */}
           {cacheStats && cacheMetrics && (
             <div className="mb-6">
-              <h3 className="text-lg font-medium text-[#3A2E22] mb-3">Global Cache Statistics</h3>
+              <h3 className="text-lg font-medium text-[#3A2E22] mb-3">Client Cache Statistics</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-gray-50 p-3 rounded-lg">
                   <div className="text-sm text-gray-600">Total Conversations</div>
@@ -192,10 +284,16 @@ const CacheDebugPanel: React.FC<CacheDebugPanelProps> = ({ isOpen, onClose }) =>
                   Export Cache
                 </button>
                 <button
+                  onClick={handleClearServerCache}
+                  className="px-3 py-1 text-sm bg-orange-500 text-white rounded hover:bg-orange-600 transition-colors"
+                >
+                  Clear Server Cache
+                </button>
+                <button
                   onClick={handleClearCache}
                   className="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
                 >
-                  Clear All
+                  Clear Client Cache
                 </button>
               </div>
             </div>

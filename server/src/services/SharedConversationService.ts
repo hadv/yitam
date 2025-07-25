@@ -1,5 +1,6 @@
 import { getDatabase, SharedConversation, ShareConversationRequest, ConversationMessage } from '../db/database';
 import { v4 as uuidv4 } from 'uuid';
+import { redisCache } from '../cache/RedisCache';
 
 export class SharedConversationService {
   private static instance: SharedConversationService;
@@ -40,13 +41,32 @@ export class SharedConversationService {
       db.run(
         query,
         [shareId, request.title, messagesJson, request.persona_id, request.user_email, request.owner_id, request.access_code, expiresAt],
-        function(err) {
+        async function(err) {
           if (err) {
             console.error('Error creating shared conversation:', err);
             reject(err);
             return;
           }
-          
+
+          // Cache the newly created conversation
+          const conversation: SharedConversation = {
+            id: shareId,
+            title: request.title,
+            messages: messagesJson,
+            persona_id: request.persona_id,
+            user_email: request.user_email,
+            owner_id: request.owner_id,
+            access_code: request.access_code,
+            created_at: new Date().toISOString(),
+            expires_at: expiresAt || undefined,
+            view_count: 0,
+            is_public: true,
+            is_active: true
+          };
+
+          // Cache for 1 hour by default
+          await redisCache.setConversation(shareId, conversation, 3600);
+
           console.log(`Created shared conversation with ID: ${shareId}`);
           resolve(shareId);
         }
@@ -58,9 +78,91 @@ export class SharedConversationService {
    * Get a shared conversation by ID
    */
   public async getSharedConversation(shareId: string): Promise<SharedConversation | null> {
+    try {
+      // Try Redis cache first
+      const cached = await redisCache.getConversation(shareId);
+      if (cached) {
+        // Verify it's still active and not expired
+        if (!cached.is_active || !cached.is_public) {
+          await redisCache.deleteConversation(shareId);
+          return null;
+        }
+
+        if (cached.expires_at) {
+          const expirationDate = new Date(cached.expires_at);
+          const now = new Date();
+
+          if (now > expirationDate) {
+            await redisCache.deleteConversation(shareId);
+            return null;
+          }
+        }
+
+        // Increment view count asynchronously
+        this.incrementViewCount(shareId).catch(console.error);
+        return cached;
+      }
+
+      // Cache miss - fetch from database
+      return new Promise((resolve, reject) => {
+        const db = getDatabase();
+
+        const query = `
+          SELECT * FROM shared_conversations
+          WHERE id = ? AND is_public = 1 AND is_active = 1
+        `;
+
+        db.get(query, [shareId], async (err, row: SharedConversation) => {
+          if (err) {
+            console.error('Error fetching shared conversation:', err);
+            reject(err);
+            return;
+          }
+
+          if (!row) {
+            resolve(null);
+            return;
+          }
+
+          // Check if conversation has expired
+          if (row.expires_at) {
+            const expirationDate = new Date(row.expires_at);
+            const now = new Date();
+
+            if (now > expirationDate) {
+              console.log(`Shared conversation ${shareId} has expired`);
+              resolve(null);
+              return;
+            }
+          }
+
+          // Cache the conversation for future requests
+          const ttl = row.expires_at ?
+            Math.floor((new Date(row.expires_at).getTime() - Date.now()) / 1000) :
+            3600; // 1 hour default
+
+          await redisCache.setConversation(shareId, row, Math.max(ttl, 60)); // Minimum 1 minute
+
+          // Increment view count
+          this.incrementViewCount(shareId).catch(console.error);
+
+          resolve(row);
+        });
+      });
+    } catch (error) {
+      console.error('Error in getSharedConversation:', error);
+      // Fallback to database only
+      return this.getSharedConversationFromDB(shareId);
+    }
+  }
+
+  /**
+   * Fallback method to get conversation from database only
+   */
+  private async getSharedConversationFromDB(shareId: string): Promise<SharedConversation | null> {
     return new Promise((resolve, reject) => {
       const db = getDatabase();
-      
+
       const query = `
         SELECT * FROM shared_conversations
         WHERE id = ? AND is_public = 1 AND is_active = 1
@@ -68,7 +170,7 @@ export class SharedConversationService {
 
       db.get(query, [shareId], (err, row: SharedConversation) => {
         if (err) {
-          console.error('Error fetching shared conversation:', err);
+          console.error('Error fetching shared conversation from DB:', err);
           reject(err);
           return;
         }
@@ -82,7 +184,7 @@ export class SharedConversationService {
         if (row.expires_at) {
           const expirationDate = new Date(row.expires_at);
           const now = new Date();
-          
+
           if (now > expirationDate) {
             console.log(`Shared conversation ${shareId} has expired`);
             resolve(null);
@@ -211,12 +313,15 @@ export class SharedConversationService {
           WHERE id = ?
         `;
 
-        db.run(updateQuery, [shareId], function(err) {
+        db.run(updateQuery, [shareId], async function(err) {
           if (err) {
             console.error('Error unsharing conversation:', err);
             reject(err);
             return;
           }
+
+          // Remove from Redis cache
+          await redisCache.deleteConversation(shareId);
 
           console.log(`Conversation ${shareId} unshared successfully`);
           resolve(this.changes > 0);
@@ -263,6 +368,50 @@ export class SharedConversationService {
         resolve(rows as SharedConversation[]);
       });
     });
+  }
+
+  /**
+   * Get Redis cache statistics
+   */
+  public async getCacheStats(): Promise<any> {
+    try {
+      return await redisCache.getStats();
+    } catch (error) {
+      console.error('Error getting cache stats:', error);
+      return {
+        totalKeys: 0,
+        memoryUsage: '0B',
+        hitCount: 0,
+        missCount: 0,
+        hitRate: 0,
+        uptime: 0,
+        status: 'unavailable'
+      };
+    }
+  }
+
+  /**
+   * Clear all cached conversations
+   */
+  public async clearCache(): Promise<void> {
+    try {
+      await redisCache.clearAll();
+      console.log('Cache cleared successfully');
+    } catch (error) {
+      console.error('Error clearing cache:', error);
+    }
+  }
+
+  /**
+   * Check Redis health
+   */
+  public async getCacheHealth(): Promise<any> {
+    try {
+      return await redisCache.healthCheck();
+    } catch (error) {
+      console.error('Error checking cache health:', error);
+      return { status: 'unhealthy', error: 'Health check failed' };
+    }
   }
 
   /**
