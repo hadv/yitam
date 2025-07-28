@@ -21,7 +21,6 @@ docker-compose stop client
 # Get SSL certificate
 certbot certonly --standalone \
     -d yitam.org \
-    -d www.yitam.org \
     --agree-tos \
     --non-interactive \
     --preferred-challenges http \
