@@ -13,9 +13,6 @@ import { LegalService } from './services/LegalService';
 import { handleLegalDocumentRequest } from './routes/legal';
 import { validateAccessCode } from './middleware/AccessControl';
 import { verifyRequestSignature } from './utils/crypto';
-import { initializeDatabase } from './db/database';
-import conversationRoutes from './routes/conversations';
-import CacheFactory from './cache/CacheFactory';
 
 // Load environment variables
 dotenv.config();
@@ -25,76 +22,12 @@ const app: Express = express();
 app.use(cors(config.server.cors));
 app.use(express.json());
 
-// Apply access control middleware only to specific routes that need it
-// Most conversation management should be available to authenticated users
+// Apply access control middleware to all routes except health check
 app.use((req, res, next) => {
-  // Skip access code validation for:
-  // - Health check
-  // - Viewing shared conversations (public) - both /shared/ and /api/conversations/shared/
-  // - All conversation management (sharing, unsharing, etc.) - users manage their own conversations
-  if (req.path === '/health' ||
-      req.path.startsWith('/api/conversations/') ||
-      req.path.startsWith('/shared/')) {
+  if (req.path === '/health') {
     return next();
   }
-
-  // Only require access codes for other sensitive operations
   validateAccessCode(req, res, next);
-});
-
-// Add conversation sharing routes (public access)
-app.use('/api/conversations', conversationRoutes);
-
-// Add public route for shared conversations (serves frontend)
-app.get('/shared/:shareId', (req, res) => {
-  // Serve a simple HTML page that loads the frontend React app
-  // The React router will handle the /shared/:shareId route
-  res.send(`
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Shared Conversation - Yitam</title>
-      <style>
-        body {
-          margin: 0;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-          background: #f5f5f5;
-        }
-        .loading {
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          height: 100vh;
-          flex-direction: column;
-        }
-        .spinner {
-          border: 4px solid #f3f3f3;
-          border-top: 4px solid #5D4A38;
-          border-radius: 50%;
-          width: 40px;
-          height: 40px;
-          animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      </style>
-    </head>
-    <body>
-      <div class="loading">
-        <div class="spinner"></div>
-        <p style="margin-top: 20px; color: #5D4A38;">Loading shared conversation...</p>
-      </div>
-      <script>
-        // Redirect to the frontend application
-        window.location.href = 'http://localhost:3001/shared/${req.params.shareId}';
-      </script>
-    </body>
-    </html>
-  `);
 });
 
 const PORT = config.server.port;
@@ -727,45 +660,7 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
-// Initialize database and cache, then start the server
-Promise.all([
-  initializeDatabase(),
-  CacheFactory.createCache()
-])
-  .then(([, cache]) => {
-    const cacheInfo = CacheFactory.getCacheInfo();
-    console.log('Database and cache initialized successfully');
-    console.log(`Cache type: ${cacheInfo.type} (${cacheInfo.environment} environment)`);
-
-    // Start the server
-    server.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-      console.log(`Cache status: ${cache.isAvailable() ? 'Available' : 'Unavailable'} (${cacheInfo.type})`);
-    });
-  })
-  .catch((error) => {
-    console.error('Failed to initialize services:', error);
-    // Start server anyway with degraded functionality
-    server.listen(PORT, () => {
-      console.log(`Server running on port ${PORT} (degraded mode - no cache)`);
-    });
-  });
-
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  const cache = CacheFactory.getInstance();
-  if (cache) {
-    await cache.disconnect();
-  }
-  process.exit(0);
-});
-
-process.on('SIGINT', async () => {
-  console.log('SIGINT received, shutting down gracefully');
-  const cache = CacheFactory.getInstance();
-  if (cache) {
-    await cache.disconnect();
-  }
-  process.exit(0);
-});
+// Start the server
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+}); 

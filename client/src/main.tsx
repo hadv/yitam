@@ -1,6 +1,5 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
 import './index.css';
 import App from './App';
 import AppSelector from './AppSelector';
@@ -17,24 +16,22 @@ console.log('Main.tsx initializing - rendering AppSelector with providers');
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <UnleashProvider>
-        <ApiKeyProvider>
-          <ChatHistoryProvider>
-            <PersonaProvider>
-              <ConsentProvider>
-                <LoadingProvider>
-                  <DataProvider>
-                    <ModalProvider>
-                      <AppSelector />
-                    </ModalProvider>
-                  </DataProvider>
-                </LoadingProvider>
-              </ConsentProvider>
-            </PersonaProvider>
-          </ChatHistoryProvider>
-        </ApiKeyProvider>
-      </UnleashProvider>
-    </BrowserRouter>
+    <UnleashProvider>
+      <ApiKeyProvider>
+        <ChatHistoryProvider>
+          <PersonaProvider>
+            <ConsentProvider>
+              <LoadingProvider>
+                <DataProvider>
+                  <ModalProvider>
+                    <AppSelector />
+                  </ModalProvider>
+                </DataProvider>
+              </LoadingProvider>
+            </ConsentProvider>
+          </PersonaProvider>
+        </ChatHistoryProvider>
+      </ApiKeyProvider>
+    </UnleashProvider>
   </React.StrictMode>,
-);
+); 

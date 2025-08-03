@@ -10,7 +10,6 @@ interface MessageContainerProps {
   userId: string;
   topicId?: number;
   onSend?: (message: string) => void;
-  onShareConversation?: (topicId: number) => void;
   className?: string;
 }
 
@@ -18,7 +17,6 @@ const TailwindMessageContainer: React.FC<MessageContainerProps> = ({
   userId,
   topicId,
   onSend,
-  onShareConversation,
   className = ''
 }) => {
   const { startLoading, stopLoading, setError } = useLoading();
@@ -72,30 +70,14 @@ const TailwindMessageContainer: React.FC<MessageContainerProps> = ({
                 </div>
               )}
             </div>
-
-            <div className="flex items-center gap-2">
-              {/* Share button */}
-              {onShareConversation && currentTopic.messageCnt && currentTopic.messageCnt > 0 && (
-                <button
-                  onClick={() => onShareConversation(currentTopic.id!)}
-                  className="flex items-center px-3 py-1.5 text-sm text-[#5D4A38] hover:text-[#4A3A2A] hover:bg-gray-100 rounded-md transition-colors"
-                  title="Chia sẻ cuộc trò chuyện"
-                >
-                  <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
-                  </svg>
-                  Chia sẻ
-                </button>
-              )}
-
-              {currentTopic.model && (
-                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
-                  {currentTopic.model.includes('opus') ? 'Claude 3 Opus' :
-                   currentTopic.model.includes('sonnet') ? 'Claude 3 Sonnet' :
-                   currentTopic.model.includes('haiku') ? 'Claude 3 Haiku' : 'Claude'}
-                </span>
-              )}
-            </div>
+            
+            {currentTopic.model && (
+              <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
+                {currentTopic.model.includes('opus') ? 'Claude 3 Opus' : 
+                 currentTopic.model.includes('sonnet') ? 'Claude 3 Sonnet' : 
+                 currentTopic.model.includes('haiku') ? 'Claude 3 Haiku' : 'Claude'}
+              </span>
+            )}
           </div>
         )}
         

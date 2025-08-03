@@ -11,13 +11,6 @@ export interface ModalData {
   messageDelete: {
     messageId: string;
   };
-  shareConversation: {
-    topicId: number;
-  };
-  manageSharedConversations: {
-    ownerId?: string;
-    accessCode?: string;
-  };
   // Add more modal types here with their data structures
   confirmation: {
     title: string;

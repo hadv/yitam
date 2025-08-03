@@ -9,8 +9,6 @@ import TailwindDataExportImport from '../TailwindDataExportImport';
 import TailwindPrivacyControls from '../TailwindPrivacyControls';
 import TailwindPrivacyPolicy from '../TailwindPrivacyPolicy';
 import TailwindStorageSettings from '../settings/TailwindStorageSettings';
-import TailwindShareConversation from '../TailwindShareConversation';
-import TailwindManageSharedConversations from '../TailwindManageSharedConversations';
 
 // Types
 import { Socket } from 'socket.io-client';
@@ -32,7 +30,6 @@ interface ModalManagerProps {
   setCurrentTopicId: (topicId?: number) => void;
   confirmDeleteMessage: () => void;
   handleDataDeleted: () => void;
-  onConversationShared?: () => void;
 }
 
 const ModalManager: React.FC<ModalManagerProps> = ({
@@ -48,8 +45,7 @@ const ModalManager: React.FC<ModalManagerProps> = ({
   startNewChat,
   setCurrentTopicId,
   confirmDeleteMessage,
-  handleDataDeleted,
-  onConversationShared
+  handleDataDeleted
 }) => {
   const { activeModals, modalData, closeModal, openModal } = useModal();
 
@@ -159,57 +155,8 @@ const ModalManager: React.FC<ModalManagerProps> = ({
         />
       </Modal>
       
-      {/* Share Conversation Modal */}
-      <Modal
-        isOpen={isModalActive('shareConversation')}
-        onClose={() => closeModal('shareConversation')}
-        title="Chia sẻ cuộc trò chuyện"
-        maxWidth="max-w-2xl"
-      >
-        <TailwindShareConversation
-          topicId={modalData.shareConversation?.topicId || 0}
-          onClose={() => closeModal('shareConversation')}
-          onManageShared={() => {
-            closeModal('shareConversation');
-            openModal('manageSharedConversations', {
-              ownerId: user?.email,
-              refreshKey: Date.now()
-            });
-          }}
-          onConversationShared={() => {
-            // Refresh the manage shared conversations modal if it's open
-            if (isModalActive('manageSharedConversations')) {
-              openModal('manageSharedConversations', {
-                ownerId: user?.email, // Regular users only need their email
-                refreshKey: Date.now()
-              });
-            }
-
-            // Notify parent component to refresh shared conversation info
-            if (onConversationShared) {
-              onConversationShared();
-            }
-          }}
-        />
-      </Modal>
-
-      {/* Manage Shared Conversations Modal */}
-      <Modal
-        isOpen={isModalActive('manageSharedConversations')}
-        onClose={() => closeModal('manageSharedConversations')}
-        title="Quản lý cuộc trò chuyện đã chia sẻ"
-        maxWidth="max-w-4xl"
-      >
-        <TailwindManageSharedConversations
-          key={modalData.manageSharedConversations?.refreshKey || 'default'}
-          onClose={() => closeModal('manageSharedConversations')}
-          ownerId={modalData.manageSharedConversations?.ownerId}
-          // accessCode is only needed for admin operations, not for regular users
-        />
-      </Modal>
-
       {/* Message Delete Confirmation Modal */}
-      <MessageDeleteModal
+      <MessageDeleteModal 
         isOpen={isModalActive('messageDelete')}
         messageId={(modalData.messageDelete?.messageId as string) || ''}
         onConfirm={() => {

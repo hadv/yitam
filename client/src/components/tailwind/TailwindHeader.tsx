@@ -11,7 +11,6 @@ interface TailwindHeaderProps {
   onOpenStorageSettings?: () => void;
   onOpenPrivacyControls?: () => void;
   onOpenPrivacyPolicy?: () => void;
-  onOpenManageSharedConversations?: () => void;
 }
 
 const TailwindHeader: React.FC<TailwindHeaderProps> = ({
@@ -22,8 +21,7 @@ const TailwindHeader: React.FC<TailwindHeaderProps> = ({
   onOpenDataExportImport,
   onOpenStorageSettings,
   onOpenPrivacyControls,
-  onOpenPrivacyPolicy,
-  onOpenManageSharedConversations
+  onOpenPrivacyPolicy
 }) => {
   return (
     <header className="bg-[#F5EFE0] rounded-lg shadow-sm border border-[#E6DFD1]">
@@ -48,8 +46,8 @@ const TailwindHeader: React.FC<TailwindHeaderProps> = ({
 
         <div className="flex-none">
           {user && (
-            <TailwindUserProfile
-              user={user}
+            <TailwindUserProfile 
+              user={user} 
               onLogout={onLogout}
               onOpenTopicManager={onOpenTopicManager}
               onOpenApiSettings={onOpenApiSettings}
@@ -57,7 +55,6 @@ const TailwindHeader: React.FC<TailwindHeaderProps> = ({
               onOpenStorageSettings={onOpenStorageSettings}
               onOpenPrivacyControls={onOpenPrivacyControls}
               onOpenPrivacyPolicy={onOpenPrivacyPolicy}
-              onOpenManageSharedConversations={onOpenManageSharedConversations}
             />
           )}
         </div>
