@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+
   yitam-mcp:
     build:
       context: ../yitam-mcp
@@ -21,6 +22,7 @@ services:
       - PORT=3000
       - CLIENT_URL=https://yitam.org
       - MCP_SERVER_PATH=/app/mcp/core/server/yitam-tools.js
+
     env_file:
       - prod.env
     depends_on:
@@ -48,4 +50,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  yitam-mcp-dist: 
+  yitam-mcp-dist:

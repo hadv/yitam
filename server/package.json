@@ -4,7 +4,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node dist/index.js",
-    "dev": "NODE_ENV=development ~/.nvm/versions/node/v22.14.0/bin/node ./node_modules/.bin/nodemon src/index.ts",
+    "dev": "NODE_ENV=development nodemon --exec \"npm run build && node dist/index.js\" --watch src --ext ts",
+    "dev:ts": "NODE_ENV=development nodemon --exec \"ts-node --esm src/index.ts\" --watch src --ext ts",
     "build": "tsc",
     "test": "jest",
     "test:watch": "jest --watch"
@@ -18,11 +19,15 @@
     "@google/generative-ai": "0.24.0",
     "@modelcontextprotocol/sdk": "^1.8.0",
     "@qdrant/js-client-rest": "^1.13.0",
+    "@types/sqlite3": "^3.1.11",
+    "@types/uuid": "^10.0.0",
     "chromadb": "^2.1.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "sqlite3": "^5.1.7",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@jest/globals": "^29.7.0",
