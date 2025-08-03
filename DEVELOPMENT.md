@@ -40,9 +40,9 @@ That's it! No Redis, no Docker, no external dependencies required for developmen
 - **Capacity**: 1,000 conversations (~2MB RAM)
 - **Persistence**: Lost on server restart (fine for development)
 
-### Production (Optional Redis)
-- **Redis Cache**: For scalability and persistence
-- **Fallback**: Automatic fallback to memory cache if Redis unavailable
+### Production
+- **Memory Cache**: Simple and reliable caching
+- **No Dependencies**: No external services required
 - **Setup**: See [CACHE_SETUP.md](CACHE_SETUP.md) for details
 
 ## 🛠️ Development Features
@@ -87,8 +87,7 @@ yitam/
 │   ├── src/
 │   │   ├── cache/         # Cache implementations
 │   │   │   ├── MemoryCache.ts      # In-memory cache
-│   │   │   ├── RedisCache.ts       # Redis cache
-│   │   │   └── CacheFactory.ts     # Smart cache selection
+│   │   │   └── CacheFactory.ts     # Cache management
 │   │   ├── db/            # Database layer
 │   │   ├── routes/        # API routes
 │   │   └── services/      # Business logic
@@ -114,9 +113,8 @@ yitam/
 # Test in-memory cache (default)
 npm run dev
 
-# Test with Redis (optional)
-docker run -d --name redis-dev -p 6379:6379 redis:7-alpine
-REDIS_URL=redis://localhost:6379 npm run dev
+# Test memory cache (default)
+npm run dev
 ```
 
 ### 3. Debugging
@@ -127,7 +125,7 @@ REDIS_URL=redis://localhost:6379 npm run dev
 ## 🎯 Key Benefits
 
 ### Zero Setup Development
-- No Redis installation required
+- No external dependencies required
 - No Docker dependencies
 - Instant development environment
 - Works offline
@@ -164,11 +162,7 @@ docker-compose up -d  # Uses Redis with memory fallback
 - **Capacity**: 1,000 conversations
 - **Persistence**: Server session only
 
-### Redis Cache  
-- **Access Time**: 1-5ms
-- **Memory Usage**: Configurable (100MB default)
-- **Capacity**: Thousands of conversations
-- **Persistence**: Survives restarts
+
 
 ## 🔍 Troubleshooting
 
