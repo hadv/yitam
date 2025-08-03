@@ -16,32 +16,19 @@ export const config = {
   },
   server: {
     port: parseInt(process.env.PORT || '5001'),
-    clientUrl: process.env.CLIENT_URL || 'http://localhost:3001',
+    clientUrl: process.env.CLIENT_URL || 'http://localhost:3000',
     cors: {
-      origin: process.env.CLIENT_URL || function(origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
-        // Allow all localhost origins in development
-        if (!origin || origin.startsWith('http://localhost:') || origin.startsWith('https://localhost:')) {
-          callback(null, true);
-        } else if (process.env.NODE_ENV === 'production') {
-          // In production, only allow specific origins
-          callback(null, origin === 'https://yitam.org');
-        } else {
-          callback(null, true); // Allow all in development
-        }
-      },
-      methods: ['GET', 'POST', 'DELETE'],
+      origin: process.env.CLIENT_URL || 'http://localhost:3000',
+      methods: ['GET', 'POST'],
       credentials: true,
       allowedHeaders: [
-        'Content-Type',
-        'Authorization',
-        'X-Access-Code',
-        'X-Request-Signature',
+        'Content-Type', 
+        'Authorization', 
+        'X-Access-Code', 
+        'X-Request-Signature', 
         'X-Request-Timestamp',
         'X-User-Email',
         'X-User-Name',
-        'X-User-ID',
-        'x-user-id',
-        'x-access-code',
         'x-api-key'
       ]
     }

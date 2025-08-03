@@ -34,7 +34,6 @@ import { BetaBanner, ApiKeyWarning } from './TailwindBanners';
 // Extracted Components
 import GDPRNotification from './notifications/GDPRNotification';
 import StorageWarningBanner from './notifications/StorageWarningBanner';
-import CacheDebugPanel from '../debug/CacheDebugPanel';
 
 // Utilities
 import { decryptApiKey } from '../../utils/encryption';
@@ -42,7 +41,6 @@ import { debugIndexedDB, reinitializeDatabase } from '../../db/ChatHistoryDBUtil
 import { checkDatabaseVersionMismatch, updateStoredDatabaseVersion, getSystemInfo } from '../../utils/version';
 import { generateTestTopics } from '../../utils/devTestUtils';
 import db from '../../db/ChatHistoryDB';
-import { sharedConversationService } from '../../services/SharedConversationService';
 
 // Global type declarations
 declare global {
@@ -83,24 +81,16 @@ function TailwindApp() {
   const inputRef = useRef<HTMLDivElement>(null);
   const [questionsLimit] = useState(6);
   const [isTopicEditing, setIsTopicEditing] = useState(false);
-  const [showCacheDebug, setShowCacheDebug] = useState(false);
-  const [sharedConversationInfo, setSharedConversationInfo] = useState<{shareId: string, shareUrl: string} | null>(null);
-  const [copySuccess, setCopySuccess] = useState(false);
-
-
-
   
   // Get modals state
-  const {
-    openApiSettings,
-    openTopicManager,
-    openDataExportImport,
-    openStorageSettings,
-    openPrivacyControls,
+  const { 
+    openApiSettings, 
+    openTopicManager, 
+    openDataExportImport, 
+    openStorageSettings, 
+    openPrivacyControls, 
     openPrivacyPolicy,
     openMessageDelete,
-    openShareConversation,
-    openManageSharedConversations,
     closeModal
   } = useModalSystem();
   
@@ -136,81 +126,7 @@ function TailwindApp() {
     setMessages,
     setCurrentTopicId
   } = useMessages(socket, user);
-
-  // Check if current conversation is shared
-  const checkIfConversationIsShared = useCallback(async (topicId: number) => {
-    if (!user?.email) return;
-
-    try {
-      // Get the current topic from database to get its title
-      const topic = await db.topics.get(topicId);
-      if (!topic) {
-        setSharedConversationInfo(null);
-        return;
-      }
-
-      const result = await sharedConversationService.getOwnedConversations(user.email);
-      if (result.success && result.conversations) {
-        // Find if current topic is in the shared conversations by matching title
-        const sharedConv = result.conversations.find(conv =>
-          conv.title === topic.title && conv.is_active
-        );
-
-        if (sharedConv) {
-          setSharedConversationInfo({
-            shareId: sharedConv.id,
-            shareUrl: `http://localhost:3001/shared/${sharedConv.id}`
-          });
-        } else {
-          setSharedConversationInfo(null);
-        }
-      }
-    } catch (error) {
-      console.error('Error checking if conversation is shared:', error);
-      setSharedConversationInfo(null);
-    }
-  }, [user?.email]);
-
-  // Copy shared link to clipboard
-  const copySharedLink = async () => {
-    if (!sharedConversationInfo) return;
-
-    try {
-      await navigator.clipboard.writeText(sharedConversationInfo.shareUrl);
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy link:', err);
-    }
-  };
-
-  // Unshare conversation
-  const unshareConversation = async () => {
-    if (!sharedConversationInfo || !user?.email) return;
-
-    try {
-      const result = await sharedConversationService.unshareConversation(
-        sharedConversationInfo.shareId,
-        user.email
-      );
-
-      if (result.success) {
-        setSharedConversationInfo(null);
-      }
-    } catch (error) {
-      console.error('Error unsharing conversation:', error);
-    }
-  };
-
-  // Check if conversation is shared when topic changes
-  useEffect(() => {
-    if (currentTopicId && messages.length > 1) {
-      checkIfConversationIsShared(currentTopicId);
-    } else {
-      setSharedConversationInfo(null);
-    }
-  }, [currentTopicId, messages.length, checkIfConversationIsShared]);
-
+  
   // Message deletion hook
   const {
     messageToDelete,
@@ -226,19 +142,6 @@ function TailwindApp() {
     user,
     currentTopicId
   );
-
-  // Cache debug panel keyboard shortcut (Ctrl+Shift+C)
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.ctrlKey && event.shiftKey && event.key === 'C') {
-        event.preventDefault();
-        setShowCacheDebug(prev => !prev);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
   
   // Setup storage window functions
   useStorageWindowFunctions(user?.email);
@@ -415,7 +318,6 @@ function TailwindApp() {
                   onOpenStorageSettings={openStorageSettings}
                   onOpenPrivacyControls={openPrivacyControls}
                   onOpenPrivacyPolicy={openPrivacyPolicy}
-                  onOpenManageSharedConversations={() => openManageSharedConversations(user?.email)}
                 />
                 
                 {/* GDPR data deleted notification */}
@@ -443,74 +345,14 @@ function TailwindApp() {
                   <TailwindPersonaSelector socket={socket} />
                 </div>
 
-                {/* Sticky conversation header with share/unshare buttons */}
-                {messages.length > 1 && currentTopicId && (
-                  <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-medium text-[#3A2E22]">Cuộc trò chuyện</h3>
-                      <p className="text-sm text-[#5D4A38]">
-                        {messages.length - 1} tin nhắn
-                        {sharedConversationInfo && (
-                          <span className="ml-2 text-green-600">• Đã chia sẻ</span>
-                        )}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {sharedConversationInfo ? (
-                        // Show copy and unshare buttons for shared conversations
-                        <>
-                          <button
-                            onClick={copySharedLink}
-                            className={`flex items-center px-3 py-2 text-sm rounded-md transition-colors ${
-                              copySuccess
-                                ? 'bg-green-500 text-white'
-                                : 'text-[#5D4A38] hover:text-[#4A3A2A] hover:bg-gray-100'
-                            }`}
-                            title="Sao chép liên kết chia sẻ"
-                          >
-                            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                            </svg>
-                            {copySuccess ? '✓ Đã sao chép' : 'Sao chép liên kết'}
-                          </button>
-                          <button
-                            onClick={unshareConversation}
-                            className="flex items-center px-3 py-2 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
-                            title="Hủy chia sẻ cuộc trò chuyện"
-                          >
-                            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                            Hủy chia sẻ
-                          </button>
-                        </>
-                      ) : (
-                        // Show share button for non-shared conversations
-                        <button
-                          onClick={() => openShareConversation(currentTopicId)}
-                          className="flex items-center px-3 py-2 text-sm text-[#5D4A38] hover:text-[#4A3A2A] hover:bg-gray-100 rounded-md transition-colors"
-                          title="Chia sẻ cuộc trò chuyện"
-                        >
-                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
-                          </svg>
-                          Chia sẻ
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-
                 {/* Scrollable chat area - takes remaining height */}
-                <div
+                <div 
                   className="flex-1 overflow-y-auto my-[10px] pb-[80px] relative bg-white/50 rounded-lg"
                   onScroll={handleChatScroll}
                 >
-
                   {/* Chat display */}
                   <div id="yitam-chat-container" className="flex flex-col p-2.5 bg-white rounded-[8px] shadow-[0_1px_3px_rgba(0,0,0,0.1)] chat-messages-container">
-                    <TailwindMessageDisplay
+                    <TailwindMessageDisplay 
                       messages={messages}
                       currentPersonaId={currentPersonaId}
                       onDeleteMessage={(messageId) => {
@@ -572,18 +414,6 @@ function TailwindApp() {
                 setCurrentTopicId={setCurrentTopicId}
                 confirmDeleteMessage={confirmDeleteMessage}
                 handleDataDeleted={handleDataDeleted}
-                onConversationShared={() => {
-                  // Refresh shared conversation info when a conversation is shared
-                  if (currentTopicId) {
-                    checkIfConversationIsShared(currentTopicId);
-                  }
-                }}
-              />
-
-              {/* Cache Debug Panel */}
-              <CacheDebugPanel
-                isOpen={showCacheDebug}
-                onClose={() => setShowCacheDebug(false)}
               />
             </div>
           </TailwindMessagePersistence>

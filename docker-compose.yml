@@ -1,33 +1,6 @@
 version: '3.8'
 
 services:
-  redis:
-    image: redis:7-alpine
-    container_name: yitam-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 100mb --maxmemory-policy allkeys-lru
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  redis-commander:
-    image: rediscommander/redis-commander:latest
-    container_name: yitam-redis-commander
-    hostname: redis-commander
-    ports:
-      - "8081:8081"
-    environment:
-      - REDIS_HOSTS=local:redis:6379
-    depends_on:
-      - redis
-    restart: unless-stopped
-
   yitam-mcp:
     build:
       context: ../yitam-mcp
@@ -48,12 +21,10 @@ services:
       - PORT=3000
       - CLIENT_URL=https://yitam.org
       - MCP_SERVER_PATH=/app/mcp/core/server/yitam-tools.js
-      - REDIS_URL=redis://redis:6379
     env_file:
       - prod.env
     depends_on:
       - yitam-mcp
-      - redis
     restart: unless-stopped
 
   client:
@@ -77,6 +48,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  redis_data:
-    driver: local
-  yitam-mcp-dist:
+  yitam-mcp-dist: 

@@ -33,6 +33,3 @@ coverage/
 
 # Vite
 .vite/ 
-
-# data
-data/

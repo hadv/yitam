@@ -19,16 +19,6 @@ export const useModalSystem = () => {
   const openMessageDelete = (messageId: string) => {
     openModal('messageDelete', { messageId });
   };
-
-  // Open share conversation modal
-  const openShareConversation = (topicId: number) => {
-    openModal('shareConversation', { topicId });
-  };
-
-  // Open manage shared conversations modal
-  const openManageSharedConversations = (ownerId?: string) => {
-    openModal('manageSharedConversations', { ownerId });
-  };
   
   // Open a generic confirmation modal
   const openConfirmation = ({
@@ -107,8 +97,6 @@ export const useModalSystem = () => {
     
     // Complex modal openers
     openMessageDelete,
-    openShareConversation,
-    openManageSharedConversations,
     openConfirmation,
     openCustomModal,
     
