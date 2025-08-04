@@ -36,25 +36,32 @@ export interface CleanupResult {
   emptyTopicsDeleted?: number;
 }
 
+// Helper function to get environment-specific storage keys
+const getStorageKey = (key: string) => {
+  const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const env = isDev ? 'dev' : 'prod';
+  return `yitam_${env}_${key}`;
+};
+
 export const useStorageSettings = (userId: string) => {
   // Storage management state
   const [retentionPolicyDays, setRetentionPolicyDays] = useState<number>(() => {
-    const saved = localStorage.getItem('retentionPolicyDays');
+    const saved = localStorage.getItem(getStorageKey('retentionPolicyDays'));
     return saved ? parseInt(saved) : 90; // Default 90 days retention
   });
-  
+
   const [autoCleanupEnabled, setAutoCleanupEnabled] = useState<boolean>(() => {
-    const saved = localStorage.getItem('autoCleanupEnabled');
+    const saved = localStorage.getItem(getStorageKey('autoCleanupEnabled'));
     return saved ? saved === 'true' : false; // Default disabled
   });
-  
+
   const [messageCompressionEnabled, setMessageCompressionEnabled] = useState<boolean>(() => {
-    const saved = localStorage.getItem('messageCompressionEnabled');
+    const saved = localStorage.getItem(getStorageKey('messageCompressionEnabled'));
     return saved ? saved === 'true' : true; // Default enabled
   });
   
   const [messagePageSize, setMessagePageSize] = useState<number>(() => {
-    const saved = localStorage.getItem('messagePageSize');
+    const saved = localStorage.getItem(getStorageKey('messagePageSize'));
     return saved ? parseInt(saved) : 30; // Default 30 messages per page
   });
 
@@ -83,10 +90,10 @@ export const useStorageSettings = (userId: string) => {
 
   // Save settings when they change
   useEffect(() => {
-    localStorage.setItem('retentionPolicyDays', retentionPolicyDays.toString());
-    localStorage.setItem('autoCleanupEnabled', autoCleanupEnabled.toString());
-    localStorage.setItem('messageCompressionEnabled', messageCompressionEnabled.toString());
-    localStorage.setItem('messagePageSize', messagePageSize.toString());
+    localStorage.setItem(getStorageKey('retentionPolicyDays'), retentionPolicyDays.toString());
+    localStorage.setItem(getStorageKey('autoCleanupEnabled'), autoCleanupEnabled.toString());
+    localStorage.setItem(getStorageKey('messageCompressionEnabled'), messageCompressionEnabled.toString());
+    localStorage.setItem(getStorageKey('messagePageSize'), messagePageSize.toString());
   }, [retentionPolicyDays, autoCleanupEnabled, messageCompressionEnabled, messagePageSize]);
 
   // Handle cleanup of oldest conversations

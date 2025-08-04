@@ -382,7 +382,10 @@ export const useStorageWindowFunctions = (userId: string | undefined) => {
     
     // Define storage retention policy setter
     window.setStorageRetentionPolicy = (days: number) => {
-      localStorage.setItem('retentionPolicyDays', days.toString());
+      const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const env = isDev ? 'dev' : 'prod';
+      const key = `yitam_${env}_retentionPolicyDays`;
+      localStorage.setItem(key, days.toString());
     };
     
     // Set up performance benchmark function
