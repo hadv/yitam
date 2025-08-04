@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { sharedConversationService } from '../../services/SharedConversationService';
+import { config } from '../../config';
 import type { OwnedConversation } from '../../services/SharedConversationService';
 
 interface ManageSharedConversationsProps {
@@ -120,7 +121,7 @@ const TailwindManageSharedConversations: React.FC<ManageSharedConversationsProps
   };
 
   const copyShareUrl = async (shareId: string) => {
-    const url = `${window.location.origin}/shared/${shareId}`;
+    const url = `${config.client.url}/shared/${shareId}`;
     try {
       await navigator.clipboard.writeText(url);
       // Could add a toast notification here instead of alert
