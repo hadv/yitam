@@ -43,10 +43,7 @@ class ChatHistoryDB extends Dexie {
   wordIndex: Dexie.Table<WordIndex, number>;
 
   constructor() {
-    // Use environment-specific database name
-    const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    const dbName = isDev ? 'ChatHistoryDB_dev' : 'ChatHistoryDB_prod';
-    super(dbName);
+    super('ChatHistoryDB');
 
     // Version 1 - Initial schema
     this.version(1).stores({
@@ -369,9 +366,7 @@ class ChatHistoryDB extends Dexie {
       this.close();
       
       // Attempt to reopen the database
-      const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      const dbName = isDev ? 'ChatHistoryDB_dev' : 'ChatHistoryDB_prod';
-      await Dexie.delete(dbName);
+      await Dexie.delete('ChatHistoryDB');
       
       // Reinitialize the database
       // This is a last resort and will lose data
@@ -396,12 +391,10 @@ class ChatHistoryDB extends Dexie {
       
       // Close and delete current database
       this.close();
-      const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      const dbName = isDev ? 'ChatHistoryDB_dev' : 'ChatHistoryDB_prod';
-      await Dexie.delete(dbName);
+      await Dexie.delete('ChatHistoryDB');
 
       // Create a new database with latest schema
-      const newDb = new Dexie(dbName);
+      const newDb = new Dexie('ChatHistoryDB');
       newDb.version(3).stores({
         topics: '++id, userId, title, lastActive',
         messages: '++id, topicId, timestamp, role, [topicId+timestamp]',
