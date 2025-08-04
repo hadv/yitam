@@ -43,16 +43,10 @@ class SharedConversationCache {
   // LRU tracking
   private accessOrder: string[] = [];
 
-  // Global cache persistence - environment-specific keys
-  private readonly getStorageKey = (key: string) => {
-    const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    const env = isDev ? 'dev' : 'prod';
-    return `yitam_${env}_${key}`;
-  };
-
-  private readonly STORAGE_KEY = this.getStorageKey('shared_conversation_cache');
-  private readonly STATS_KEY = this.getStorageKey('cache_stats');
-  private readonly ACCESS_ORDER_KEY = this.getStorageKey('cache_access_order');
+  // Global cache persistence
+  private readonly STORAGE_KEY = 'yitam_shared_conversation_cache';
+  private readonly STATS_KEY = 'yitam_cache_stats';
+  private readonly ACCESS_ORDER_KEY = 'yitam_cache_access_order';
 
   // Cross-tab synchronization
   private isInitialized: boolean = false;

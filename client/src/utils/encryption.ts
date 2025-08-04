@@ -1,13 +1,6 @@
 import CryptoJS from 'crypto-js';
 
-// Environment-specific storage key
-const getStorageKey = () => {
-  const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  const env = isDev ? 'dev' : 'prod';
-  return `yitam_${env}_encrypted_anthropic_key`;
-};
-
-const STORAGE_KEY = getStorageKey();
+const STORAGE_KEY = 'encrypted_anthropic_key';
 // We'll use a combination of window properties to create a somewhat unique key per browser/device
 const getDeviceFingerprint = () => {
   const { userAgent, language, platform } = window.navigator;

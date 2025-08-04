@@ -5,14 +5,8 @@ import fs from 'fs';
 // Enable verbose mode for debugging
 const sqlite = sqlite3.verbose();
 
-// Database file path - separate by environment
-const getDbPath = () => {
-  const env = process.env.NODE_ENV || 'development';
-  const dbName = env === 'production' ? 'shared_conversations.db' : `shared_conversations_${env}.db`;
-  return path.join(__dirname, '../../data', dbName);
-};
-
-const DB_PATH = getDbPath();
+// Database file path
+const DB_PATH = path.join(__dirname, '../../data/shared_conversations.db');
 
 // Ensure data directory exists
 const dataDir = path.dirname(DB_PATH);
