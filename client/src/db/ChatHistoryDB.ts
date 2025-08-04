@@ -392,7 +392,7 @@ class ChatHistoryDB extends Dexie {
       // Close and delete current database
       this.close();
       await Dexie.delete('ChatHistoryDB');
-      
+
       // Create a new database with latest schema
       const newDb = new Dexie('ChatHistoryDB');
       newDb.version(3).stores({

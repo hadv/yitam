@@ -42,12 +42,12 @@ export const useStorageSettings = (userId: string) => {
     const saved = localStorage.getItem('retentionPolicyDays');
     return saved ? parseInt(saved) : 90; // Default 90 days retention
   });
-  
+
   const [autoCleanupEnabled, setAutoCleanupEnabled] = useState<boolean>(() => {
     const saved = localStorage.getItem('autoCleanupEnabled');
     return saved ? saved === 'true' : false; // Default disabled
   });
-  
+
   const [messageCompressionEnabled, setMessageCompressionEnabled] = useState<boolean>(() => {
     const saved = localStorage.getItem('messageCompressionEnabled');
     return saved ? saved === 'true' : true; // Default enabled

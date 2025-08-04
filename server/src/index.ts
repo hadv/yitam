@@ -90,7 +90,8 @@ app.get('/shared/:shareId', (req, res) => {
       </div>
       <script>
         // Redirect to the frontend application
-        window.location.href = 'http://localhost:3001/shared/${req.params.shareId}';
+        const clientUrl = '${process.env.CLIENT_URL || 'http://localhost:3001'}';
+        window.location.href = clientUrl + '/shared/${req.params.shareId}';
       </script>
     </body>
     </html>

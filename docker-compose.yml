@@ -35,6 +35,7 @@ services:
       dockerfile: Dockerfile
       args:
         - VITE_SERVER_URL=https://yitam.org
+        - VITE_CLIENT_URL=https://yitam.org
         - VITE_GOOGLE_CLIENT_ID=1027650180838-6ora2sdrjre213ujv9hjah4m8mu3v8ju.apps.googleusercontent.com
     ports:
       - "80:80"

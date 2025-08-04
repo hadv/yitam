@@ -4,6 +4,9 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 // Styles
 import '../../styles/animations.css';
 
+// Config
+import { config } from '../../config';
+
 // Contexts
 import { ConsentProvider } from '../../contexts/ConsentContext';
 import { ChatHistoryProvider, useChatHistory } from '../../contexts/ChatHistoryContext';
@@ -159,7 +162,7 @@ function TailwindApp() {
         if (sharedConv) {
           setSharedConversationInfo({
             shareId: sharedConv.id,
-            shareUrl: `http://localhost:3001/shared/${sharedConv.id}`
+            shareUrl: `${config.client.url}/shared/${sharedConv.id}`
           });
         } else {
           setSharedConversationInfo(null);
