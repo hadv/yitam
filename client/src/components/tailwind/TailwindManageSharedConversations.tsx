@@ -120,7 +120,7 @@ const TailwindManageSharedConversations: React.FC<ManageSharedConversationsProps
   };
 
   const copyShareUrl = async (shareId: string) => {
-    const url = `http://localhost:3001/shared/${shareId}`;
+    const url = `${window.location.origin}/shared/${shareId}`;
     try {
       await navigator.clipboard.writeText(url);
       // Could add a toast notification here instead of alert

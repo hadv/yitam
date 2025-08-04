@@ -67,10 +67,13 @@ router.post('/share', async (req: Request, res: Response): Promise<void> => {
     // Create shared conversation
     const shareId = await sharedConversationService.createSharedConversation(ownershipData);
 
+    // Get the client URL from environment or construct from request
+    const clientUrl = process.env.CLIENT_URL || `${req.protocol}://${req.get('host')}`;
+
     res.json({
       success: true,
       shareId,
-      shareUrl: `http://localhost:3001/shared/${shareId}`,
+      shareUrl: `${clientUrl}/shared/${shareId}`,
       unshareUrl: `${req.protocol}://${req.get('host')}/api/conversations/unshare/${shareId}`
     });
 

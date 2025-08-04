@@ -159,7 +159,7 @@ function TailwindApp() {
         if (sharedConv) {
           setSharedConversationInfo({
             shareId: sharedConv.id,
-            shareUrl: `http://localhost:3001/shared/${sharedConv.id}`
+            shareUrl: `${window.location.origin}/shared/${sharedConv.id}`
           });
         } else {
           setSharedConversationInfo(null);

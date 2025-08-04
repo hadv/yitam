@@ -5,5 +5,8 @@ export const config = {
       withCredentials: true,
       transports: ['polling', 'websocket']
     }
+  },
+  client: {
+    url: import.meta.env.VITE_CLIENT_URL || window.location.origin
   }
-}; 
+};
