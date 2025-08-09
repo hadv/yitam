@@ -3,6 +3,7 @@ import { createServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
 import Anthropic from '@anthropic-ai/sdk';
 import { MCPClient } from './MCPClient';
 import { config } from './config';
@@ -15,6 +16,7 @@ import { validateAccessCode } from './middleware/AccessControl';
 import { verifyRequestSignature } from './utils/crypto';
 import { initializeDatabase } from './db/database';
 import conversationRoutes from './routes/conversations';
+import adminRoutes from './routes/admin';
 import CacheFactory from './cache/CacheFactory';
 
 // Load environment variables
@@ -32,9 +34,14 @@ app.use((req, res, next) => {
   // - Health check
   // - Viewing shared conversations (public) - both /shared/ and /api/conversations/shared/
   // - All conversation management (sharing, unsharing, etc.) - users manage their own conversations
+  // - Admin routes (they have their own access control)
+  // - Uploaded images (public access for image display)
   if (req.path === '/health' ||
       req.path.startsWith('/api/conversations/') ||
-      req.path.startsWith('/shared/')) {
+      req.path.startsWith('/api/admin/') ||
+      req.path.startsWith('/shared/') ||
+      req.path.startsWith('/uploads/') ||
+      req.path === '/admin') {
     return next();
   }
 
@@ -44,6 +51,15 @@ app.use((req, res, next) => {
 
 // Add conversation sharing routes (public access)
 app.use('/api/conversations', conversationRoutes);
+
+// Serve uploaded images statically (public access for image display)
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+// Serve test files (for debugging)
+app.use(express.static(path.join(__dirname, '../../')));
+
+// Add admin routes (requires admin access code)
+app.use('/api/admin', adminRoutes);
 
 // Add public route for shared conversations (serves frontend)
 app.get('/shared/:shareId', (req, res) => {
@@ -92,6 +108,62 @@ app.get('/shared/:shareId', (req, res) => {
         // Redirect to the frontend application
         const clientUrl = '${process.env.CLIENT_URL || 'http://localhost:3001'}';
         window.location.href = clientUrl + '/shared/${req.params.shareId}';
+      </script>
+    </body>
+    </html>
+  `);
+});
+
+// Add admin page route (serves frontend)
+app.get('/admin', (req, res) => {
+  // Serve a simple HTML page that loads the frontend React app
+  // The React router will handle the /admin route
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Admin Panel - Yitam</title>
+      <style>
+        body {
+          margin: 0;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+          background: #f5f5f5;
+        }
+        .loading {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+          flex-direction: column;
+        }
+        .spinner {
+          border: 4px solid #f3f3f3;
+          border-top: 4px solid #5D4A38;
+          border-radius: 50%;
+          width: 40px;
+          height: 40px;
+          animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="loading">
+        <div class="spinner"></div>
+        <p style="margin-top: 20px; color: #5D4A38;">Loading admin panel...</p>
+      </div>
+      <script>
+        // Redirect to the frontend application
+        const clientUrl = '${process.env.CLIENT_URL || 'http://localhost:3001'}';
+        const urlParams = new URLSearchParams(window.location.search);
+        const accessCode = urlParams.get('access_code');
+        const adminUrl = clientUrl + '/admin' + (accessCode ? '?access_code=' + encodeURIComponent(accessCode) : '');
+        window.location.href = adminUrl;
       </script>
     </body>
     </html>

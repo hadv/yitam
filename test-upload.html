@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Image Upload</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="file"] { margin-bottom: 10px; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; cursor: pointer; }
+        button:disabled { background: #ccc; }
+        .preview { margin-top: 20px; }
+        .preview img { max-width: 200px; border: 1px solid #ddd; }
+        .result { margin-top: 20px; padding: 10px; background: #f8f9fa; border: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test Image Upload</h1>
+        
+        <form id="uploadForm">
+            <div class="form-group">
+                <label for="imageFile">Select Image:</label>
+                <input type="file" id="imageFile" accept="image/*" required>
+            </div>
+            
+            <button type="submit" id="uploadBtn">Upload Image</button>
+        </form>
+        
+        <div id="preview" class="preview" style="display: none;">
+            <h3>Preview:</h3>
+            <img id="previewImg" src="" alt="Preview">
+        </div>
+        
+        <div id="result" class="result" style="display: none;">
+            <h3>Result:</h3>
+            <pre id="resultText"></pre>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('uploadForm');
+        const fileInput = document.getElementById('imageFile');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const preview = document.getElementById('preview');
+        const previewImg = document.getElementById('previewImg');
+        const result = document.getElementById('result');
+        const resultText = document.getElementById('resultText');
+
+        // Preview selected image
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    previewImg.src = e.target.result;
+                    preview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            } else {
+                preview.style.display = 'none';
+            }
+        });
+
+        // Handle form submission
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Please select a file');
+                return;
+            }
+
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = 'Uploading...';
+
+            try {
+                const formData = new FormData();
+                formData.append('image', file);
+
+                console.log('Uploading file:', file.name, 'Size:', file.size);
+
+                const response = await fetch('/api/admin/upload-image?access_code=ADMIN123', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                console.log('Response status:', response.status);
+                console.log('Response headers:', [...response.headers.entries()]);
+
+                const responseText = await response.text();
+                console.log('Response text:', responseText);
+
+                if (response.ok) {
+                    const data = JSON.parse(responseText);
+                    resultText.textContent = JSON.stringify(data, null, 2);
+                    result.style.display = 'block';
+                    
+                    // Test if the uploaded image is accessible
+                    const imageUrl = `http://localhost:5001${data.data.url}`;
+                    console.log('Testing image URL:', imageUrl);
+                    
+                    // Create a test image element
+                    const testImg = document.createElement('img');
+                    testImg.onload = function() {
+                        console.log('✅ Image loaded successfully!');
+                        alert('Upload successful! Image is accessible.');
+                    };
+                    testImg.onerror = function() {
+                        console.log('❌ Image failed to load');
+                        alert('Upload successful but image is not accessible');
+                    };
+                    testImg.src = imageUrl;
+                    
+                } else {
+                    resultText.textContent = `Error: ${response.status} - ${responseText}`;
+                    result.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Upload error:', error);
+                resultText.textContent = `Error: ${error.message}`;
+                result.style.display = 'block';
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = 'Upload Image';
+            }
+        });
+    </script>
+</body>
+</html>
