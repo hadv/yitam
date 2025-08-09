@@ -2,6 +2,7 @@ import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import TailwindApp from './components/tailwind/TailwindApp';
 import SharedConversationViewer from './components/shared/SharedConversationViewer';
+import AdminPage from './components/admin/AdminPage';
 import { SharedConversationCacheProvider } from './contexts/SharedConversationCacheContext';
 
 const AppRouter: React.FC = () => {
@@ -18,6 +19,9 @@ const AppRouter: React.FC = () => {
 
         {/* Public shared conversation viewer */}
         <Route path="/shared/:shareId" element={<SharedConversationViewer />} />
+
+        {/* Admin page with access code protection */}
+        <Route path="/admin" element={<AdminPage />} />
 
         {/* Catch all route - redirect to main app */}
         <Route path="*" element={<TailwindApp />} />
