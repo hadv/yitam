@@ -48,13 +48,23 @@ export interface VisionDetectionResult {
  */
 function getImageBase64(imageUrl: string): string | null {
   try {
+    console.log(`Checking image URL: ${imageUrl}`);
     // Check if it's a local file path
     if (imageUrl.startsWith('/uploads/')) {
       const filePath = path.join(process.cwd(), imageUrl);
+      console.log(`Looking for file at: ${filePath}`);
+      console.log(`File exists: ${fs.existsSync(filePath)}`);
+
       if (fs.existsSync(filePath)) {
         const imageBuffer = fs.readFileSync(filePath);
-        return imageBuffer.toString('base64');
+        const base64 = imageBuffer.toString('base64');
+        console.log(`Successfully read file, base64 length: ${base64.length}`);
+        return base64;
+      } else {
+        console.log(`File not found: ${filePath}`);
       }
+    } else {
+      console.log(`Not a local upload path: ${imageUrl}`);
     }
     return null;
   } catch (error) {
@@ -107,6 +117,8 @@ async function detectAcupointsWithRestAPI(
 
     // Try to get base64 content for local files
     const imageBase64 = getImageBase64(imageUrl);
+    console.log(`Processing image: ${imageUrl}`);
+    console.log(`Base64 content available: ${!!imageBase64}`);
 
     const requestBody = {
       requests: [
@@ -127,6 +139,8 @@ async function detectAcupointsWithRestAPI(
         }
       ]
     };
+
+    console.log(`Request method: ${imageBase64 ? 'base64 content' : 'URL'}`);
 
     const response = await fetch(visionApiUrl, {
       method: 'POST',

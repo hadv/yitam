@@ -525,16 +525,24 @@ router.post('/detect-acupoints', async (req: any, res: any) => {
       return res.status(500).json({ error: 'Google Cloud Vision API not properly configured' });
     }
 
-    // Convert relative URL to full URL for Google Cloud Vision API
-    let fullImageUrl = image_url;
-    if (image_url.startsWith('/uploads/')) {
-      // Convert relative path to full URL
-      const serverPort = process.env.PORT || 5001;
-      fullImageUrl = `http://localhost:${serverPort}${image_url}`;
+    // For local development, we need to use a publicly accessible URL
+    // Option 1: Use ngrok or similar service to expose localhost
+    // Option 2: Upload to cloud storage temporarily
+    // Option 3: Use base64 content (current fallback)
+
+    let processableImageUrl = image_url;
+
+    // Check if we have a public base URL configured
+    const publicBaseUrl = process.env.PUBLIC_BASE_URL;
+    if (publicBaseUrl && image_url.startsWith('/uploads/')) {
+      processableImageUrl = `${publicBaseUrl}${image_url}`;
+      console.log(`Using public URL: ${processableImageUrl}`);
+    } else if (image_url.startsWith('/uploads/')) {
+      console.log(`Using local file path for base64 conversion: ${image_url}`);
+      processableImageUrl = image_url; // Will be handled by visionService
     }
 
-    // Detect acupoints using Google Cloud Vision
-    const detectionResult = await detectAcupointsInImage(fullImageUrl, vessel.name);
+    const detectionResult = await detectAcupointsInImage(processableImageUrl, vessel.name);
 
     // Auto-create detected acupoints
     const createdAcupoints = [];
