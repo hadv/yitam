@@ -41,6 +41,7 @@ const AcupointManagement: React.FC<AcupointManagementProps> = ({ accessCode }) =
   const [editingAcupoint, setEditingAcupoint] = useState<Acupoints | null>(null);
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
   const [viewingAcupoint, setViewingAcupoint] = useState<Acupoints | null>(null);
+  const [viewingVessel, setViewingVessel] = useState<Vessel | null>(null);
   const [deletingAcupointId, setDeletingAcupointId] = useState<number | null>(null);
 
   const goBack = () => {
@@ -162,6 +163,10 @@ const AcupointManagement: React.FC<AcupointManagementProps> = ({ accessCode }) =
 
   const handleDeleteCancel = () => {
     setDeletingAcupointId(null);
+  };
+
+  const handleVesselClick = (vessel: Vessel) => {
+    setViewingVessel(vessel);
   };
 
   return (
@@ -383,6 +388,15 @@ const AcupointManagement: React.FC<AcupointManagementProps> = ({ accessCode }) =
             acupoint={viewingAcupoint}
             vessels={vessels}
             onClose={() => setViewingAcupoint(null)}
+            onVesselClick={handleVesselClick}
+          />
+        )}
+
+        {/* Vessel Detail Modal */}
+        {viewingVessel && (
+          <VesselDetailModal
+            vessel={viewingVessel}
+            onClose={() => setViewingVessel(null)}
           />
         )}
 
@@ -697,10 +711,17 @@ interface AcupointDetailModalProps {
   acupoint: Acupoints;
   vessels: Vessel[];
   onClose: () => void;
+  onVesselClick?: (vessel: Vessel) => void;
 }
 
-const AcupointDetailModal: React.FC<AcupointDetailModalProps> = ({ acupoint, vessels, onClose }) => {
+const AcupointDetailModal: React.FC<AcupointDetailModalProps> = ({ acupoint, vessels, onClose, onVesselClick }) => {
   const vessel = vessels.find(v => v.id === acupoint.vessel_id);
+
+  const handleVesselClick = () => {
+    if (vessel && onVesselClick) {
+      onVesselClick(vessel);
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -733,9 +754,22 @@ const AcupointDetailModal: React.FC<AcupointDetailModalProps> = ({ acupoint, ves
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Kỳ Kinh</label>
-              <div className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
-                {vessel?.name || 'Không xác định'}
-              </div>
+              {vessel ? (
+                <button
+                  onClick={handleVesselClick}
+                  className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors cursor-pointer"
+                  title="Click để xem chi tiết Kỳ Kinh"
+                >
+                  {vessel.name}
+                  <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </button>
+              ) : (
+                <div className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600">
+                  Không xác định
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -804,6 +838,88 @@ const AcupointDetailModal: React.FC<AcupointDetailModalProps> = ({ acupoint, ves
 
         {/* No Image State */}
         {!acupoint.image_url && (
+          <div className="w-1/2 bg-gray-50 flex items-center justify-center p-6">
+            <div className="text-center text-gray-500">
+              <svg className="w-24 h-24 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <p>Không có hình ảnh</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Vessel Detail Modal Component (for when clicking vessel link from acupoint detail)
+interface VesselDetailModalProps {
+  vessel: Vessel;
+  onClose: () => void;
+}
+
+const VesselDetailModal: React.FC<VesselDetailModalProps> = ({ vessel, onClose }) => {
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden flex">
+        {/* Left Section - Information */}
+        <div className="w-1/2 p-6 overflow-y-auto">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-800">Chi tiết Kỳ Kinh</h2>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Vessel Information */}
+          <div className="grid grid-cols-1 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tên Kỳ Kinh</label>
+              <div className="text-lg font-semibold text-gray-900">{vessel.name}</div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Mô tả</label>
+              <div className="text-gray-700 whitespace-pre-wrap bg-gray-50 p-3 rounded-md">
+                {vessel.description || 'Không có mô tả'}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ngày tạo</label>
+                <div className="text-sm text-gray-600">
+                  {vessel.created_at ? new Date(vessel.created_at).toLocaleString('vi-VN') : 'Không xác định'}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Cập nhật lần cuối</label>
+                <div className="text-sm text-gray-600">
+                  {vessel.updated_at ? new Date(vessel.updated_at).toLocaleString('vi-VN') : 'Không xác định'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Section - Image */}
+        {vessel.image_url && (
+          <div className="w-1/2 bg-gray-50 flex items-center justify-center p-6">
+            <img
+              src={vessel.image_url.startsWith('http') ? vessel.image_url : `http://localhost:5001${vessel.image_url}`}
+              alt={vessel.name}
+              className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
+            />
+          </div>
+        )}
+
+        {/* No Image State */}
+        {!vessel.image_url && (
           <div className="w-1/2 bg-gray-50 flex items-center justify-center p-6">
             <div className="text-center text-gray-500">
               <svg className="w-24 h-24 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
