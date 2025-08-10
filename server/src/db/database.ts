@@ -90,6 +90,8 @@ const createTables = (): Promise<void> => {
         usage TEXT,
         notes TEXT,
         image_url TEXT,
+        x_coordinate REAL,
+        y_coordinate REAL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (vessel_id) REFERENCES vessels (id)
@@ -131,7 +133,9 @@ const createTables = (): Promise<void> => {
                   'ALTER TABLE shared_conversations ADD COLUMN view_count INTEGER DEFAULT 0',
                   'ALTER TABLE vessels ADD COLUMN image_url TEXT',
                   'ALTER TABLE acupoints ADD COLUMN vessel_id INTEGER REFERENCES vessels(id)',
-                  'ALTER TABLE acupoints ADD COLUMN image_url TEXT'
+                  'ALTER TABLE acupoints ADD COLUMN image_url TEXT',
+                  'ALTER TABLE acupoints ADD COLUMN x_coordinate REAL',
+                  'ALTER TABLE acupoints ADD COLUMN y_coordinate REAL'
                 ];
 
                 migrations.forEach((migration, index) => {
@@ -247,6 +251,9 @@ export interface Acupoints {
   usage?: string;
   notes?: string;
   image_url?: string;
+  // Coordinates for highlighting on vessel image (percentage-based)
+  x_coordinate?: number; // X position as percentage (0-100)
+  y_coordinate?: number; // Y position as percentage (0-100)
   created_at?: string;
   updated_at?: string;
 }
@@ -273,18 +280,22 @@ export interface CreateAcupointsRequest {
   usage?: string;
   notes?: string;
   image_url?: string;
+  x_coordinate?: number;
+  y_coordinate?: number;
 }
 
 export interface UpdateAcupointsRequest {
   symbol?: string;
   vessel_id?: number;
-  chinese_characters?: string;
-  pinyin?: string;
+  chinese_characters?: string | null;
+  pinyin?: string | null;
   vietnamese_name?: string;
-  description?: string;
-  usage?: string;
-  notes?: string;
-  image_url?: string;
+  description?: string | null;
+  usage?: string | null;
+  notes?: string | null;
+  image_url?: string | null;
+  x_coordinate?: number | null;
+  y_coordinate?: number | null;
 }
 
 // Vessel CRUD operations
@@ -496,8 +507,8 @@ export const createAcupoint = (data: CreateAcupointsRequest): Promise<number> =>
     const query = `
       INSERT INTO acupoints (
         symbol, vessel_id, chinese_characters, pinyin, vietnamese_name,
-        description, usage, notes, image_url, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        description, usage, notes, image_url, x_coordinate, y_coordinate, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     `;
 
     const params = [
@@ -509,7 +520,9 @@ export const createAcupoint = (data: CreateAcupointsRequest): Promise<number> =>
       data.description || null,
       data.usage || null,
       data.notes || null,
-      data.image_url || null
+      data.image_url || null,
+      data.x_coordinate || null,
+      data.y_coordinate || null
     ];
 
     db.run(query, params, function(err) {
@@ -568,6 +581,14 @@ export const updateAcupoint = (id: number, data: UpdateAcupointsRequest): Promis
     if (data.image_url !== undefined) {
       updates.push('image_url = ?');
       params.push(data.image_url);
+    }
+    if (data.x_coordinate !== undefined) {
+      updates.push('x_coordinate = ?');
+      params.push(data.x_coordinate);
+    }
+    if (data.y_coordinate !== undefined) {
+      updates.push('y_coordinate = ?');
+      params.push(data.y_coordinate);
     }
 
     if (updates.length === 0) {

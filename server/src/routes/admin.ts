@@ -355,7 +355,7 @@ router.get('/acupoints/:id', async (req: Request, res: Response): Promise<void> 
 // POST /api/admin/acupoints - Create new acupoint record
 router.post('/acupoints', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { symbol, vessel_id, chinese_characters, pinyin, vietnamese_name, description, usage, notes, image_url } = req.body;
+    const { symbol, vessel_id, chinese_characters, pinyin, vietnamese_name, description, usage, notes, image_url, x_coordinate, y_coordinate } = req.body;
 
     if (!symbol || !vietnamese_name || !vessel_id) {
       res.status(400).json({
@@ -374,7 +374,9 @@ router.post('/acupoints', async (req: Request, res: Response): Promise<void> => 
       description: description?.trim() || undefined,
       usage: usage?.trim() || undefined,
       notes: notes?.trim() || undefined,
-      image_url: image_url?.trim() || undefined
+      image_url: image_url?.trim() || undefined,
+      x_coordinate: x_coordinate ? parseFloat(x_coordinate) : undefined,
+      y_coordinate: y_coordinate ? parseFloat(y_coordinate) : undefined
     };
 
     const newId = await createAcupoint(data);
@@ -413,7 +415,7 @@ router.put('/acupoints/:id', async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const { symbol, vessel_id, chinese_characters, pinyin, vietnamese_name, description, usage, notes, image_url } = req.body;
+    const { symbol, vessel_id, chinese_characters, pinyin, vietnamese_name, description, usage, notes, image_url, x_coordinate, y_coordinate } = req.body;
 
     const data: UpdateAcupointsRequest = {};
     if (symbol !== undefined) data.symbol = symbol.trim();
@@ -425,6 +427,8 @@ router.put('/acupoints/:id', async (req: Request, res: Response): Promise<void> 
     if (usage !== undefined) data.usage = usage?.trim() || null;
     if (notes !== undefined) data.notes = notes?.trim() || null;
     if (image_url !== undefined) data.image_url = image_url?.trim() || null;
+    if (x_coordinate !== undefined) data.x_coordinate = x_coordinate ? parseFloat(x_coordinate) : null;
+    if (y_coordinate !== undefined) data.y_coordinate = y_coordinate ? parseFloat(y_coordinate) : null;
 
     const updated = await updateAcupoint(id, data);
     if (!updated) {
