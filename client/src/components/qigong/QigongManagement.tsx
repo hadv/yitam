@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import CategoryManagement from './CategoryManagement';
+import VesselManagement from './VesselManagement';
 
 interface Vessel {
   id?: number;
@@ -26,24 +26,24 @@ interface Acupoints {
   updated_at?: string;
 }
 
-interface AdminPageProps {}
+interface QigongManagementProps {}
 
-const AdminPage: React.FC<AdminPageProps> = () => {
+const QigongManagement: React.FC<QigongManagementProps> = () => {
   const [searchParams] = useSearchParams();
   const [accessCode, setAccessCode] = useState<string>('');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [currentView, setCurrentView] = useState<'herbal-medicine' | 'categories'>('herbal-medicine');
-  const [data, setData] = useState<Acupoints[]>([]);
-  const [categories, setCategories] = useState<Vessel[]>([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
+  const [currentView, setCurrentView] = useState<'acupoints' | 'vessels'>('acupoints');
+  const [acupoints, setAcupoints] = useState<Acupoints[]>([]);
+  const [vessels, setVessels] = useState<Vessel[]>([]);
+  const [selectedVesselId, setSelectedVesselId] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [filterLoading, setFilterLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
-  const [editingItem, setEditingItem] = useState<Acupoints | null>(null);
+  const [editingAcupoint, setEditingAcupoint] = useState<Acupoints | null>(null);
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
-  const [viewingItem, setViewingItem] = useState<Acupoints | null>(null);
-  const [viewingCategory, setViewingCategory] = useState<Vessel | null>(null);
-  const [deletingItemId, setDeletingItemId] = useState<number | null>(null);
+  const [viewingAcupoint, setViewingAcupoint] = useState<Acupoints | null>(null);
+  const [viewingVessel, setViewingVessel] = useState<Vessel | null>(null);
+  const [deletingAcupointId, setDeletingAcupointId] = useState<number | null>(null);
 
   // Check for access code in URL params
   useEffect(() => {
@@ -59,19 +59,19 @@ const AdminPage: React.FC<AdminPageProps> = () => {
     setError('');
 
     try {
-      const [dataResponse, categoriesResponse] = await Promise.all([
+      const [acupointsResponse, vesselsResponse] = await Promise.all([
         fetch(`/api/admin/herbal-medicine?access_code=${encodeURIComponent(code)}`),
         fetch(`/api/admin/categories?access_code=${encodeURIComponent(code)}`)
       ]);
 
-      if (dataResponse.ok && categoriesResponse.ok) {
-        const dataResult = await dataResponse.json();
-        const categoriesResult = await categoriesResponse.json();
-        setData(dataResult.data || []);
-        setCategories(categoriesResult.data || []);
+      if (acupointsResponse.ok && vesselsResponse.ok) {
+        const acupointsResult = await acupointsResponse.json();
+        const vesselsResult = await vesselsResponse.json();
+        setAcupoints(acupointsResult.data || []);
+        setVessels(vesselsResult.data || []);
         setIsAuthenticated(true);
       } else {
-        const errorData = await dataResponse.json();
+        const errorData = await acupointsResponse.json();
         setError(errorData.message || 'Invalid access code');
         setIsAuthenticated(false);
       }
@@ -104,7 +104,7 @@ const AdminPage: React.FC<AdminPageProps> = () => {
       const response = await fetch(`/api/admin/herbal-medicine?access_code=${encodeURIComponent(accessCode)}${categoryParam}`);
       if (response.ok) {
         const result = await response.json();
-        setData(result.data || []);
+        setAcupoints(result.data || []);
       } else {
         setError('Không thể tải dữ liệu');
       }
@@ -120,7 +120,7 @@ const AdminPage: React.FC<AdminPageProps> = () => {
   };
 
   const handleCategoryFilter = async (categoryId: string) => {
-    setSelectedCategoryId(categoryId);
+    setSelectedVesselId(categoryId);
     await fetchData(categoryId || undefined, true);
   };
 
@@ -129,11 +129,11 @@ const AdminPage: React.FC<AdminPageProps> = () => {
 
     setLoading(true);
     try {
-      const url = item.id
-        ? `/api/admin/herbal-medicine/${item.id}?access_code=${encodeURIComponent(accessCode)}`
+      const url = acupoint.id
+        ? `/api/admin/herbal-medicine/${acupoint.id}?access_code=${encodeURIComponent(accessCode)}`
         : `/api/admin/herbal-medicine?access_code=${encodeURIComponent(accessCode)}`;
 
-      const method = item.id ? 'PUT' : 'POST';
+      const method = acupoint.id ? 'PUT' : 'POST';
       
       const response = await fetch(url, {
         method,
@@ -145,7 +145,7 @@ const AdminPage: React.FC<AdminPageProps> = () => {
 
       if (response.ok) {
         await fetchData();
-        setEditingItem(null);
+        setEditingAcupoint(null);
         setShowAddForm(false);
       } else {
         const errorData = await response.json();
@@ -159,21 +159,21 @@ const AdminPage: React.FC<AdminPageProps> = () => {
   };
 
   const handleDeleteClick = (id: number) => {
-    setDeletingItemId(id);
+    setDeletingAcupointId(id);
   };
 
   const handleDeleteConfirm = async () => {
-    if (!accessCode || !deletingItemId) return;
+    if (!accessCode || !deletingAcupointId) return;
 
     setLoading(true);
     try {
-      const response = await fetch(`/api/admin/herbal-medicine/${deletingItemId}?access_code=${encodeURIComponent(accessCode)}`, {
+      const response = await fetch(`/api/admin/herbal-medicine/${deletingAcupointId}?access_code=${encodeURIComponent(accessCode)}`, {
         method: 'DELETE',
       });
 
       if (response.ok) {
         await fetchData();
-        setDeletingItemId(null);
+        setDeletingAcupointId(null);
       } else {
         const errorData = await response.json();
         setError(errorData.message || 'Không thể xóa huyệt');
@@ -186,7 +186,7 @@ const AdminPage: React.FC<AdminPageProps> = () => {
   };
 
   const handleDeleteCancel = () => {
-    setDeletingItemId(null);
+    setDeletingAcupointId(null);
   };
 
   if (!isAuthenticated) {
@@ -238,9 +238,9 @@ const AdminPage: React.FC<AdminPageProps> = () => {
           <div className="border-b border-gray-200">
             <nav className="-mb-px flex space-x-8">
               <button
-                onClick={() => setCurrentView('herbal-medicine')}
+                onClick={() => setCurrentView('acupoints')}
                 className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  currentView === 'herbal-medicine'
+                  currentView === 'acupoints'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
@@ -248,9 +248,9 @@ const AdminPage: React.FC<AdminPageProps> = () => {
                 Danh sách các huyệt
               </button>
               <button
-                onClick={() => setCurrentView('categories')}
+                onClick={() => setCurrentView('vessels')}
                 className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  currentView === 'categories'
+                  currentView === 'vessels'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
@@ -274,8 +274,8 @@ const AdminPage: React.FC<AdminPageProps> = () => {
         )}
 
         {/* Conditional Content Based on Current View */}
-        {currentView === 'categories' ? (
-          <CategoryManagement accessCode={accessCode} />
+        {currentView === 'vessels' ? (
+          <VesselManagement accessCode={accessCode} />
         ) : (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
@@ -294,14 +294,14 @@ const AdminPage: React.FC<AdminPageProps> = () => {
               </label>
               <select
                 id="categoryFilter"
-                value={selectedCategoryId}
+                value={selectedVesselId}
                 onChange={(e) => handleCategoryFilter(e.target.value)}
                 className="w-64 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Tất Cả</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
+                {vessels.map((vessel) => (
+                  <option key={vessel.id} value={vessel.id}>
+                    {vessel.name}
                   </option>
                 ))}
               </select>
@@ -355,56 +355,56 @@ const AdminPage: React.FC<AdminPageProps> = () => {
                     </tr>
                   </thead>
                   <tbody className={`divide-y divide-gray-200 transition-opacity duration-300 ${filterLoading ? 'opacity-50' : 'opacity-100'}`}>
-                {data.map((item, index) => (
+                {acupoints.map((acupoint, index) => (
                   <tr
-                    key={item.id}
+                    key={acupoint.id}
                     className={`
                       cursor-pointer transition-colors duration-200 ease-out
                       ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
                       hover:bg-blue-50 hover:shadow-sm
                       border-b border-gray-200
                     `}
-                    onDoubleClick={() => setViewingItem(item)}
+                    onDoubleClick={() => setViewingAcupoint(acupoint)}
                   >
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {item.symbol}
+                      {acupoint.symbol}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        {categories.find(cat => cat.id === item.category_id)?.name || 'Không xác định'}
+                        {vessels.find(vessel => vessel.id === acupoint.category_id)?.name || 'Không xác định'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {item.chinese_characters || '-'}
+                      {acupoint.chinese_characters || '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {item.pinyin || '-'}
+                      {acupoint.pinyin || '-'}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500" style={{minWidth: '200px', maxWidth: '250px'}}>
                       <div className="break-words">
-                        {item.vietnamese_name}
+                        {acupoint.vietnamese_name}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500" style={{minWidth: '300px', maxWidth: '400px'}}>
                       <div className="whitespace-pre-wrap break-words">
-                        {item.description || '-'}
+                        {acupoint.description || '-'}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500" style={{minWidth: '300px', maxWidth: '400px'}}>
                       <div className="whitespace-pre-wrap break-words">
-                        {item.usage || '-'}
+                        {acupoint.usage || '-'}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500" style={{minWidth: '250px', maxWidth: '350px'}}>
                       <div className="whitespace-pre-wrap break-words">
-                        {item.notes || '-'}
+                        {acupoint.notes || '-'}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {item.image_url ? (
+                      {acupoint.image_url ? (
                         <img
-                          src={item.image_url.startsWith('http') ? item.image_url : `http://localhost:5001${item.image_url}`}
-                          alt={item.vietnamese_name}
+                          src={acupoint.image_url.startsWith('http') ? acupoint.image_url : `http://localhost:5001${acupoint.image_url}`}
+                          alt={acupoint.vietnamese_name}
                           className="h-10 w-10 rounded-full object-cover"
                         />
                       ) : (
@@ -415,13 +415,13 @@ const AdminPage: React.FC<AdminPageProps> = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <button
-                        onClick={() => setEditingItem(item)}
+                        onClick={() => setEditingAcupoint(acupoint)}
                         className="text-blue-600 hover:text-blue-900 mr-3"
                       >
                         Sửa
                       </button>
                       <button
-                        onClick={() => item.id && handleDeleteClick(item.id)}
+                        onClick={() => acupoint.id && handleDeleteClick(acupoint.id)}
                         className="text-red-600 hover:text-red-900"
                       >
                         Xóa
@@ -434,36 +434,36 @@ const AdminPage: React.FC<AdminPageProps> = () => {
               </div>
             </div>
 
-            {data.length === 0 && !loading && !filterLoading && (
+            {acupoints.length === 0 && !loading && !filterLoading && (
               <div className="text-center py-8 text-gray-500">
                 Không có dữ liệu. Nhấp "Thêm huyệt mới" để bắt đầu.
               </div>
             )}
 
             {/* Add/Edit Form Modal */}
-            {(showAddForm || editingItem) && (
+            {(showAddForm || editingAcupoint) && (
               <ItemFormModal
-                item={editingItem}
-                categories={categories}
+                item={editingAcupoint}
+                categories={vessels}
                 onSave={handleSave}
                 onCancel={() => {
                   setShowAddForm(false);
-                  setEditingItem(null);
+                  setEditingAcupoint(null);
                 }}
               />
             )}
 
             {/* Detail View Modal */}
-            {viewingItem && (
+            {viewingAcupoint && (
               <AcupointsDetailModal
-                item={viewingItem}
-                categories={categories}
-                onClose={() => setViewingItem(null)}
+                item={viewingAcupoint}
+                categories={vessels}
+                onClose={() => setViewingAcupoint(null)}
               />
             )}
 
             {/* Delete Confirmation Modal */}
-            {deletingItemId && (
+            {deletingAcupointId && (
               <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                 <div className="bg-white rounded-lg p-6 w-full max-w-md">
                   <h3 className="text-lg font-medium text-gray-900 mb-4">Xác nhận xóa</h3>
@@ -906,4 +906,4 @@ const AcupointsDetailModal: React.FC<AcupointsDetailModalProps> = ({ item, categ
   );
 };
 
-export default AdminPage;
+export default QigongManagement;

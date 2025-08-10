@@ -9,32 +9,32 @@ interface Vessel {
   updated_at?: string;
 }
 
-interface CategoryManagementProps {
+interface VesselManagementProps {
   accessCode: string;
 }
 
-const CategoryManagement: React.FC<CategoryManagementProps> = ({ accessCode }) => {
-  const [categories, setCategories] = useState<Vessel[]>([]);
+const VesselManagement: React.FC<VesselManagementProps> = ({ accessCode }) => {
+  const [vessels, setVessels] = useState<Vessel[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
-  const [editingCategory, setEditingCategory] = useState<Vessel | null>(null);
+  const [editingVessel, setEditingVessel] = useState<Vessel | null>(null);
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
-  const [viewingCategory, setViewingCategory] = useState<Vessel | null>(null);
-  const [deletingCategoryId, setDeletingCategoryId] = useState<number | null>(null);
+  const [viewingVessel, setViewingVessel] = useState<Vessel | null>(null);
+  const [deletingVesselId, setDeletingVesselId] = useState<number | null>(null);
 
   useEffect(() => {
-    fetchCategories();
+    fetchVessels();
   }, [accessCode]);
 
-  const fetchCategories = async () => {
+  const fetchVessels = async () => {
     if (!accessCode) return;
-    
+
     setLoading(true);
     try {
       const response = await fetch(`/api/admin/categories?access_code=${encodeURIComponent(accessCode)}`);
       if (response.ok) {
         const result = await response.json();
-        setCategories(result.data || []);
+        setVessels(result.data || []);
       } else {
         setError('Không thể tải danh sách Kỳ Kinh');
       }
@@ -45,28 +45,28 @@ const CategoryManagement: React.FC<CategoryManagementProps> = ({ accessCode }) =
     }
   };
 
-  const handleSave = async (category: Vessel) => {
+  const handleSave = async (vessel: Vessel) => {
     if (!accessCode) return;
-    
+
     setLoading(true);
     try {
-      const url = category.id 
-        ? `/api/admin/categories/${category.id}?access_code=${encodeURIComponent(accessCode)}`
+      const url = vessel.id
+        ? `/api/admin/categories/${vessel.id}?access_code=${encodeURIComponent(accessCode)}`
         : `/api/admin/categories?access_code=${encodeURIComponent(accessCode)}`;
-      
-      const method = category.id ? 'PUT' : 'POST';
-      
+
+      const method = vessel.id ? 'PUT' : 'POST';
+
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(category),
+        body: JSON.stringify(vessel),
       });
 
       if (response.ok) {
-        await fetchCategories();
-        setEditingCategory(null);
+        await fetchVessels();
+        setEditingVessel(null);
         setShowAddForm(false);
         setError('');
       } else {
@@ -81,21 +81,21 @@ const CategoryManagement: React.FC<CategoryManagementProps> = ({ accessCode }) =
   };
 
   const handleDeleteClick = (id: number) => {
-    setDeletingCategoryId(id);
+    setDeletingVesselId(id);
   };
 
   const handleDeleteConfirm = async () => {
-    if (!accessCode || !deletingCategoryId) return;
+    if (!accessCode || !deletingVesselId) return;
 
     setLoading(true);
     try {
-      const response = await fetch(`/api/admin/categories/${deletingCategoryId}?access_code=${encodeURIComponent(accessCode)}`, {
+      const response = await fetch(`/api/admin/categories/${deletingVesselId}?access_code=${encodeURIComponent(accessCode)}`, {
         method: 'DELETE',
       });
 
       if (response.ok) {
-        await fetchCategories();
-        setDeletingCategoryId(null);
+        await fetchVessels();
+        setDeletingVesselId(null);
         setError('');
       } else {
         const errorData = await response.json();
@@ -109,7 +109,7 @@ const CategoryManagement: React.FC<CategoryManagementProps> = ({ accessCode }) =
   };
 
   const handleDeleteCancel = () => {
-    setDeletingCategoryId(null);
+    setDeletingVesselId(null);
   };
 
   return (
@@ -155,30 +155,30 @@ const CategoryManagement: React.FC<CategoryManagementProps> = ({ accessCode }) =
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {categories.map((category, index) => (
+              {vessels.map((vessel, index) => (
                 <tr
-                  key={category.id}
+                  key={vessel.id}
                   className={`
                     cursor-pointer transition-colors duration-200 ease-out
                     ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
                     hover:bg-blue-50 hover:shadow-sm
                     border-b border-gray-200
                   `}
-                  onDoubleClick={() => setViewingCategory(category)}
+                  onDoubleClick={() => setViewingVessel(vessel)}
                 >
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {category.name}
+                    {vessel.name}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-500 max-w-lg">
                     <div className="whitespace-pre-wrap break-words">
-                      {category.description || '-'}
+                      {vessel.description || '-'}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {category.image_url ? (
+                    {vessel.image_url ? (
                       <img
-                        src={category.image_url.startsWith('http') ? category.image_url : `http://localhost:5001${category.image_url}`}
-                        alt={category.name}
+                        src={vessel.image_url.startsWith('http') ? vessel.image_url : `http://localhost:5001${vessel.image_url}`}
+                        alt={vessel.name}
                         className="h-10 w-10 rounded-full object-cover"
                       />
                     ) : (
@@ -189,13 +189,13 @@ const CategoryManagement: React.FC<CategoryManagementProps> = ({ accessCode }) =
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <button
-                      onClick={() => setEditingCategory(category)}
+                      onClick={() => setEditingVessel(vessel)}
                       className="text-blue-600 hover:text-blue-900 mr-3"
                     >
                       Sửa
                     </button>
                     <button
-                      onClick={() => category.id && handleDeleteClick(category.id)}
+                      onClick={() => vessel.id && handleDeleteClick(vessel.id)}
                       className="text-red-600 hover:text-red-900"
                     >
                       Xóa
@@ -208,34 +208,34 @@ const CategoryManagement: React.FC<CategoryManagementProps> = ({ accessCode }) =
         </div>
       </div>
 
-      {categories.length === 0 && !loading && (
+      {vessels.length === 0 && !loading && (
         <div className="text-center py-8 text-gray-500">
           Không có Kỳ Kinh nào. Nhấp "Thêm Kỳ Kinh mới" để bắt đầu.
         </div>
       )}
 
       {/* Add/Edit Form Modal */}
-      {(showAddForm || editingCategory) && (
-        <CategoryFormModal
-          category={editingCategory}
+      {(showAddForm || editingVessel) && (
+        <VesselFormModal
+          vessel={editingVessel}
           onSave={handleSave}
           onCancel={() => {
             setShowAddForm(false);
-            setEditingCategory(null);
+            setEditingVessel(null);
           }}
         />
       )}
 
       {/* Detail View Modal */}
-      {viewingCategory && (
-        <CategoryDetailModal
-          category={viewingCategory}
-          onClose={() => setViewingCategory(null)}
+      {viewingVessel && (
+        <VesselDetailModal
+          vessel={viewingVessel}
+          onClose={() => setViewingVessel(null)}
         />
       )}
 
       {/* Delete Confirmation Modal */}
-      {deletingCategoryId && (
+      {deletingVesselId && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Xác nhận xóa</h3>
@@ -264,24 +264,24 @@ const CategoryManagement: React.FC<CategoryManagementProps> = ({ accessCode }) =
 };
 
 // Form Modal Component
-interface CategoryFormModalProps {
-  category: Vessel | null;
-  onSave: (category: Vessel) => void;
+interface VesselFormModalProps {
+  vessel: Vessel | null;
+  onSave: (vessel: Vessel) => void;
   onCancel: () => void;
 }
 
-const CategoryFormModal: React.FC<CategoryFormModalProps> = ({ category, onSave, onCancel }) => {
+const VesselFormModal: React.FC<VesselFormModalProps> = ({ vessel, onSave, onCancel }) => {
   const [formData, setFormData] = useState<Vessel>({
-    name: category?.name || '',
-    description: category?.description || '',
-    image_url: category?.image_url || '',
-    ...(category?.id && { id: category.id })
+    name: vessel?.name || '',
+    description: vessel?.description || '',
+    image_url: vessel?.image_url || '',
+    ...(vessel?.id && { id: vessel.id })
   });
 
   const [uploading, setUploading] = useState(false);
   const [formError, setFormError] = useState<string>('');
   const [imagePreview, setImagePreview] = useState<string>(() => {
-    const url = category?.image_url || '';
+    const url = vessel?.image_url || '';
     return url ? (url.startsWith('http') ? url : `http://localhost:5001${url}`) : '';
   });
 
@@ -339,7 +339,7 @@ const CategoryFormModal: React.FC<CategoryFormModalProps> = ({ category, onSave,
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
         <h2 className="text-xl font-bold mb-4">
-          {category ? 'Sửa Kỳ Kinh' : 'Thêm Kỳ Kinh mới'}
+          {vessel ? 'Sửa Kỳ Kinh' : 'Thêm Kỳ Kinh mới'}
         </h2>
         
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -424,7 +424,7 @@ const CategoryFormModal: React.FC<CategoryFormModalProps> = ({ category, onSave,
               type="submit"
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
             >
-              {category ? 'Cập nhật' : 'Tạo mới'}
+              {vessel ? 'Cập nhật' : 'Tạo mới'}
             </button>
           </div>
         </form>
@@ -434,12 +434,12 @@ const CategoryFormModal: React.FC<CategoryFormModalProps> = ({ category, onSave,
 };
 
 // Vessel Detail Modal Component
-interface CategoryDetailModalProps {
-  category: Vessel;
+interface VesselDetailModalProps {
+  vessel: Vessel;
   onClose: () => void;
 }
 
-const CategoryDetailModal: React.FC<CategoryDetailModalProps> = ({ category, onClose }) => {
+const VesselDetailModal: React.FC<VesselDetailModalProps> = ({ vessel, onClose }) => {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg w-full max-w-5xl max-h-[90vh] overflow-hidden flex">
@@ -458,17 +458,17 @@ const CategoryDetailModal: React.FC<CategoryDetailModalProps> = ({ category, onC
           </div>
 
           <div className="space-y-6">
-            {/* Category Information */}
+            {/* Vessel Information */}
             <div className="grid grid-cols-1 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tên</label>
-                <div className="text-lg font-semibold text-gray-900">{category.name}</div>
+                <div className="text-lg font-semibold text-gray-900">{vessel.name}</div>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Mô tả</label>
                 <div className="text-gray-700 whitespace-pre-wrap bg-gray-50 p-3 rounded-md">
-                  {category.description || 'Không có mô tả'}
+                  {vessel.description || 'Không có mô tả'}
                 </div>
               </div>
 
@@ -476,14 +476,14 @@ const CategoryDetailModal: React.FC<CategoryDetailModalProps> = ({ category, onC
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Ngày tạo</label>
                   <div className="text-sm text-gray-600">
-                    {category.created_at ? new Date(category.created_at).toLocaleString('vi-VN') : 'Không xác định'}
+                    {vessel.created_at ? new Date(vessel.created_at).toLocaleString('vi-VN') : 'Không xác định'}
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Cập nhật lần cuối</label>
                   <div className="text-sm text-gray-600">
-                    {category.updated_at ? new Date(category.updated_at).toLocaleString('vi-VN') : 'Không xác định'}
+                    {vessel.updated_at ? new Date(vessel.updated_at).toLocaleString('vi-VN') : 'Không xác định'}
                   </div>
                 </div>
               </div>
@@ -501,18 +501,18 @@ const CategoryDetailModal: React.FC<CategoryDetailModalProps> = ({ category, onC
         </div>
 
         {/* Right Section - Image */}
-        {category.image_url && (
+        {vessel.image_url && (
           <div className="w-1/2 bg-gray-50 flex items-center justify-center p-6">
             <img
-              src={category.image_url.startsWith('http') ? category.image_url : `http://localhost:5001${category.image_url}`}
-              alt={category.name}
+              src={vessel.image_url.startsWith('http') ? vessel.image_url : `http://localhost:5001${vessel.image_url}`}
+              alt={vessel.name}
               className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
             />
           </div>
         )}
 
         {/* Right Section - No Image Placeholder */}
-        {!category.image_url && (
+        {!vessel.image_url && (
           <div className="w-1/2 bg-gray-50 flex items-center justify-center p-6">
             <div className="text-center text-gray-400">
               <svg className="w-24 h-24 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -527,4 +527,4 @@ const CategoryDetailModal: React.FC<CategoryDetailModalProps> = ({ category, onC
   );
 };
 
-export default CategoryManagement;
+export default VesselManagement;

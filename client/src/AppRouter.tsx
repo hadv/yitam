@@ -2,7 +2,7 @@ import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import TailwindApp from './components/tailwind/TailwindApp';
 import SharedConversationViewer from './components/shared/SharedConversationViewer';
-import AdminPage from './components/admin/AdminPage';
+import QigongManagement from './components/qigong/QigongManagement';
 import { SharedConversationCacheProvider } from './contexts/SharedConversationCacheContext';
 
 const AppRouter: React.FC = () => {
@@ -21,7 +21,7 @@ const AppRouter: React.FC = () => {
         <Route path="/shared/:shareId" element={<SharedConversationViewer />} />
 
         {/* Qigong management page with access code protection */}
-        <Route path="/qigong" element={<AdminPage />} />
+        <Route path="/qigong" element={<QigongManagement />} />
 
         {/* Catch all route - redirect to main app */}
         <Route path="*" element={<TailwindApp />} />
