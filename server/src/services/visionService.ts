@@ -1,4 +1,6 @@
 import { ImageAnnotatorClient } from '@google-cloud/vision';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // Initialize Google Cloud Vision client
 let visionClient: ImageAnnotatorClient;
@@ -39,6 +41,26 @@ export interface VisionDetectionResult {
     width: number;
     height: number;
   };
+}
+
+/**
+ * Read local image file and convert to base64
+ */
+function getImageBase64(imageUrl: string): string | null {
+  try {
+    // Check if it's a local file path
+    if (imageUrl.startsWith('/uploads/')) {
+      const filePath = path.join(process.cwd(), imageUrl);
+      if (fs.existsSync(filePath)) {
+        const imageBuffer = fs.readFileSync(filePath);
+        return imageBuffer.toString('base64');
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('Error reading image file:', error);
+    return null;
+  }
 }
 
 /**
@@ -83,14 +105,15 @@ async function detectAcupointsWithRestAPI(
       throw new Error('No valid authentication method found');
     }
 
+    // Try to get base64 content for local files
+    const imageBase64 = getImageBase64(imageUrl);
+
     const requestBody = {
       requests: [
         {
-          image: {
-            source: {
-              imageUri: imageUrl
-            }
-          },
+          image: imageBase64
+            ? { content: imageBase64 }  // Use base64 content for local files
+            : { source: { imageUri: imageUrl } },  // Use URL for external images
           features: [
             {
               type: 'TEXT_DETECTION',
@@ -162,7 +185,15 @@ async function detectAcupointsWithSDK(
 
   try {
     // Step 1: Detect text in the image (for acupoint symbols)
-    const [textResult] = await visionClient.textDetection(imageUrl);
+    let textResult;
+    if (imageUrl.startsWith('/uploads/')) {
+      // Use local file path for SDK
+      const filePath = path.join(process.cwd(), imageUrl);
+      [textResult] = await visionClient.textDetection(filePath);
+    } else {
+      // Use URL for external images
+      [textResult] = await visionClient.textDetection(imageUrl);
+    }
     const textAnnotations = textResult.textAnnotations || [];
     
     // Step 2: Detect objects/features in the image (optional)
@@ -170,7 +201,15 @@ async function detectAcupointsWithSDK(
     // const objects = objectResult.localizedObjectAnnotations || [];
     
     // Step 3: Get image properties for coordinate calculation
-    const [propertiesResult] = await visionClient.imageProperties(imageUrl);
+    let propertiesResult;
+    if (imageUrl.startsWith('/uploads/')) {
+      // Use local file path for SDK
+      const filePath = path.join(process.cwd(), imageUrl);
+      [propertiesResult] = await visionClient.imageProperties(filePath);
+    } else {
+      // Use URL for external images
+      [propertiesResult] = await visionClient.imageProperties(imageUrl);
+    }
     const imageProps = propertiesResult.imagePropertiesAnnotation;
 
     return processVisionResults(textAnnotations, imageProps, vesselName, startTime);
