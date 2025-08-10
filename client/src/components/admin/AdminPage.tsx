@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import CategoryManagement from './CategoryManagement';
 
-interface Category {
+interface Vessel {
   id?: number;
   name: string;
   description?: string;
@@ -11,7 +11,7 @@ interface Category {
   updated_at?: string;
 }
 
-interface HerbalMedicine {
+interface Acupoints {
   id?: number;
   symbol: string;
   category_id: number;
@@ -33,16 +33,17 @@ const AdminPage: React.FC<AdminPageProps> = () => {
   const [accessCode, setAccessCode] = useState<string>('');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentView, setCurrentView] = useState<'herbal-medicine' | 'categories'>('herbal-medicine');
-  const [data, setData] = useState<HerbalMedicine[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [data, setData] = useState<Acupoints[]>([]);
+  const [categories, setCategories] = useState<Vessel[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [filterLoading, setFilterLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
-  const [editingItem, setEditingItem] = useState<HerbalMedicine | null>(null);
+  const [editingItem, setEditingItem] = useState<Acupoints | null>(null);
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
-  const [viewingItem, setViewingItem] = useState<HerbalMedicine | null>(null);
-  const [viewingCategory, setViewingCategory] = useState<Category | null>(null);
+  const [viewingItem, setViewingItem] = useState<Acupoints | null>(null);
+  const [viewingCategory, setViewingCategory] = useState<Vessel | null>(null);
+  const [deletingItemId, setDeletingItemId] = useState<number | null>(null);
 
   // Check for access code in URL params
   useEffect(() => {
@@ -123,7 +124,7 @@ const AdminPage: React.FC<AdminPageProps> = () => {
     await fetchData(categoryId || undefined, true);
   };
 
-  const handleSave = async (item: HerbalMedicine) => {
+  const handleSave = async (item: Acupoints) => {
     if (!accessCode) return;
 
     setLoading(true);
@@ -157,17 +158,22 @@ const AdminPage: React.FC<AdminPageProps> = () => {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!accessCode || !confirm('Bạn có chắc chắn muốn xóa huyệt này?')) return;
-    
+  const handleDeleteClick = (id: number) => {
+    setDeletingItemId(id);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!accessCode || !deletingItemId) return;
+
     setLoading(true);
     try {
-      const response = await fetch(`/api/admin/herbal-medicine/${id}?access_code=${encodeURIComponent(accessCode)}`, {
+      const response = await fetch(`/api/admin/herbal-medicine/${deletingItemId}?access_code=${encodeURIComponent(accessCode)}`, {
         method: 'DELETE',
       });
 
       if (response.ok) {
         await fetchData();
+        setDeletingItemId(null);
       } else {
         const errorData = await response.json();
         setError(errorData.message || 'Không thể xóa huyệt');
@@ -177,6 +183,10 @@ const AdminPage: React.FC<AdminPageProps> = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeletingItemId(null);
   };
 
   if (!isAuthenticated) {
@@ -411,7 +421,7 @@ const AdminPage: React.FC<AdminPageProps> = () => {
                         Sửa
                       </button>
                       <button
-                        onClick={() => item.id && handleDelete(item.id)}
+                        onClick={() => item.id && handleDeleteClick(item.id)}
                         className="text-red-600 hover:text-red-900"
                       >
                         Xóa
@@ -445,11 +455,37 @@ const AdminPage: React.FC<AdminPageProps> = () => {
 
             {/* Detail View Modal */}
             {viewingItem && (
-              <HerbalMedicineDetailModal
+              <AcupointsDetailModal
                 item={viewingItem}
                 categories={categories}
                 onClose={() => setViewingItem(null)}
               />
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {deletingItemId && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div className="bg-white rounded-lg p-6 w-full max-w-md">
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Xác nhận xóa</h3>
+                  <p className="text-sm text-gray-500 mb-6">
+                    Bạn có chắc chắn muốn xóa huyệt này? Hành động này không thể hoàn tác.
+                  </p>
+                  <div className="flex justify-end space-x-3">
+                    <button
+                      onClick={handleDeleteCancel}
+                      className="px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
+                    >
+                      Hủy
+                    </button>
+                    <button
+                      onClick={handleDeleteConfirm}
+                      className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                    >
+                      Xóa
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -462,14 +498,14 @@ const AdminPage: React.FC<AdminPageProps> = () => {
 
 // Form Modal Component
 interface ItemFormModalProps {
-  item: HerbalMedicine | null;
-  categories: Category[];
-  onSave: (item: HerbalMedicine) => void;
+  item: Acupoints | null;
+  categories: Vessel[];
+  onSave: (item: Acupoints) => void;
   onCancel: () => void;
 }
 
 const ItemFormModal: React.FC<ItemFormModalProps> = ({ item, categories, onSave, onCancel }) => {
-  const [formData, setFormData] = useState<HerbalMedicine>({
+  const [formData, setFormData] = useState<Acupoints>({
     symbol: item?.symbol || '',
     category_id: item?.category_id || 1,
     chinese_characters: item?.chinese_characters || '',
@@ -483,6 +519,7 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ item, categories, onSave,
   });
 
   const [uploading, setUploading] = useState(false);
+  const [formError, setFormError] = useState<string>('');
   const [imagePreview, setImagePreview] = useState<string>(() => {
     const url = item?.image_url || '';
     return url ? (url.startsWith('http') ? url : `http://localhost:5001${url}`) : '';
@@ -490,14 +527,15 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ item, categories, onSave,
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError('');
     if (formData.symbol.trim() && formData.vietnamese_name.trim() && formData.category_id > 0) {
       onSave(formData);
     } else {
-      alert('Vui lòng điền đầy đủ các trường bắt buộc: Ký Hiệu, Tên Việt, và Kỳ Kinh');
+      setFormError('Vui lòng điền đầy đủ các trường bắt buộc: Ký Hiệu, Tên Việt, và Kỳ Kinh');
     }
   };
 
-  const handleChange = (field: keyof HerbalMedicine, value: string | number) => {
+  const handleChange = (field: keyof Acupoints, value: string | number) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -694,6 +732,12 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ item, categories, onSave,
             </div>
           </div>
 
+          {formError && (
+            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+              {formError}
+            </div>
+          )}
+
           <div className="flex justify-end space-x-3 pt-4">
             <button
               type="button"
@@ -715,14 +759,14 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({ item, categories, onSave,
   );
 };
 
-// Herbal Medicine Detail Modal Component
-interface HerbalMedicineDetailModalProps {
-  item: HerbalMedicine;
-  categories: Category[];
+// Acupoints Detail Modal Component
+interface AcupointsDetailModalProps {
+  item: Acupoints;
+  categories: Vessel[];
   onClose: () => void;
 }
 
-const HerbalMedicineDetailModal: React.FC<HerbalMedicineDetailModalProps> = ({ item, categories, onClose }) => {
+const AcupointsDetailModal: React.FC<AcupointsDetailModalProps> = ({ item, categories, onClose }) => {
   const category = categories.find(cat => cat.id === item.category_id);
 
   return (

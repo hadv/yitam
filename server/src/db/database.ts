@@ -227,7 +227,7 @@ export interface ShareConversationRequest {
   expires_in_days?: number; // Optional expiration
 }
 
-export interface Category {
+export interface Vessel {
   id?: number;
   name: string;
   description?: string;
@@ -236,7 +236,7 @@ export interface Category {
   updated_at?: string;
 }
 
-export interface HerbalMedicine {
+export interface Acupoints {
   id?: number;
   symbol: string;
   category_id: number;
@@ -251,19 +251,19 @@ export interface HerbalMedicine {
   updated_at?: string;
 }
 
-export interface CreateCategoryRequest {
+export interface CreateVesselRequest {
   name: string;
   description?: string;
   image_url?: string;
 }
 
-export interface UpdateCategoryRequest {
+export interface UpdateVesselRequest {
   name?: string;
   description?: string;
   image_url?: string;
 }
 
-export interface CreateHerbalMedicineRequest {
+export interface CreateAcupointsRequest {
   symbol: string;
   category_id: number;
   chinese_characters?: string;
@@ -275,7 +275,7 @@ export interface CreateHerbalMedicineRequest {
   image_url?: string;
 }
 
-export interface UpdateHerbalMedicineRequest {
+export interface UpdateAcupointsRequest {
   symbol?: string;
   category_id?: number;
   chinese_characters?: string;
@@ -287,8 +287,8 @@ export interface UpdateHerbalMedicineRequest {
   image_url?: string;
 }
 
-// Category CRUD operations
-export const getAllCategories = (): Promise<Category[]> => {
+// Vessel CRUD operations
+export const getAllCategories = (): Promise<Vessel[]> => {
   return new Promise((resolve, reject) => {
     if (!db) {
       reject(new Error('Database not initialized'));
@@ -302,12 +302,12 @@ export const getAllCategories = (): Promise<Category[]> => {
         reject(err);
         return;
       }
-      resolve(rows as Category[]);
+      resolve(rows as Vessel[]);
     });
   });
 };
 
-export const getCategoryById = (id: number): Promise<Category | null> => {
+export const getCategoryById = (id: number): Promise<Vessel | null> => {
   return new Promise((resolve, reject) => {
     if (!db) {
       reject(new Error('Database not initialized'));
@@ -321,12 +321,12 @@ export const getCategoryById = (id: number): Promise<Category | null> => {
         reject(err);
         return;
       }
-      resolve(row as Category || null);
+      resolve(row as Vessel || null);
     });
   });
 };
 
-export const createCategory = (data: CreateCategoryRequest): Promise<number> => {
+export const createCategory = (data: CreateVesselRequest): Promise<number> => {
   return new Promise((resolve, reject) => {
     if (!db) {
       reject(new Error('Database not initialized'));
@@ -355,7 +355,7 @@ export const createCategory = (data: CreateCategoryRequest): Promise<number> => 
   });
 };
 
-export const updateCategory = (id: number, data: UpdateCategoryRequest): Promise<boolean> => {
+export const updateCategory = (id: number, data: UpdateVesselRequest): Promise<boolean> => {
   return new Promise((resolve, reject) => {
     if (!db) {
       reject(new Error('Database not initialized'));
@@ -438,8 +438,8 @@ export const deleteCategory = (id: number): Promise<boolean> => {
   });
 };
 
-// Herbal Medicine CRUD operations
-export const getAllHerbalMedicine = (categoryId?: number): Promise<HerbalMedicine[]> => {
+// Acupoints CRUD operations
+export const getAllHerbalMedicine = (categoryId?: number): Promise<Acupoints[]> => {
   return new Promise((resolve, reject) => {
     if (!db) {
       reject(new Error('Database not initialized'));
@@ -458,16 +458,16 @@ export const getAllHerbalMedicine = (categoryId?: number): Promise<HerbalMedicin
 
     db.all(query, params, (err, rows: any[]) => {
       if (err) {
-        console.error('Error fetching herbal medicine data:', err);
+        console.error('Error fetching acupoints data:', err);
         reject(err);
         return;
       }
-      resolve(rows as HerbalMedicine[]);
+      resolve(rows as Acupoints[]);
     });
   });
 };
 
-export const getHerbalMedicineById = (id: number): Promise<HerbalMedicine | null> => {
+export const getHerbalMedicineById = (id: number): Promise<Acupoints | null> => {
   return new Promise((resolve, reject) => {
     if (!db) {
       reject(new Error('Database not initialized'));
@@ -477,16 +477,16 @@ export const getHerbalMedicineById = (id: number): Promise<HerbalMedicine | null
     const query = 'SELECT * FROM herbal_medicine WHERE id = ?';
     db.get(query, [id], (err, row: any) => {
       if (err) {
-        console.error('Error fetching herbal medicine by ID:', err);
+        console.error('Error fetching acupoints by ID:', err);
         reject(err);
         return;
       }
-      resolve(row as HerbalMedicine || null);
+      resolve(row as Acupoints || null);
     });
   });
 };
 
-export const createHerbalMedicine = (data: CreateHerbalMedicineRequest): Promise<number> => {
+export const createHerbalMedicine = (data: CreateAcupointsRequest): Promise<number> => {
   return new Promise((resolve, reject) => {
     if (!db) {
       reject(new Error('Database not initialized'));
@@ -523,7 +523,7 @@ export const createHerbalMedicine = (data: CreateHerbalMedicineRequest): Promise
   });
 };
 
-export const updateHerbalMedicine = (id: number, data: UpdateHerbalMedicineRequest): Promise<boolean> => {
+export const updateHerbalMedicine = (id: number, data: UpdateAcupointsRequest): Promise<boolean> => {
   return new Promise((resolve, reject) => {
     if (!db) {
       reject(new Error('Database not initialized'));

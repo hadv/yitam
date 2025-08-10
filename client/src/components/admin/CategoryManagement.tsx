@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-interface Category {
+interface Vessel {
   id?: number;
   name: string;
   description?: string;
@@ -14,12 +14,13 @@ interface CategoryManagementProps {
 }
 
 const CategoryManagement: React.FC<CategoryManagementProps> = ({ accessCode }) => {
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [categories, setCategories] = useState<Vessel[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
-  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [editingCategory, setEditingCategory] = useState<Vessel | null>(null);
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
-  const [viewingCategory, setViewingCategory] = useState<Category | null>(null);
+  const [viewingCategory, setViewingCategory] = useState<Vessel | null>(null);
+  const [deletingCategoryId, setDeletingCategoryId] = useState<number | null>(null);
 
   useEffect(() => {
     fetchCategories();
@@ -44,7 +45,7 @@ const CategoryManagement: React.FC<CategoryManagementProps> = ({ accessCode }) =
     }
   };
 
-  const handleSave = async (category: Category) => {
+  const handleSave = async (category: Vessel) => {
     if (!accessCode) return;
     
     setLoading(true);
@@ -79,17 +80,22 @@ const CategoryManagement: React.FC<CategoryManagementProps> = ({ accessCode }) =
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!accessCode || !confirm('Bạn có chắc chắn muốn xóa Kỳ Kinh này?')) return;
-    
+  const handleDeleteClick = (id: number) => {
+    setDeletingCategoryId(id);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!accessCode || !deletingCategoryId) return;
+
     setLoading(true);
     try {
-      const response = await fetch(`/api/admin/categories/${id}?access_code=${encodeURIComponent(accessCode)}`, {
+      const response = await fetch(`/api/admin/categories/${deletingCategoryId}?access_code=${encodeURIComponent(accessCode)}`, {
         method: 'DELETE',
       });
 
       if (response.ok) {
         await fetchCategories();
+        setDeletingCategoryId(null);
         setError('');
       } else {
         const errorData = await response.json();
@@ -100,6 +106,10 @@ const CategoryManagement: React.FC<CategoryManagementProps> = ({ accessCode }) =
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeletingCategoryId(null);
   };
 
   return (
@@ -185,7 +195,7 @@ const CategoryManagement: React.FC<CategoryManagementProps> = ({ accessCode }) =
                       Sửa
                     </button>
                     <button
-                      onClick={() => category.id && handleDelete(category.id)}
+                      onClick={() => category.id && handleDeleteClick(category.id)}
                       className="text-red-600 hover:text-red-900"
                     >
                       Xóa
@@ -223,19 +233,45 @@ const CategoryManagement: React.FC<CategoryManagementProps> = ({ accessCode }) =
           onClose={() => setViewingCategory(null)}
         />
       )}
+
+      {/* Delete Confirmation Modal */}
+      {deletingCategoryId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Xác nhận xóa</h3>
+            <p className="text-sm text-gray-500 mb-6">
+              Bạn có chắc chắn muốn xóa Kỳ Kinh này? Hành động này không thể hoàn tác.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={handleDeleteCancel}
+                className="px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+              >
+                Xóa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 // Form Modal Component
 interface CategoryFormModalProps {
-  category: Category | null;
-  onSave: (category: Category) => void;
+  category: Vessel | null;
+  onSave: (category: Vessel) => void;
   onCancel: () => void;
 }
 
 const CategoryFormModal: React.FC<CategoryFormModalProps> = ({ category, onSave, onCancel }) => {
-  const [formData, setFormData] = useState<Category>({
+  const [formData, setFormData] = useState<Vessel>({
     name: category?.name || '',
     description: category?.description || '',
     image_url: category?.image_url || '',
@@ -243,6 +279,7 @@ const CategoryFormModal: React.FC<CategoryFormModalProps> = ({ category, onSave,
   });
 
   const [uploading, setUploading] = useState(false);
+  const [formError, setFormError] = useState<string>('');
   const [imagePreview, setImagePreview] = useState<string>(() => {
     const url = category?.image_url || '';
     return url ? (url.startsWith('http') ? url : `http://localhost:5001${url}`) : '';
@@ -255,7 +292,7 @@ const CategoryFormModal: React.FC<CategoryFormModalProps> = ({ category, onSave,
     }
   };
 
-  const handleChange = (field: keyof Category, value: string) => {
+  const handleChange = (field: keyof Vessel, value: string) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -286,12 +323,13 @@ const CategoryFormModal: React.FC<CategoryFormModalProps> = ({ category, onSave,
         const absoluteImageUrl = imageUrl.startsWith('http') ? imageUrl : `http://localhost:5001${imageUrl}`;
         setImagePreview(absoluteImageUrl);
         handleChange('image_url', imageUrl); // Store relative URL in form data
+        setFormError('');
       } else {
-        alert('Không thể tải lên hình ảnh');
+        setFormError('Không thể tải lên hình ảnh');
       }
     } catch (error) {
       console.error('Error uploading image:', error);
-      alert('Không thể tải lên hình ảnh');
+      setFormError('Không thể tải lên hình ảnh');
     } finally {
       setUploading(false);
     }
@@ -368,6 +406,12 @@ const CategoryFormModal: React.FC<CategoryFormModalProps> = ({ category, onSave,
             </div>
           </div>
           
+          {formError && (
+            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+              {formError}
+            </div>
+          )}
+
           <div className="flex justify-end space-x-3 pt-4">
             <button
               type="button"
@@ -389,9 +433,9 @@ const CategoryFormModal: React.FC<CategoryFormModalProps> = ({ category, onSave,
   );
 };
 
-// Category Detail Modal Component
+// Vessel Detail Modal Component
 interface CategoryDetailModalProps {
-  category: Category;
+  category: Vessel;
   onClose: () => void;
 }
 
