@@ -53,8 +53,8 @@ async function uploadWithRestAPI(
   const fileBuffer = fs.readFileSync(localFilePath);
   const contentType = getContentType(localFilePath);
 
-  // Upload URL with correct API endpoint
-  const uploadUrl = `https://storage-api.googleapis.com/upload/storage/v1/b/${bucketName}/o?uploadType=media&name=vessel-images/${fileName}&key=${apiKey}`;
+  // Upload URL with correct Google Cloud Storage REST API format
+  const uploadUrl = `https://www.googleapis.com/upload/storage/v1/b/${bucketName}/o?uploadType=media&name=vessel-images/${fileName}&key=${apiKey}`;
 
   const response = await fetch(uploadUrl, {
     method: 'POST',
@@ -70,8 +70,8 @@ async function uploadWithRestAPI(
     throw new Error(`REST API upload failed: ${response.status} ${errorText}`);
   }
 
-  // Make file public using correct API endpoint
-  const makePublicUrl = `https://storage-api.googleapis.com/storage/v1/b/${bucketName}/o/vessel-images%2F${fileName}/acl?key=${apiKey}`;
+  // Make file public using correct Google Cloud Storage REST API format
+  const makePublicUrl = `https://www.googleapis.com/storage/v1/b/${bucketName}/o/vessel-images%2F${fileName}/acl?key=${apiKey}`;
 
   await fetch(makePublicUrl, {
     method: 'POST',
