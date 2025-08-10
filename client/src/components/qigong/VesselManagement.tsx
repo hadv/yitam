@@ -31,7 +31,7 @@ const VesselManagement: React.FC<VesselManagementProps> = ({ accessCode }) => {
 
     setLoading(true);
     try {
-      const response = await fetch(`/api/admin/categories?access_code=${encodeURIComponent(accessCode)}`);
+      const response = await fetch(`/api/admin/vessels?access_code=${encodeURIComponent(accessCode)}`);
       if (response.ok) {
         const result = await response.json();
         setVessels(result.data || []);
@@ -51,8 +51,8 @@ const VesselManagement: React.FC<VesselManagementProps> = ({ accessCode }) => {
     setLoading(true);
     try {
       const url = vessel.id
-        ? `/api/admin/categories/${vessel.id}?access_code=${encodeURIComponent(accessCode)}`
-        : `/api/admin/categories?access_code=${encodeURIComponent(accessCode)}`;
+        ? `/api/admin/vessels/${vessel.id}?access_code=${encodeURIComponent(accessCode)}`
+        : `/api/admin/vessels?access_code=${encodeURIComponent(accessCode)}`;
 
       const method = vessel.id ? 'PUT' : 'POST';
 
@@ -89,7 +89,7 @@ const VesselManagement: React.FC<VesselManagementProps> = ({ accessCode }) => {
 
     setLoading(true);
     try {
-      const response = await fetch(`/api/admin/categories/${deletingVesselId}?access_code=${encodeURIComponent(accessCode)}`, {
+      const response = await fetch(`/api/admin/vessels/${deletingVesselId}?access_code=${encodeURIComponent(accessCode)}`, {
         method: 'DELETE',
       });
 

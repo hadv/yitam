@@ -67,8 +67,8 @@ const createTables = (): Promise<void> => {
       )
     `;
 
-    const createCategoriesTable = `
-      CREATE TABLE IF NOT EXISTS categories (
+    const createVesselsTable = `
+      CREATE TABLE IF NOT EXISTS vessels (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL UNIQUE,
         description TEXT,
@@ -78,11 +78,11 @@ const createTables = (): Promise<void> => {
       )
     `;
 
-    const createHerbalMedicineTable = `
-      CREATE TABLE IF NOT EXISTS herbal_medicine (
+    const createAcupointsTable = `
+      CREATE TABLE IF NOT EXISTS acupoints (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         symbol TEXT NOT NULL UNIQUE,
-        category_id INTEGER NOT NULL,
+        vessel_id INTEGER NOT NULL,
         chinese_characters TEXT,
         pinyin TEXT,
         vietnamese_name TEXT NOT NULL,
@@ -92,7 +92,7 @@ const createTables = (): Promise<void> => {
         image_url TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (category_id) REFERENCES categories (id)
+        FOREIGN KEY (vessel_id) REFERENCES vessels (id)
       )
     `;
 
@@ -103,20 +103,20 @@ const createTables = (): Promise<void> => {
         return;
       }
 
-      // Create categories table first (referenced by herbal_medicine)
+      // Create vessels table first (referenced by acupoints)
       if (db) {
-        db.run(createCategoriesTable, (err) => {
+        db.run(createVesselsTable, (err) => {
           if (err) {
-            console.error('Error creating categories table:', err);
+            console.error('Error creating vessels table:', err);
             reject(err);
             return;
           }
 
-          // Create herbal medicine table
+          // Create acupoints table
           if (db) {
-            db.run(createHerbalMedicineTable, (err) => {
+            db.run(createAcupointsTable, (err) => {
               if (err) {
-                console.error('Error creating herbal_medicine table:', err);
+                console.error('Error creating acupoints table:', err);
                 reject(err);
                 return;
               }
@@ -129,9 +129,9 @@ const createTables = (): Promise<void> => {
                   'ALTER TABLE shared_conversations ADD COLUMN is_active INTEGER DEFAULT 1',
                   'ALTER TABLE shared_conversations ADD COLUMN is_public INTEGER DEFAULT 1',
                   'ALTER TABLE shared_conversations ADD COLUMN view_count INTEGER DEFAULT 0',
-                  'ALTER TABLE categories ADD COLUMN image_url TEXT',
-                  'ALTER TABLE herbal_medicine ADD COLUMN category_id INTEGER REFERENCES categories(id)',
-                  'ALTER TABLE herbal_medicine ADD COLUMN image_url TEXT'
+                  'ALTER TABLE vessels ADD COLUMN image_url TEXT',
+                  'ALTER TABLE acupoints ADD COLUMN vessel_id INTEGER REFERENCES vessels(id)',
+                  'ALTER TABLE acupoints ADD COLUMN image_url TEXT'
                 ];
 
                 migrations.forEach((migration, index) => {
@@ -239,7 +239,7 @@ export interface Vessel {
 export interface Acupoints {
   id?: number;
   symbol: string;
-  category_id: number;
+  vessel_id: number;
   chinese_characters?: string;
   pinyin?: string;
   vietnamese_name: string;
@@ -265,7 +265,7 @@ export interface UpdateVesselRequest {
 
 export interface CreateAcupointsRequest {
   symbol: string;
-  category_id: number;
+  vessel_id: number;
   chinese_characters?: string;
   pinyin?: string;
   vietnamese_name: string;
@@ -277,7 +277,7 @@ export interface CreateAcupointsRequest {
 
 export interface UpdateAcupointsRequest {
   symbol?: string;
-  category_id?: number;
+  vessel_id?: number;
   chinese_characters?: string;
   pinyin?: string;
   vietnamese_name?: string;
@@ -288,17 +288,17 @@ export interface UpdateAcupointsRequest {
 }
 
 // Vessel CRUD operations
-export const getAllCategories = (): Promise<Vessel[]> => {
+export const getAllVessels = (): Promise<Vessel[]> => {
   return new Promise((resolve, reject) => {
     if (!db) {
       reject(new Error('Database not initialized'));
       return;
     }
 
-    const query = 'SELECT * FROM categories ORDER BY name ASC';
+    const query = 'SELECT * FROM vessels ORDER BY name ASC';
     db.all(query, [], (err, rows: any[]) => {
       if (err) {
-        console.error('Error fetching categories:', err);
+        console.error('Error fetching vessels:', err);
         reject(err);
         return;
       }
@@ -307,17 +307,17 @@ export const getAllCategories = (): Promise<Vessel[]> => {
   });
 };
 
-export const getCategoryById = (id: number): Promise<Vessel | null> => {
+export const getVesselById = (id: number): Promise<Vessel | null> => {
   return new Promise((resolve, reject) => {
     if (!db) {
       reject(new Error('Database not initialized'));
       return;
     }
 
-    const query = 'SELECT * FROM categories WHERE id = ?';
+    const query = 'SELECT * FROM vessels WHERE id = ?';
     db.get(query, [id], (err, row: any) => {
       if (err) {
-        console.error('Error fetching category by ID:', err);
+        console.error('Error fetching vessel by ID:', err);
         reject(err);
         return;
       }
@@ -326,7 +326,7 @@ export const getCategoryById = (id: number): Promise<Vessel | null> => {
   });
 };
 
-export const createCategory = (data: CreateVesselRequest): Promise<number> => {
+export const createVessel = (data: CreateVesselRequest): Promise<number> => {
   return new Promise((resolve, reject) => {
     if (!db) {
       reject(new Error('Database not initialized'));
@@ -334,7 +334,7 @@ export const createCategory = (data: CreateVesselRequest): Promise<number> => {
     }
 
     const query = `
-      INSERT INTO categories (name, description, image_url, updated_at)
+      INSERT INTO vessels (name, description, image_url, updated_at)
       VALUES (?, ?, ?, CURRENT_TIMESTAMP)
     `;
 
@@ -346,7 +346,7 @@ export const createCategory = (data: CreateVesselRequest): Promise<number> => {
 
     db.run(query, params, function(err) {
       if (err) {
-        console.error('Error creating category:', err);
+        console.error('Error creating vessel:', err);
         reject(err);
         return;
       }
@@ -355,7 +355,7 @@ export const createCategory = (data: CreateVesselRequest): Promise<number> => {
   });
 };
 
-export const updateCategory = (id: number, data: UpdateVesselRequest): Promise<boolean> => {
+export const updateVessel = (id: number, data: UpdateVesselRequest): Promise<boolean> => {
   return new Promise((resolve, reject) => {
     if (!db) {
       reject(new Error('Database not initialized'));
@@ -386,11 +386,11 @@ export const updateCategory = (id: number, data: UpdateVesselRequest): Promise<b
     updates.push('updated_at = CURRENT_TIMESTAMP');
     params.push(id);
 
-    const query = `UPDATE categories SET ${updates.join(', ')} WHERE id = ?`;
+    const query = `UPDATE vessels SET ${updates.join(', ')} WHERE id = ?`;
 
     db.run(query, params, function(err) {
       if (err) {
-        console.error('Error updating category:', err);
+        console.error('Error updating vessel:', err);
         reject(err);
         return;
       }
@@ -399,7 +399,7 @@ export const updateCategory = (id: number, data: UpdateVesselRequest): Promise<b
   });
 };
 
-export const deleteCategory = (id: number): Promise<boolean> => {
+export const deleteVessel = (id: number): Promise<boolean> => {
   return new Promise((resolve, reject) => {
     if (!db) {
       reject(new Error('Database not initialized'));
@@ -407,10 +407,10 @@ export const deleteCategory = (id: number): Promise<boolean> => {
     }
 
     // First check if any herbal medicine items reference this category
-    const checkQuery = 'SELECT COUNT(*) as count FROM herbal_medicine WHERE category_id = ?';
+    const checkQuery = 'SELECT COUNT(*) as count FROM acupoints WHERE vessel_id = ?';
     db.get(checkQuery, [id], (err, row: any) => {
       if (err) {
-        console.error('Error checking category references:', err);
+        console.error('Error checking vessel references:', err);
         reject(err);
         return;
       }
@@ -421,11 +421,11 @@ export const deleteCategory = (id: number): Promise<boolean> => {
       }
 
       // Safe to delete
-      const deleteQuery = 'DELETE FROM categories WHERE id = ?';
+      const deleteQuery = 'DELETE FROM vessels WHERE id = ?';
       if (db) {
         db.run(deleteQuery, [id], function(err) {
           if (err) {
-            console.error('Error deleting category:', err);
+            console.error('Error deleting vessel:', err);
             reject(err);
             return;
           }
@@ -439,22 +439,22 @@ export const deleteCategory = (id: number): Promise<boolean> => {
 };
 
 // Acupoints CRUD operations
-export const getAllHerbalMedicine = (categoryId?: number): Promise<Acupoints[]> => {
+export const getAllAcupoints = (vesselId?: number): Promise<Acupoints[]> => {
   return new Promise((resolve, reject) => {
     if (!db) {
       reject(new Error('Database not initialized'));
       return;
     }
 
-    let query = 'SELECT * FROM herbal_medicine';
+    let query = 'SELECT * FROM acupoints';
     const params: any[] = [];
 
-    if (categoryId) {
-      query += ' WHERE category_id = ?';
-      params.push(categoryId);
+    if (vesselId) {
+      query += ' WHERE vessel_id = ?';
+      params.push(vesselId);
     }
 
-    query += ' ORDER BY category_id ASC, symbol ASC';
+    query += ' ORDER BY vessel_id ASC, symbol ASC';
 
     db.all(query, params, (err, rows: any[]) => {
       if (err) {
@@ -467,14 +467,14 @@ export const getAllHerbalMedicine = (categoryId?: number): Promise<Acupoints[]> 
   });
 };
 
-export const getHerbalMedicineById = (id: number): Promise<Acupoints | null> => {
+export const getAcupointById = (id: number): Promise<Acupoints | null> => {
   return new Promise((resolve, reject) => {
     if (!db) {
       reject(new Error('Database not initialized'));
       return;
     }
 
-    const query = 'SELECT * FROM herbal_medicine WHERE id = ?';
+    const query = 'SELECT * FROM acupoints WHERE id = ?';
     db.get(query, [id], (err, row: any) => {
       if (err) {
         console.error('Error fetching herbal medicine by ID:', err);
@@ -486,7 +486,7 @@ export const getHerbalMedicineById = (id: number): Promise<Acupoints | null> => 
   });
 };
 
-export const createHerbalMedicine = (data: CreateAcupointsRequest): Promise<number> => {
+export const createAcupoint = (data: CreateAcupointsRequest): Promise<number> => {
   return new Promise((resolve, reject) => {
     if (!db) {
       reject(new Error('Database not initialized'));
@@ -494,15 +494,15 @@ export const createHerbalMedicine = (data: CreateAcupointsRequest): Promise<numb
     }
 
     const query = `
-      INSERT INTO herbal_medicine (
-        symbol, category_id, chinese_characters, pinyin, vietnamese_name,
+      INSERT INTO acupoints (
+        symbol, vessel_id, chinese_characters, pinyin, vietnamese_name,
         description, usage, notes, image_url, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     `;
 
     const params = [
       data.symbol,
-      data.category_id,
+      data.vessel_id,
       data.chinese_characters || null,
       data.pinyin || null,
       data.vietnamese_name,
@@ -523,7 +523,7 @@ export const createHerbalMedicine = (data: CreateAcupointsRequest): Promise<numb
   });
 };
 
-export const updateHerbalMedicine = (id: number, data: UpdateAcupointsRequest): Promise<boolean> => {
+export const updateAcupoint = (id: number, data: UpdateAcupointsRequest): Promise<boolean> => {
   return new Promise((resolve, reject) => {
     if (!db) {
       reject(new Error('Database not initialized'));
@@ -537,9 +537,9 @@ export const updateHerbalMedicine = (id: number, data: UpdateAcupointsRequest): 
       updates.push('symbol = ?');
       params.push(data.symbol);
     }
-    if (data.category_id !== undefined) {
-      updates.push('category_id = ?');
-      params.push(data.category_id);
+    if (data.vessel_id !== undefined) {
+      updates.push('vessel_id = ?');
+      params.push(data.vessel_id);
     }
     if (data.chinese_characters !== undefined) {
       updates.push('chinese_characters = ?');
@@ -578,7 +578,7 @@ export const updateHerbalMedicine = (id: number, data: UpdateAcupointsRequest): 
     updates.push('updated_at = CURRENT_TIMESTAMP');
     params.push(id);
 
-    const query = `UPDATE herbal_medicine SET ${updates.join(', ')} WHERE id = ?`;
+    const query = `UPDATE acupoints SET ${updates.join(', ')} WHERE id = ?`;
 
     db.run(query, params, function(err) {
       if (err) {
@@ -591,14 +591,14 @@ export const updateHerbalMedicine = (id: number, data: UpdateAcupointsRequest): 
   });
 };
 
-export const deleteHerbalMedicine = (id: number): Promise<boolean> => {
+export const deleteAcupoint = (id: number): Promise<boolean> => {
   return new Promise((resolve, reject) => {
     if (!db) {
       reject(new Error('Database not initialized'));
       return;
     }
 
-    const query = 'DELETE FROM herbal_medicine WHERE id = ?';
+    const query = 'DELETE FROM acupoints WHERE id = ?';
     db.run(query, [id], function(err) {
       if (err) {
         console.error('Error deleting herbal medicine:', err);

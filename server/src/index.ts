@@ -41,7 +41,7 @@ app.use((req, res, next) => {
       req.path.startsWith('/api/admin/') ||
       req.path.startsWith('/shared/') ||
       req.path.startsWith('/uploads/') ||
-      req.path === '/admin') {
+      req.path === '/qigong') {
     return next();
   }
 
@@ -114,17 +114,17 @@ app.get('/shared/:shareId', (req, res) => {
   `);
 });
 
-// Add admin page route (serves frontend)
-app.get('/admin', (req, res) => {
+// Add qigong page route (serves frontend)
+app.get('/qigong', (req, res) => {
   // Serve a simple HTML page that loads the frontend React app
-  // The React router will handle the /admin route
+  // The React router will handle the /qigong route
   res.send(`
     <!DOCTYPE html>
     <html lang="en">
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Admin Panel - Yitam</title>
+      <title>Qigong Management - Yitam</title>
       <style>
         body {
           margin: 0;
@@ -155,15 +155,15 @@ app.get('/admin', (req, res) => {
     <body>
       <div class="loading">
         <div class="spinner"></div>
-        <p style="margin-top: 20px; color: #5D4A38;">Loading admin panel...</p>
+        <p style="margin-top: 20px; color: #5D4A38;">Loading qigong management...</p>
       </div>
       <script>
         // Redirect to the frontend application
         const clientUrl = '${process.env.CLIENT_URL || 'http://localhost:3001'}';
         const urlParams = new URLSearchParams(window.location.search);
         const accessCode = urlParams.get('access_code');
-        const adminUrl = clientUrl + '/admin' + (accessCode ? '?access_code=' + encodeURIComponent(accessCode) : '');
-        window.location.href = adminUrl;
+        const qigongUrl = clientUrl + '/qigong' + (accessCode ? '?access_code=' + encodeURIComponent(accessCode) : '');
+        window.location.href = qigongUrl;
       </script>
     </body>
     </html>

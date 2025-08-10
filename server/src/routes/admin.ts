@@ -1,15 +1,15 @@
 import express, { Request, Response } from 'express';
 import {
-  getAllHerbalMedicine,
-  getHerbalMedicineById,
-  createHerbalMedicine,
-  updateHerbalMedicine,
-  deleteHerbalMedicine,
-  getAllCategories,
-  getCategoryById,
-  createCategory,
-  updateCategory,
-  deleteCategory,
+  getAllAcupoints,
+  getAcupointById,
+  createAcupoint,
+  updateAcupoint,
+  deleteAcupoint,
+  getAllVessels,
+  getVesselById,
+  createVessel,
+  updateVessel,
+  deleteVessel,
   CreateAcupointsRequest,
   UpdateAcupointsRequest,
   CreateVesselRequest,
@@ -111,26 +111,26 @@ router.delete('/delete-image/:filename', async (req: Request, res: Response): Pr
 
 // CATEGORY MANAGEMENT ENDPOINTS
 
-// GET /api/admin/categories - Get all categories
-router.get('/categories', async (req: Request, res: Response): Promise<void> => {
+// GET /api/admin/vessels - Get all vessels
+router.get('/vessels', async (req: Request, res: Response): Promise<void> => {
   try {
-    const categories = await getAllCategories();
+    const vessels = await getAllVessels();
     res.json({
       success: true,
-      data: categories,
-      count: categories.length
+      data: vessels,
+      count: vessels.length
     });
   } catch (error) {
-    console.error('Error fetching categories:', error);
+    console.error('Error fetching vessels:', error);
     res.status(500).json({
       error: 'Internal server error',
-      message: 'Failed to fetch categories'
+      message: 'Failed to fetch vessels'
     });
   }
 });
 
-// GET /api/admin/categories/:id - Get specific category
-router.get('/categories/:id', async (req: Request, res: Response): Promise<void> => {
+// GET /api/admin/vessels/:id - Get specific vessel
+router.get('/vessels/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -141,8 +141,8 @@ router.get('/categories/:id', async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const category = await getCategoryById(id);
-    if (!category) {
+    const vessel = await getVesselById(id);
+    if (!vessel) {
       res.status(404).json({
         error: 'Not found',
         message: 'Category not found'
@@ -152,19 +152,19 @@ router.get('/categories/:id', async (req: Request, res: Response): Promise<void>
 
     res.json({
       success: true,
-      data: category
+      data: vessel
     });
   } catch (error) {
-    console.error('Error fetching category:', error);
+    console.error('Error fetching vessel:', error);
     res.status(500).json({
       error: 'Internal server error',
-      message: 'Failed to fetch category'
+      message: 'Failed to fetch vessel'
     });
   }
 });
 
-// POST /api/admin/categories - Create new category
-router.post('/categories', async (req: Request, res: Response): Promise<void> => {
+// POST /api/admin/vessels - Create new vessel
+router.post('/vessels', async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, description, image_url } = req.body;
 
@@ -176,14 +176,14 @@ router.post('/categories', async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    const data: CreateCategoryRequest = {
+    const data: CreateVesselRequest = {
       name: name.trim(),
       description: description?.trim() || undefined,
       image_url: image_url?.trim() || undefined
     };
 
-    const newId = await createCategory(data);
-    const newCategory = await getCategoryById(newId);
+    const newId = await createVessel(data);
+    const newCategory = await getVesselById(newId);
 
     res.status(201).json({
       success: true,
@@ -191,23 +191,23 @@ router.post('/categories', async (req: Request, res: Response): Promise<void> =>
       message: 'Category created successfully'
     });
   } catch (error) {
-    console.error('Error creating category:', error);
+    console.error('Error creating vessel:', error);
     if (error instanceof Error && error.message.includes('UNIQUE constraint failed')) {
       res.status(409).json({
         error: 'Duplicate name',
-        message: 'A category with this name already exists'
+        message: 'A vessel with this name already exists'
       });
     } else {
       res.status(500).json({
         error: 'Internal server error',
-        message: 'Failed to create category'
+        message: 'Failed to create vessel'
       });
     }
   }
 });
 
-// PUT /api/admin/categories/:id - Update category
-router.put('/categories/:id', async (req: Request, res: Response): Promise<void> => {
+// PUT /api/admin/vessels/:id - Update vessel
+router.put('/vessels/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -220,12 +220,12 @@ router.put('/categories/:id', async (req: Request, res: Response): Promise<void>
 
     const { name, description, image_url } = req.body;
 
-    const data: UpdateCategoryRequest = {};
+    const data: UpdateVesselRequest = {};
     if (name !== undefined) data.name = name.trim();
     if (description !== undefined) data.description = description?.trim() || null;
     if (image_url !== undefined) data.image_url = image_url?.trim() || null;
 
-    const updated = await updateCategory(id, data);
+    const updated = await updateVessel(id, data);
     if (!updated) {
       res.status(404).json({
         error: 'Not found',
@@ -234,30 +234,30 @@ router.put('/categories/:id', async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const updatedCategory = await getCategoryById(id);
+    const updatedCategory = await getVesselById(id);
     res.json({
       success: true,
       data: updatedCategory,
       message: 'Category updated successfully'
     });
   } catch (error) {
-    console.error('Error updating category:', error);
+    console.error('Error updating vessel:', error);
     if (error instanceof Error && error.message.includes('UNIQUE constraint failed')) {
       res.status(409).json({
         error: 'Duplicate name',
-        message: 'A category with this name already exists'
+        message: 'A vessel with this name already exists'
       });
     } else {
       res.status(500).json({
         error: 'Internal server error',
-        message: 'Failed to update category'
+        message: 'Failed to update vessel'
       });
     }
   }
 });
 
-// DELETE /api/admin/categories/:id - Delete category
-router.delete('/categories/:id', async (req: Request, res: Response): Promise<void> => {
+// DELETE /api/admin/vessels/:id - Delete vessel
+router.delete('/vessels/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -268,7 +268,7 @@ router.delete('/categories/:id', async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    const deleted = await deleteCategory(id);
+    const deleted = await deleteVessel(id);
     if (!deleted) {
       res.status(404).json({
         error: 'Not found',
@@ -282,16 +282,16 @@ router.delete('/categories/:id', async (req: Request, res: Response): Promise<vo
       message: 'Category deleted successfully'
     });
   } catch (error) {
-    console.error('Error deleting category:', error);
-    if (error instanceof Error && error.message.includes('Cannot delete category')) {
+    console.error('Error deleting vessel:', error);
+    if (error instanceof Error && error.message.includes('Cannot delete vessel')) {
       res.status(409).json({
         error: 'Cannot delete',
-        message: 'Cannot delete category: it is referenced by herbal medicine items'
+        message: 'Cannot delete vessel: it is referenced by acupoint items'
       });
     } else {
       res.status(500).json({
         error: 'Internal server error',
-        message: 'Failed to delete category'
+        message: 'Failed to delete vessel'
       });
     }
   }
@@ -299,27 +299,27 @@ router.delete('/categories/:id', async (req: Request, res: Response): Promise<vo
 
 // HERBAL MEDICINE MANAGEMENT ENDPOINTS
 
-// GET /api/admin/herbal-medicine - Get all herbal medicine records
-router.get('/herbal-medicine', async (req: Request, res: Response): Promise<void> => {
+// GET /api/admin/acupoints - Get all acupoint records
+router.get('/acupoints', async (req: Request, res: Response): Promise<void> => {
   try {
-    const categoryId = req.query.category_id ? parseInt(req.query.category_id as string) : undefined;
-    const records = await getAllHerbalMedicine(categoryId);
+    const vesselId = req.query.vessel_id ? parseInt(req.query.vessel_id as string) : undefined;
+    const records = await getAllAcupoints(vesselId);
     res.json({
       success: true,
       data: records,
       count: records.length
     });
   } catch (error) {
-    console.error('Error fetching herbal medicine records:', error);
+    console.error('Error fetching acupoint records:', error);
     res.status(500).json({
       error: 'Internal server error',
-      message: 'Failed to fetch herbal medicine records'
+      message: 'Failed to fetch acupoint records'
     });
   }
 });
 
-// GET /api/admin/herbal-medicine/:id - Get specific herbal medicine record
-router.get('/herbal-medicine/:id', async (req: Request, res: Response): Promise<void> => {
+// GET /api/admin/acupoints/:id - Get specific acupoint record
+router.get('/acupoints/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -330,7 +330,7 @@ router.get('/herbal-medicine/:id', async (req: Request, res: Response): Promise<
       return;
     }
 
-    const record = await getHerbalMedicineById(id);
+    const record = await getAcupointById(id);
     if (!record) {
       res.status(404).json({
         error: 'Not found',
@@ -344,30 +344,30 @@ router.get('/herbal-medicine/:id', async (req: Request, res: Response): Promise<
       data: record
     });
   } catch (error) {
-    console.error('Error fetching herbal medicine record:', error);
+    console.error('Error fetching acupoint record:', error);
     res.status(500).json({
       error: 'Internal server error',
-      message: 'Failed to fetch herbal medicine record'
+      message: 'Failed to fetch acupoint record'
     });
   }
 });
 
-// POST /api/admin/herbal-medicine - Create new herbal medicine record
-router.post('/herbal-medicine', async (req: Request, res: Response): Promise<void> => {
+// POST /api/admin/acupoints - Create new acupoint record
+router.post('/acupoints', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { symbol, category_id, chinese_characters, pinyin, vietnamese_name, description, usage, notes, image_url } = req.body;
+    const { symbol, vessel_id, chinese_characters, pinyin, vietnamese_name, description, usage, notes, image_url } = req.body;
 
-    if (!symbol || !vietnamese_name || !category_id) {
+    if (!symbol || !vietnamese_name || !vessel_id) {
       res.status(400).json({
         error: 'Missing required fields',
-        message: 'Symbol, category ID, and Vietnamese name are required'
+        message: 'Symbol, vessel ID, and Vietnamese name are required'
       });
       return;
     }
 
-    const data: CreateHerbalMedicineRequest = {
+    const data: CreateAcupointsRequest = {
       symbol: symbol.trim(),
-      category_id: parseInt(category_id),
+      vessel_id: parseInt(vessel_id),
       chinese_characters: chinese_characters?.trim() || undefined,
       pinyin: pinyin?.trim() || undefined,
       vietnamese_name: vietnamese_name.trim(),
@@ -377,8 +377,8 @@ router.post('/herbal-medicine', async (req: Request, res: Response): Promise<voi
       image_url: image_url?.trim() || undefined
     };
 
-    const newId = await createHerbalMedicine(data);
-    const newRecord = await getHerbalMedicineById(newId);
+    const newId = await createAcupoint(data);
+    const newRecord = await getAcupointById(newId);
 
     res.status(201).json({
       success: true,
@@ -386,7 +386,7 @@ router.post('/herbal-medicine', async (req: Request, res: Response): Promise<voi
       message: 'Herbal medicine record created successfully'
     });
   } catch (error) {
-    console.error('Error creating herbal medicine record:', error);
+    console.error('Error creating acupoint record:', error);
     if (error instanceof Error && error.message.includes('UNIQUE constraint failed')) {
       res.status(409).json({
         error: 'Duplicate symbol',
@@ -395,14 +395,14 @@ router.post('/herbal-medicine', async (req: Request, res: Response): Promise<voi
     } else {
       res.status(500).json({
         error: 'Internal server error',
-        message: 'Failed to create herbal medicine record'
+        message: 'Failed to create acupoint record'
       });
     }
   }
 });
 
-// PUT /api/admin/herbal-medicine/:id - Update herbal medicine record
-router.put('/herbal-medicine/:id', async (req: Request, res: Response): Promise<void> => {
+// PUT /api/admin/acupoints/:id - Update acupoint record
+router.put('/acupoints/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -413,11 +413,11 @@ router.put('/herbal-medicine/:id', async (req: Request, res: Response): Promise<
       return;
     }
 
-    const { symbol, category_id, chinese_characters, pinyin, vietnamese_name, description, usage, notes, image_url } = req.body;
+    const { symbol, vessel_id, chinese_characters, pinyin, vietnamese_name, description, usage, notes, image_url } = req.body;
 
-    const data: UpdateHerbalMedicineRequest = {};
+    const data: UpdateAcupointsRequest = {};
     if (symbol !== undefined) data.symbol = symbol.trim();
-    if (category_id !== undefined) data.category_id = parseInt(category_id);
+    if (vessel_id !== undefined) data.vessel_id = parseInt(vessel_id);
     if (chinese_characters !== undefined) data.chinese_characters = chinese_characters?.trim() || null;
     if (pinyin !== undefined) data.pinyin = pinyin?.trim() || null;
     if (vietnamese_name !== undefined) data.vietnamese_name = vietnamese_name.trim();
@@ -426,7 +426,7 @@ router.put('/herbal-medicine/:id', async (req: Request, res: Response): Promise<
     if (notes !== undefined) data.notes = notes?.trim() || null;
     if (image_url !== undefined) data.image_url = image_url?.trim() || null;
 
-    const updated = await updateHerbalMedicine(id, data);
+    const updated = await updateAcupoint(id, data);
     if (!updated) {
       res.status(404).json({
         error: 'Not found',
@@ -435,14 +435,14 @@ router.put('/herbal-medicine/:id', async (req: Request, res: Response): Promise<
       return;
     }
 
-    const updatedRecord = await getHerbalMedicineById(id);
+    const updatedRecord = await getAcupointById(id);
     res.json({
       success: true,
       data: updatedRecord,
       message: 'Herbal medicine record updated successfully'
     });
   } catch (error) {
-    console.error('Error updating herbal medicine record:', error);
+    console.error('Error updating acupoint record:', error);
     if (error instanceof Error && error.message.includes('UNIQUE constraint failed')) {
       res.status(409).json({
         error: 'Duplicate symbol',
@@ -451,14 +451,14 @@ router.put('/herbal-medicine/:id', async (req: Request, res: Response): Promise<
     } else {
       res.status(500).json({
         error: 'Internal server error',
-        message: 'Failed to update herbal medicine record'
+        message: 'Failed to update acupoint record'
       });
     }
   }
 });
 
-// DELETE /api/admin/herbal-medicine/:id - Delete herbal medicine record
-router.delete('/herbal-medicine/:id', async (req: Request, res: Response): Promise<void> => {
+// DELETE /api/admin/acupoints/:id - Delete acupoint record
+router.delete('/acupoints/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -469,7 +469,7 @@ router.delete('/herbal-medicine/:id', async (req: Request, res: Response): Promi
       return;
     }
 
-    const deleted = await deleteHerbalMedicine(id);
+    const deleted = await deleteAcupoint(id);
     if (!deleted) {
       res.status(404).json({
         error: 'Not found',
@@ -483,10 +483,10 @@ router.delete('/herbal-medicine/:id', async (req: Request, res: Response): Promi
       message: 'Herbal medicine record deleted successfully'
     });
   } catch (error) {
-    console.error('Error deleting herbal medicine record:', error);
+    console.error('Error deleting acupoint record:', error);
     res.status(500).json({
       error: 'Internal server error',
-      message: 'Failed to delete herbal medicine record'
+      message: 'Failed to delete acupoint record'
     });
   }
 });

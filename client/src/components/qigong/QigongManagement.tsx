@@ -60,8 +60,8 @@ const QigongManagement: React.FC<QigongManagementProps> = () => {
 
     try {
       const [acupointsResponse, vesselsResponse] = await Promise.all([
-        fetch(`/api/admin/herbal-medicine?access_code=${encodeURIComponent(code)}`),
-        fetch(`/api/admin/categories?access_code=${encodeURIComponent(code)}`)
+        fetch(`/api/admin/acupoints?access_code=${encodeURIComponent(code)}`),
+        fetch(`/api/admin/vessels?access_code=${encodeURIComponent(code)}`)
       ]);
 
       if (acupointsResponse.ok && vesselsResponse.ok) {
@@ -101,7 +101,7 @@ const QigongManagement: React.FC<QigongManagementProps> = () => {
 
     try {
       const categoryParam = categoryId ? `&category_id=${encodeURIComponent(categoryId)}` : '';
-      const response = await fetch(`/api/admin/herbal-medicine?access_code=${encodeURIComponent(accessCode)}${categoryParam}`);
+      const response = await fetch(`/api/admin/acupoints?access_code=${encodeURIComponent(accessCode)}${categoryParam}`);
       if (response.ok) {
         const result = await response.json();
         setAcupoints(result.data || []);
@@ -129,11 +129,11 @@ const QigongManagement: React.FC<QigongManagementProps> = () => {
 
     setLoading(true);
     try {
-      const url = acupoint.id
-        ? `/api/admin/herbal-medicine/${acupoint.id}?access_code=${encodeURIComponent(accessCode)}`
-        : `/api/admin/herbal-medicine?access_code=${encodeURIComponent(accessCode)}`;
+      const url = item.id
+        ? `/api/admin/acupoints/${item.id}?access_code=${encodeURIComponent(accessCode)}`
+        : `/api/admin/acupoints?access_code=${encodeURIComponent(accessCode)}`;
 
-      const method = acupoint.id ? 'PUT' : 'POST';
+      const method = item.id ? 'PUT' : 'POST';
       
       const response = await fetch(url, {
         method,
@@ -167,7 +167,7 @@ const QigongManagement: React.FC<QigongManagementProps> = () => {
 
     setLoading(true);
     try {
-      const response = await fetch(`/api/admin/herbal-medicine/${deletingAcupointId}?access_code=${encodeURIComponent(accessCode)}`, {
+      const response = await fetch(`/api/admin/acupoints/${deletingAcupointId}?access_code=${encodeURIComponent(accessCode)}`, {
         method: 'DELETE',
       });
 
