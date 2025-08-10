@@ -5,7 +5,7 @@ import * as path from 'path';
 // Initialize Google Cloud Storage client
 let storage: Storage;
 
-// Initialize based on available credentials (same as Vision API)
+// Initialize based on available credentials
 if (process.env.GOOGLE_CREDENTIALS_BASE64) {
   // Use base64 encoded service account credentials
   const credentials = JSON.parse(
@@ -15,19 +15,18 @@ if (process.env.GOOGLE_CREDENTIALS_BASE64) {
     credentials: credentials,
     projectId: credentials.project_id,
   });
-} else if (process.env.GOOGLE_CLOUD_API_KEY) {
-  // For API key, we need project ID
+} else {
+  // For API key or default authentication, we need project ID
   const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
   if (!projectId) {
-    throw new Error('GOOGLE_CLOUD_PROJECT_ID is required when using API key');
+    throw new Error('GOOGLE_CLOUD_PROJECT_ID is required for Cloud Storage');
   }
+
+  // Note: Cloud Storage SDK doesn't support API key authentication directly
+  // It requires service account credentials or default application credentials
   storage = new Storage({
-    apiKey: process.env.GOOGLE_CLOUD_API_KEY,
     projectId: projectId,
   });
-} else {
-  // Fallback to default authentication
-  storage = new Storage();
 }
 
 export interface CloudUploadResult {
@@ -35,6 +34,64 @@ export interface CloudUploadResult {
   fileName: string;
   bucketName: string;
   success: boolean;
+}
+
+/**
+ * Upload using REST API with API key (fallback method)
+ */
+async function uploadWithRestAPI(
+  localFilePath: string,
+  fileName: string,
+  bucketName: string
+): Promise<CloudUploadResult> {
+  const apiKey = process.env.GOOGLE_CLOUD_API_KEY;
+  if (!apiKey) {
+    throw new Error('GOOGLE_CLOUD_API_KEY is required for REST API upload');
+  }
+
+  // Read file content
+  const fileBuffer = fs.readFileSync(localFilePath);
+  const contentType = getContentType(localFilePath);
+
+  // Upload URL with API key
+  const uploadUrl = `https://storage.googleapis.com/upload/storage/v1/b/${bucketName}/o?uploadType=media&name=vessel-images/${fileName}&key=${apiKey}`;
+
+  const response = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': contentType,
+      'Content-Length': fileBuffer.length.toString(),
+    },
+    body: fileBuffer,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`REST API upload failed: ${response.status} ${errorText}`);
+  }
+
+  // Make file public
+  const makePublicUrl = `https://storage.googleapis.com/storage/v1/b/${bucketName}/o/vessel-images%2F${fileName}/acl?key=${apiKey}`;
+
+  await fetch(makePublicUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      entity: 'allUsers',
+      role: 'READER',
+    }),
+  });
+
+  const publicUrl = `https://storage.googleapis.com/${bucketName}/vessel-images/${fileName}`;
+
+  return {
+    publicUrl,
+    fileName: `vessel-images/${fileName}`,
+    bucketName,
+    success: true,
+  };
 }
 
 /**
@@ -46,7 +103,7 @@ export async function uploadImageToCloudStorage(
 ): Promise<CloudUploadResult> {
   try {
     const bucketName = process.env.GOOGLE_CLOUD_STORAGE_BUCKET || 'yitam-vessel-images';
-    
+
     // Generate unique filename if not provided
     if (!fileName) {
       const timestamp = Date.now();
@@ -55,13 +112,20 @@ export async function uploadImageToCloudStorage(
       fileName = `${baseName}-${timestamp}${extension}`;
     }
 
-    // Get bucket reference
-    const bucket = storage.bucket(bucketName);
-    
     // Check if file exists locally
     if (!fs.existsSync(localFilePath)) {
       throw new Error(`Local file not found: ${localFilePath}`);
     }
+
+    // Try REST API first (works with API key)
+    if (process.env.GOOGLE_CLOUD_API_KEY) {
+      console.log('Using REST API for cloud storage upload');
+      return await uploadWithRestAPI(localFilePath, fileName, bucketName);
+    }
+
+    // Fallback to SDK (requires service account)
+    console.log('Using SDK for cloud storage upload');
+    const bucket = storage.bucket(bucketName);
 
     // Upload file to cloud storage
     const [file] = await bucket.upload(localFilePath, {
