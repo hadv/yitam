@@ -144,15 +144,14 @@ const VesselManagement: React.FC<VesselManagementProps> = ({ accessCode }) => {
     setError('');
 
     try {
-      const response = await fetch('/api/admin/detect-acupoints', {
+      const response = await fetch(`/api/admin/detect-acupoints?access_code=${encodeURIComponent(accessCode)}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           vessel_id: vessel.id,
-          image_url: vessel.image_url,
-          access_code: accessCode
+          image_url: vessel.image_url
         }),
       });
 
