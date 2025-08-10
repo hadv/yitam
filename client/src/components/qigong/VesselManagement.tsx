@@ -10,6 +10,18 @@ interface Vessel {
   updated_at?: string;
 }
 
+interface Acupoint {
+  id?: number;
+  symbol: string;
+  vessel_id: number;
+  vietnamese_name: string;
+  description?: string;
+  x_coordinate?: number;
+  y_coordinate?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
 interface VesselManagementProps {
   accessCode: string;
 }
@@ -23,6 +35,8 @@ const VesselManagement: React.FC<VesselManagementProps> = ({ accessCode }) => {
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
   const [viewingVessel, setViewingVessel] = useState<Vessel | null>(null);
   const [deletingVesselId, setDeletingVesselId] = useState<number | null>(null);
+  const [autoDetecting, setAutoDetecting] = useState<boolean>(false);
+  const [detectionResult, setDetectionResult] = useState<string>('');
 
   const goBack = () => {
     const params = accessCode ? `?access_code=${encodeURIComponent(accessCode)}` : '';
@@ -119,6 +133,49 @@ const VesselManagement: React.FC<VesselManagementProps> = ({ accessCode }) => {
     setDeletingVesselId(null);
   };
 
+  const handleAutoDetect = async (vessel: Vessel) => {
+    if (!vessel.image_url) {
+      setError('Vessel must have an image for auto-detection');
+      return;
+    }
+
+    setAutoDetecting(true);
+    setDetectionResult('');
+    setError('');
+
+    try {
+      const response = await fetch('/api/admin/detect-acupoints', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          vessel_id: vessel.id,
+          image_url: vessel.image_url,
+          access_code: accessCode
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setDetectionResult(
+          `✅ Auto-detection completed!\n` +
+          `🔍 Detected: ${result.detection_result.total_detected} acupoints\n` +
+          `✨ Created: ${result.total_created} new acupoints\n` +
+          `⏱️ Processing time: ${result.detection_result.processing_time}ms\n` +
+          `📊 Skipped: ${result.skipped} (already exist)`
+        );
+      } else {
+        const errorData = await response.json();
+        setError(`Auto-detection failed: ${errorData.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      setError('Failed to connect to auto-detection service');
+    } finally {
+      setAutoDetecting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
@@ -155,6 +212,20 @@ const VesselManagement: React.FC<VesselManagementProps> = ({ accessCode }) => {
       {error && (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
           {error}
+        </div>
+      )}
+
+      {detectionResult && (
+        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+          <div className="flex justify-between items-start">
+            <pre className="whitespace-pre-wrap text-sm">{detectionResult}</pre>
+            <button
+              onClick={() => setDetectionResult('')}
+              className="text-green-500 hover:text-green-700 ml-4"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       )}
 
@@ -217,18 +288,44 @@ const VesselManagement: React.FC<VesselManagementProps> = ({ accessCode }) => {
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <button
-                      onClick={() => setEditingVessel(vessel)}
-                      className="text-blue-600 hover:text-blue-900 mr-3"
-                    >
-                      Sửa
-                    </button>
-                    <button
-                      onClick={() => vessel.id && handleDeleteClick(vessel.id)}
-                      className="text-red-600 hover:text-red-900"
-                    >
-                      Xóa
-                    </button>
+                    <div className="flex flex-col space-y-1">
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => setEditingVessel(vessel)}
+                          className="text-blue-600 hover:text-blue-900"
+                        >
+                          Sửa
+                        </button>
+                        <button
+                          onClick={() => vessel.id && handleDeleteClick(vessel.id)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          Xóa
+                        </button>
+                      </div>
+                      {vessel.image_url && (
+                        <button
+                          onClick={() => handleAutoDetect(vessel)}
+                          disabled={autoDetecting}
+                          className="text-green-600 hover:text-green-900 disabled:text-gray-400 text-xs flex items-center"
+                          title="Auto-detect acupoints using AI"
+                        >
+                          {autoDetecting ? (
+                            <>
+                              <svg className="animate-spin -ml-1 mr-1 h-3 w-3 text-green-600" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              Detecting...
+                            </>
+                          ) : (
+                            <>
+                              🤖 Auto-detect
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -260,6 +357,7 @@ const VesselManagement: React.FC<VesselManagementProps> = ({ accessCode }) => {
         <VesselDetailModal
           vessel={viewingVessel}
           onClose={() => setViewingVessel(null)}
+          accessCode={accessCode}
         />
       )}
 
@@ -468,10 +566,35 @@ const VesselFormModal: React.FC<VesselFormModalProps> = ({ vessel, onSave, onCan
 interface VesselDetailModalProps {
   vessel: Vessel;
   onClose: () => void;
+  accessCode: string;
 }
 
-const VesselDetailModal: React.FC<VesselDetailModalProps> = ({ vessel, onClose }) => {
+const VesselDetailModal: React.FC<VesselDetailModalProps> = ({ vessel, onClose, accessCode }) => {
   const [showImageViewer, setShowImageViewer] = useState<boolean>(false);
+  const [acupoints, setAcupoints] = useState<Acupoint[]>([]);
+  const [hoveredAcupoint, setHoveredAcupoint] = useState<Acupoint | null>(null);
+  const [loadingAcupoints, setLoadingAcupoints] = useState<boolean>(true);
+
+  // Fetch acupoints for this vessel
+  useEffect(() => {
+    const fetchAcupoints = async () => {
+      try {
+        const response = await fetch(`/api/admin/acupoints?access_code=${accessCode}`);
+        if (response.ok) {
+          const allAcupoints = await response.json();
+          // Filter acupoints for this vessel
+          const vesselAcupoints = allAcupoints.filter((ap: Acupoint) => ap.vessel_id === vessel.id);
+          setAcupoints(vesselAcupoints);
+        }
+      } catch (error) {
+        console.error('Failed to fetch acupoints:', error);
+      } finally {
+        setLoadingAcupoints(false);
+      }
+    };
+
+    fetchAcupoints();
+  }, [vessel.id, accessCode]);
 
   const handleImageClick = () => {
     if (vessel.image_url) {
@@ -536,6 +659,48 @@ const VesselDetailModal: React.FC<VesselDetailModalProps> = ({ vessel, onClose }
             </div>
           </div>
 
+          {/* Acupoints Section */}
+          <div className="mt-8">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Huyệt đạo ({acupoints.length})</h3>
+
+            {loadingAcupoints ? (
+              <div className="text-center py-4">
+                <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                <p className="text-sm text-gray-500 mt-2">Đang tải huyệt đạo...</p>
+              </div>
+            ) : acupoints.length > 0 ? (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {acupoints.map((acupoint) => (
+                  <div
+                    key={acupoint.id}
+                    className={`
+                      p-3 rounded-lg border cursor-pointer transition-all duration-200
+                      ${hoveredAcupoint?.id === acupoint.id
+                        ? 'bg-blue-100 border-blue-300 shadow-md'
+                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                      }
+                    `}
+                    onMouseEnter={() => setHoveredAcupoint(acupoint)}
+                    onMouseLeave={() => setHoveredAcupoint(null)}
+                  >
+                    <div className="font-medium text-sm text-gray-900">{acupoint.symbol}</div>
+                    <div className="text-xs text-gray-600 mt-1">{acupoint.vietnamese_name}</div>
+                    {acupoint.x_coordinate && acupoint.y_coordinate && (
+                      <div className="text-xs text-blue-600 mt-1">
+                        📍 ({acupoint.x_coordinate.toFixed(1)}%, {acupoint.y_coordinate.toFixed(1)}%)
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <p>Chưa có huyệt đạo nào cho Kỳ Kinh này.</p>
+                <p className="text-sm mt-1">Sử dụng tính năng "🤖 Auto-detect" để tự động phát hiện huyệt đạo.</p>
+              </div>
+            )}
+          </div>
+
           <div className="flex justify-end mt-6">
             <button
               onClick={onClose}
@@ -556,6 +721,31 @@ const VesselDetailModal: React.FC<VesselDetailModalProps> = ({ vessel, onClose }
                   alt={vessel.name}
                   className="max-w-full max-h-full object-contain rounded-lg shadow-lg transition-transform group-hover:scale-105"
                 />
+
+                {/* Acupoint Highlighting Overlay */}
+                {hoveredAcupoint && hoveredAcupoint.x_coordinate && hoveredAcupoint.y_coordinate && (
+                  <div
+                    className="absolute pointer-events-none"
+                    style={{
+                      left: `${hoveredAcupoint.x_coordinate}%`,
+                      top: `${hoveredAcupoint.y_coordinate}%`,
+                      transform: 'translate(-50%, -50%)'
+                    }}
+                  >
+                    {/* Pulsing circle */}
+                    <div className="relative">
+                      <div className="w-6 h-6 bg-red-500 rounded-full animate-ping opacity-75"></div>
+                      <div className="absolute inset-0 w-6 h-6 bg-red-600 rounded-full"></div>
+                      <div className="absolute inset-1 w-4 h-4 bg-white rounded-full"></div>
+                    </div>
+
+                    {/* Tooltip */}
+                    <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-80 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+                      {hoveredAcupoint.symbol} - {hoveredAcupoint.vietnamese_name}
+                    </div>
+                  </div>
+                )}
+
                 {/* Zoom overlay */}
                 <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-200 rounded-lg flex items-center justify-center">
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">

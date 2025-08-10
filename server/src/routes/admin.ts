@@ -496,8 +496,10 @@ router.delete('/acupoints/:id', async (req: Request, res: Response): Promise<voi
   }
 });
 
+
+
 // Auto-detect acupoints in vessel image using Google Cloud Vision
-const detectAcupointsHandler = async (req: Request, res: Response) => {
+router.post('/detect-acupoints', async (req: any, res: any) => {
   try {
     const accessCode = req.query.access_code as string;
     if (!accessCode || accessCode !== process.env.ADMIN_ACCESS_CODE) {
@@ -583,10 +585,34 @@ const detectAcupointsHandler = async (req: Request, res: Response) => {
       details: errorMessage
     });
   }
-};
+});
 
-// TODO: Fix Express types issue and uncomment these routes
-// router.post('/detect-acupoints', detectAcupointsHandler);
-// router.get('/test-vision-api', testVisionAPIHandler);
+// Test Google Cloud Vision API configuration
+router.get('/test-vision-api', async (req: any, res: any) => {
+  try {
+    const accessCode = req.query.access_code as string;
+    if (!accessCode || accessCode !== process.env.ADMIN_ACCESS_CODE) {
+      return res.status(401).json({ error: 'Invalid access code' });
+    }
+
+    const isValid = await validateVisionAPIConfig();
+
+    res.json({
+      vision_api_configured: isValid,
+      message: isValid
+        ? 'Google Cloud Vision API is properly configured'
+        : 'Google Cloud Vision API configuration failed'
+    });
+
+  } catch (error) {
+    console.error('Vision API test error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      vision_api_configured: false,
+      error: 'Failed to test Vision API configuration',
+      details: errorMessage
+    });
+  }
+});
 
 export default router;
