@@ -826,18 +826,31 @@ const AcupointDetailModal: React.FC<AcupointDetailModalProps> = ({ acupoint, ves
         </div>
 
         {/* Right Section - Image */}
-        {acupoint.image_url && (
+        {(acupoint.image_url || vessel?.image_url) && (
           <div className="w-1/2 bg-gray-50 flex items-center justify-center p-6">
-            <img
-              src={acupoint.image_url.startsWith('http') ? acupoint.image_url : `http://localhost:5001${acupoint.image_url}`}
-              alt={acupoint.vietnamese_name}
-              className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
-            />
+            <div className="text-center">
+              <img
+                src={
+                  acupoint.image_url
+                    ? (acupoint.image_url.startsWith('http') ? acupoint.image_url : `http://localhost:5001${acupoint.image_url}`)
+                    : vessel?.image_url?.startsWith('http')
+                      ? vessel.image_url
+                      : `http://localhost:5001${vessel?.image_url}`
+                }
+                alt={acupoint.image_url ? acupoint.vietnamese_name : vessel?.name}
+                className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
+              />
+              {!acupoint.image_url && vessel?.image_url && (
+                <p className="mt-2 text-sm text-gray-500 italic">
+                  Hình ảnh từ Kỳ Kinh: {vessel.name}
+                </p>
+              )}
+            </div>
           </div>
         )}
 
         {/* No Image State */}
-        {!acupoint.image_url && (
+        {!acupoint.image_url && !vessel?.image_url && (
           <div className="w-1/2 bg-gray-50 flex items-center justify-center p-6">
             <div className="text-center text-gray-500">
               <svg className="w-24 h-24 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
