@@ -25,7 +25,8 @@ dotenv.config();
 // Initialize Express app
 const app: Express = express();
 app.use(cors(config.server.cors));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Apply access control middleware only to specific routes that need it
 // Most conversation management should be available to authenticated users
