@@ -17,6 +17,7 @@ import {
 } from '../db/database';
 import { upload, getImageUrl, deleteImageFile, getFilenameFromUrl } from '../services/imageUpload';
 import { detectAcupointsInImage, validateVisionAPIConfig } from '../services/visionService';
+import { uploadRelativePathToCloud, validateCloudStorageConfig } from '../services/cloudStorageService';
 
 const router = express.Router();
 
@@ -525,21 +526,25 @@ router.post('/detect-acupoints', async (req: any, res: any) => {
       return res.status(500).json({ error: 'Google Cloud Vision API not properly configured' });
     }
 
-    // For local development, we need to use a publicly accessible URL
-    // Option 1: Use ngrok or similar service to expose localhost
-    // Option 2: Upload to cloud storage temporarily
-    // Option 3: Use base64 content (current fallback)
-
+    // Upload to cloud storage for public access
     let processableImageUrl = image_url;
 
-    // Check if we have a public base URL configured
-    const publicBaseUrl = process.env.PUBLIC_BASE_URL;
-    if (publicBaseUrl && image_url.startsWith('/uploads/')) {
-      processableImageUrl = `${publicBaseUrl}${image_url}`;
-      console.log(`Using public URL: ${processableImageUrl}`);
-    } else if (image_url.startsWith('/uploads/')) {
-      console.log(`Using local file path for base64 conversion: ${image_url}`);
-      processableImageUrl = image_url; // Will be handled by visionService
+    if (image_url.startsWith('/uploads/')) {
+      try {
+        console.log(`Uploading image to cloud storage: ${image_url}`);
+
+        // Upload to Google Cloud Storage and get public URL
+        const uploadResult = await uploadRelativePathToCloud(image_url);
+        processableImageUrl = uploadResult.publicUrl;
+
+        console.log(`Successfully uploaded to cloud storage: ${processableImageUrl}`);
+
+      } catch (uploadError) {
+        console.warn('Cloud storage upload failed, falling back to base64:', uploadError);
+
+        // Fallback to original path (will use base64 in visionService)
+        processableImageUrl = image_url;
+      }
     }
 
     const detectionResult = await detectAcupointsInImage(processableImageUrl, vessel.name);
@@ -628,6 +633,36 @@ router.get('/test-vision-api', async (req: any, res: any) => {
     res.status(500).json({
       vision_api_configured: false,
       error: 'Failed to test Vision API configuration',
+      details: errorMessage
+    });
+  }
+});
+
+// Test Google Cloud Storage configuration
+router.get('/test-cloud-storage', async (req: any, res: any) => {
+  try {
+    const accessCode = req.query.access_code as string;
+    const validAdminCodes = process.env.ADMIN_ACCESS_CODES?.split(',') || [];
+    if (!accessCode || !validAdminCodes.includes(accessCode)) {
+      return res.status(401).json({ error: 'Invalid access code' });
+    }
+
+    const isValid = await validateCloudStorageConfig();
+
+    res.json({
+      cloud_storage_configured: isValid,
+      bucket_name: process.env.GOOGLE_CLOUD_STORAGE_BUCKET || 'yitam-vessel-images',
+      message: isValid
+        ? 'Google Cloud Storage is properly configured'
+        : 'Google Cloud Storage configuration failed'
+    });
+
+  } catch (error) {
+    console.error('Cloud Storage test error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      cloud_storage_configured: false,
+      error: 'Failed to test Cloud Storage configuration',
       details: errorMessage
     });
   }
