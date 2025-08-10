@@ -1002,6 +1002,7 @@ const ImageViewer: React.FC<ImageViewerProps> = ({ imageUrl, title, onClose }) =
   const [position, setPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [lastTouchDistance, setLastTouchDistance] = useState<number>(0);
 
   const handleZoomIn = () => {
     setScale(prev => Math.min(prev + 0.25, 3));
@@ -1037,6 +1038,69 @@ const ImageViewer: React.FC<ImageViewerProps> = ({ imageUrl, title, onClose }) =
 
   const handleMouseUp = () => {
     setIsDragging(false);
+  };
+
+  // Touch events for mobile support
+  const handleTouchStart = (e: React.TouchEvent) => {
+    e.preventDefault();
+    if (e.touches.length === 1) {
+      // Single touch - start dragging
+      if (scale > 1) {
+        setIsDragging(true);
+        setDragStart({
+          x: e.touches[0].clientX - position.x,
+          y: e.touches[0].clientY - position.y
+        });
+      }
+    } else if (e.touches.length === 2) {
+      // Two touches - start pinch zoom
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const distance = Math.sqrt(
+        Math.pow(touch2.clientX - touch1.clientX, 2) +
+        Math.pow(touch2.clientY - touch1.clientY, 2)
+      );
+      setLastTouchDistance(distance);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault();
+    if (e.touches.length === 1 && isDragging && scale > 1) {
+      // Single touch - drag
+      setPosition({
+        x: e.touches[0].clientX - dragStart.x,
+        y: e.touches[0].clientY - dragStart.y
+      });
+    } else if (e.touches.length === 2) {
+      // Two touches - pinch zoom
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const distance = Math.sqrt(
+        Math.pow(touch2.clientX - touch1.clientX, 2) +
+        Math.pow(touch2.clientY - touch1.clientY, 2)
+      );
+
+      if (lastTouchDistance > 0) {
+        const scaleChange = distance / lastTouchDistance;
+        const newScale = Math.min(Math.max(scale * scaleChange, 0.5), 3);
+        setScale(newScale);
+      }
+      setLastTouchDistance(distance);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+    setLastTouchDistance(0);
+  };
+
+  // Wheel event for zoom
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    const newScale = Math.min(Math.max(scale + delta, 0.5), 3);
+    setScale(newScale);
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -1117,6 +1181,10 @@ const ImageViewer: React.FC<ImageViewerProps> = ({ imageUrl, title, onClose }) =
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onWheel={handleWheel}
       >
         <img
           src={imageUrl}
@@ -1131,9 +1199,10 @@ const ImageViewer: React.FC<ImageViewerProps> = ({ imageUrl, title, onClose }) =
       </div>
 
       {/* Instructions */}
-      <div className="absolute bottom-16 left-1/2 transform -translate-x-1/2 text-white text-sm text-center bg-black bg-opacity-50 rounded px-3 py-1">
+      <div className="absolute bottom-16 left-1/2 transform -translate-x-1/2 text-white text-sm text-center bg-black bg-opacity-50 rounded px-3 py-1 max-w-md">
         <p>Phím tắt: + (zoom in), - (zoom out), 0 (reset), Esc (đóng)</p>
-        {scale > 1 && <p>Kéo để di chuyển ảnh</p>}
+        <p>Cuộn chuột để zoom, kéo để di chuyển ảnh</p>
+        {scale > 1 && <p>Mobile: Pinch để zoom, kéo một ngón để di chuyển</p>}
       </div>
     </div>
   );
