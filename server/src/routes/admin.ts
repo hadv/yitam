@@ -525,8 +525,16 @@ router.post('/detect-acupoints', async (req: any, res: any) => {
       return res.status(500).json({ error: 'Google Cloud Vision API not properly configured' });
     }
 
+    // Convert relative URL to full URL for Google Cloud Vision API
+    let fullImageUrl = image_url;
+    if (image_url.startsWith('/uploads/')) {
+      // Convert relative path to full URL
+      const serverPort = process.env.PORT || 5001;
+      fullImageUrl = `http://localhost:${serverPort}${image_url}`;
+    }
+
     // Detect acupoints using Google Cloud Vision
-    const detectionResult = await detectAcupointsInImage(image_url, vessel.name);
+    const detectionResult = await detectAcupointsInImage(fullImageUrl, vessel.name);
 
     // Auto-create detected acupoints
     const createdAcupoints = [];
