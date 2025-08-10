@@ -502,7 +502,8 @@ router.delete('/acupoints/:id', async (req: Request, res: Response): Promise<voi
 router.post('/detect-acupoints', async (req: any, res: any) => {
   try {
     const accessCode = req.query.access_code as string;
-    if (!accessCode || accessCode !== process.env.ADMIN_ACCESS_CODE) {
+    const validAdminCodes = process.env.ADMIN_ACCESS_CODES?.split(',') || [];
+    if (!accessCode || !validAdminCodes.includes(accessCode)) {
       return res.status(401).json({ error: 'Invalid access code' });
     }
 
@@ -591,7 +592,8 @@ router.post('/detect-acupoints', async (req: any, res: any) => {
 router.get('/test-vision-api', async (req: any, res: any) => {
   try {
     const accessCode = req.query.access_code as string;
-    if (!accessCode || accessCode !== process.env.ADMIN_ACCESS_CODE) {
+    const validAdminCodes = process.env.ADMIN_ACCESS_CODES?.split(',') || [];
+    if (!accessCode || !validAdminCodes.includes(accessCode)) {
       return res.status(401).json({ error: 'Invalid access code' });
     }
 
