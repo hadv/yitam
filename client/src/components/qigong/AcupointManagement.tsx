@@ -368,6 +368,7 @@ const AcupointManagement: React.FC<AcupointManagementProps> = ({ accessCode }) =
           <AcupointFormModal
             acupoint={editingAcupoint}
             vessels={vessels}
+            accessCode={accessCode}
             onSave={handleSave}
             onCancel={() => {
               setShowAddForm(false);
@@ -419,11 +420,12 @@ const AcupointManagement: React.FC<AcupointManagementProps> = ({ accessCode }) =
 interface AcupointFormModalProps {
   acupoint: Acupoints | null;
   vessels: Vessel[];
+  accessCode: string;
   onSave: (acupoint: Acupoints) => void;
   onCancel: () => void;
 }
 
-const AcupointFormModal: React.FC<AcupointFormModalProps> = ({ acupoint, vessels, onSave, onCancel }) => {
+const AcupointFormModal: React.FC<AcupointFormModalProps> = ({ acupoint, vessels, accessCode, onSave, onCancel }) => {
   const [formData, setFormData] = useState<Acupoints>({
     symbol: acupoint?.symbol || '',
     vessel_id: acupoint?.vessel_id || 0,
@@ -467,19 +469,21 @@ const AcupointFormModal: React.FC<AcupointFormModalProps> = ({ acupoint, vessels
       const uploadFormData = new FormData();
       uploadFormData.append('image', file);
 
-      const response = await fetch('/api/upload', {
+      // Get access code from props (passed from parent component)
+      const response = await fetch(`/api/admin/upload-image?access_code=${encodeURIComponent(accessCode)}`, {
         method: 'POST',
         body: uploadFormData,
       });
 
       if (response.ok) {
         const result = await response.json();
-        const imageUrl = result.url;
+        const imageUrl = result.data.url;
         setFormData(prev => ({ ...prev, image_url: imageUrl }));
         setImagePreview(`http://localhost:5001${imageUrl}`);
         setFormError('');
       } else {
-        setFormError('Không thể tải lên hình ảnh');
+        const errorData = await response.json();
+        setFormError(errorData.message || 'Không thể tải lên hình ảnh');
       }
     } catch (error) {
       console.error('Error uploading image:', error);
