@@ -54,13 +54,15 @@ async function uploadWithRestAPI(
   const contentType = getContentType(localFilePath);
 
   // Upload URL with correct Google Cloud Storage REST API format
-  const uploadUrl = `https://www.googleapis.com/upload/storage/v1/b/${bucketName}/o?uploadType=media&name=vessel-images/${fileName}&key=${apiKey}`;
+  const uploadUrl = `https://www.googleapis.com/upload/storage/v1/b/${bucketName}/o?uploadType=media&name=vessel-images/${fileName}`;
 
   const response = await fetch(uploadUrl, {
     method: 'POST',
     headers: {
       'Content-Type': contentType,
       'Content-Length': fileBuffer.length.toString(),
+      'Authorization': `Bearer ${apiKey}`, // Try Bearer token format
+      'X-Goog-Api-Key': apiKey, // Alternative API key header
     },
     body: fileBuffer,
   });
@@ -71,12 +73,14 @@ async function uploadWithRestAPI(
   }
 
   // Make file public using correct Google Cloud Storage REST API format
-  const makePublicUrl = `https://www.googleapis.com/storage/v1/b/${bucketName}/o/vessel-images%2F${fileName}/acl?key=${apiKey}`;
+  const makePublicUrl = `https://www.googleapis.com/storage/v1/b/${bucketName}/o/vessel-images%2F${fileName}/acl`;
 
   await fetch(makePublicUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+      'X-Goog-Api-Key': apiKey,
     },
     body: JSON.stringify({
       entity: 'allUsers',
@@ -117,10 +121,14 @@ export async function uploadImageToCloudStorage(
       throw new Error(`Local file not found: ${localFilePath}`);
     }
 
-    // Try REST API first (works with API key)
-    if (process.env.GOOGLE_CLOUD_API_KEY) {
+    // Try REST API first (may not work with API key for write operations)
+    if (process.env.GOOGLE_CLOUD_API_KEY && process.env.GOOGLE_CREDENTIALS_BASE64) {
       console.log('Using REST API for cloud storage upload');
       return await uploadWithRestAPI(localFilePath, fileName, bucketName);
+    } else if (process.env.GOOGLE_CLOUD_API_KEY) {
+      console.log('API key detected but Cloud Storage write operations typically require service account');
+      console.log('Skipping cloud upload, will use base64 fallback');
+      throw new Error('API key does not support Cloud Storage write operations');
     }
 
     // Fallback to SDK (requires service account)
