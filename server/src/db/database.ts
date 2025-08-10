@@ -458,7 +458,7 @@ export const getAllHerbalMedicine = (categoryId?: number): Promise<Acupoints[]> 
 
     db.all(query, params, (err, rows: any[]) => {
       if (err) {
-        console.error('Error fetching acupoints data:', err);
+        console.error('Error fetching herbal medicine data:', err);
         reject(err);
         return;
       }
@@ -477,7 +477,7 @@ export const getHerbalMedicineById = (id: number): Promise<Acupoints | null> => 
     const query = 'SELECT * FROM herbal_medicine WHERE id = ?';
     db.get(query, [id], (err, row: any) => {
       if (err) {
-        console.error('Error fetching acupoints by ID:', err);
+        console.error('Error fetching herbal medicine by ID:', err);
         reject(err);
         return;
       }

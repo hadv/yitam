@@ -10,10 +10,10 @@ import {
   createCategory,
   updateCategory,
   deleteCategory,
-  CreateHerbalMedicineRequest,
-  UpdateHerbalMedicineRequest,
-  CreateCategoryRequest,
-  UpdateCategoryRequest
+  CreateAcupointsRequest,
+  UpdateAcupointsRequest,
+  CreateVesselRequest,
+  UpdateVesselRequest
 } from '../db/database';
 import { upload, getImageUrl, deleteImageFile, getFilenameFromUrl } from '../services/imageUpload';
 
