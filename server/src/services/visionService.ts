@@ -1,11 +1,26 @@
 import { ImageAnnotatorClient } from '@google-cloud/vision';
 
-// Initialize Google Cloud Vision client with API key
-const visionClient = new ImageAnnotatorClient({
-  apiKey: process.env.GOOGLE_CLOUD_API_KEY,
-  // Alternative: use service account credentials
-  // keyFilename: 'path/to/service-account-key.json',
-});
+// Initialize Google Cloud Vision client
+let visionClient: ImageAnnotatorClient;
+
+// Initialize based on available credentials
+if (process.env.GOOGLE_CREDENTIALS_BASE64) {
+  // Use base64 encoded service account credentials
+  const credentials = JSON.parse(
+    Buffer.from(process.env.GOOGLE_CREDENTIALS_BASE64, 'base64').toString()
+  );
+  visionClient = new ImageAnnotatorClient({
+    credentials: credentials,
+  });
+} else if (process.env.GOOGLE_CLOUD_API_KEY) {
+  // Use API key
+  visionClient = new ImageAnnotatorClient({
+    apiKey: process.env.GOOGLE_CLOUD_API_KEY,
+  });
+} else {
+  // Fallback to default authentication (GOOGLE_APPLICATION_CREDENTIALS)
+  visionClient = new ImageAnnotatorClient();
+}
 
 export interface DetectedAcupoint {
   symbol: string;
@@ -34,15 +49,39 @@ async function detectAcupointsWithRestAPI(
   vesselName: string
 ): Promise<VisionDetectionResult> {
   const startTime = Date.now();
-  const apiKey = process.env.GOOGLE_CLOUD_API_KEY;
 
-  if (!apiKey) {
-    throw new Error('GOOGLE_CLOUD_API_KEY environment variable is required');
+  // Get authentication method
+  const apiKey = process.env.GOOGLE_CLOUD_API_KEY;
+  const base64Credentials = process.env.GOOGLE_CREDENTIALS_BASE64;
+
+  if (!apiKey && !base64Credentials) {
+    throw new Error('Either GOOGLE_CLOUD_API_KEY or GOOGLE_CREDENTIALS_BASE64 environment variable is required');
   }
 
   try {
-    // Use Google Cloud Vision REST API
-    const visionApiUrl = `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`;
+    let visionApiUrl: string;
+    let headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    // Configure authentication
+    if (apiKey) {
+      // Use API key authentication
+      visionApiUrl = `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`;
+    } else if (base64Credentials) {
+      // Use service account authentication with access token
+      const credentials = JSON.parse(
+        Buffer.from(base64Credentials, 'base64').toString()
+      );
+
+      // Get access token (simplified - in production, use proper OAuth2 flow)
+      visionApiUrl = 'https://vision.googleapis.com/v1/images:annotate';
+
+      // For service account, we'll use the SDK method instead
+      throw new Error('Using SDK method for service account credentials');
+    } else {
+      throw new Error('No valid authentication method found');
+    }
 
     const requestBody = {
       requests: [
@@ -68,9 +107,7 @@ async function detectAcupointsWithRestAPI(
 
     const response = await fetch(visionApiUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: headers,
       body: JSON.stringify(requestBody)
     });
 
@@ -311,18 +348,32 @@ function removeDuplicateAcupoints(acupoints: DetectedAcupoint[]): DetectedAcupoi
  */
 export async function validateVisionAPIConfig(): Promise<boolean> {
   const apiKey = process.env.GOOGLE_CLOUD_API_KEY;
+  const base64Credentials = process.env.GOOGLE_CREDENTIALS_BASE64;
 
-  if (!apiKey) {
-    console.error('GOOGLE_CLOUD_API_KEY environment variable is not set');
+  if (!apiKey && !base64Credentials) {
+    console.error('Neither GOOGLE_CLOUD_API_KEY nor GOOGLE_CREDENTIALS_BASE64 environment variable is set');
     return false;
   }
 
-  try {
-    // Test with a simple REST API call
-    const testImageUrl = 'https://via.placeholder.com/100x100.png';
-    const visionApiUrl = `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`;
+  const testImageUrl = 'https://via.placeholder.com/100x100.png';
 
-    const requestBody = {
+  try {
+    // Test with SDK method (works for both API key and service account)
+    const [result] = await visionClient.textDetection(testImageUrl);
+    return !result.error;
+
+  } catch (sdkError) {
+    console.warn('SDK test failed, trying REST API:', sdkError);
+
+    // Fallback to REST API test (only works with API key)
+    if (!apiKey) {
+      return false;
+    }
+
+    try {
+      const visionApiUrl = `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`;
+
+      const requestBody = {
       requests: [
         {
           image: {
@@ -355,8 +406,9 @@ export async function validateVisionAPIConfig(): Promise<boolean> {
     }
 
     return false;
-  } catch (error) {
-    console.error('Vision API configuration validation failed:', error);
-    return false;
+    } catch (restError) {
+      console.error('REST API test also failed:', restError);
+      return false;
+    }
   }
 }
