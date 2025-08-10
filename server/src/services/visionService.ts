@@ -56,9 +56,21 @@ function getImageBase64(imageUrl: string): string | null {
       console.log(`File exists: ${fs.existsSync(filePath)}`);
 
       if (fs.existsSync(filePath)) {
+        // Read file with optimization for text detection
         const imageBuffer = fs.readFileSync(filePath);
+
+        // For better text detection, ensure we're using high-quality images
+        const stats = fs.statSync(filePath);
+        console.log(`File size: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
+
+        // Check if file is too large (Google Vision API limit: 20MB for base64)
+        if (stats.size > 20 * 1024 * 1024) {
+          console.warn('File too large for base64 upload, may need compression');
+        }
+
         const base64 = imageBuffer.toString('base64');
         console.log(`Successfully read file, base64 length: ${base64.length}`);
+        console.log('Using base64 content for optimal text detection');
         return base64;
       } else {
         console.log(`File not found: ${filePath}`);

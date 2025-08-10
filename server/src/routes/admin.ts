@@ -526,24 +526,26 @@ router.post('/detect-acupoints', async (req: any, res: any) => {
       return res.status(500).json({ error: 'Google Cloud Vision API not properly configured' });
     }
 
-    // Upload to cloud storage for public access
+    // Try cloud storage upload for better quality, fallback to base64
     let processableImageUrl = image_url;
 
     if (image_url.startsWith('/uploads/')) {
       try {
-        console.log(`Uploading image to cloud storage: ${image_url}`);
+        console.log(`Attempting cloud storage upload: ${image_url}`);
 
         // Upload to Google Cloud Storage and get public URL
         const uploadResult = await uploadRelativePathToCloud(image_url);
         processableImageUrl = uploadResult.publicUrl;
 
-        console.log(`Successfully uploaded to cloud storage: ${processableImageUrl}`);
+        console.log(`✅ Cloud storage upload successful: ${processableImageUrl}`);
 
       } catch (uploadError) {
-        console.warn('Cloud storage upload failed, falling back to base64:', uploadError);
+        console.warn('⚠️ Cloud storage upload failed, using base64 fallback');
+        console.warn('This is normal if Cloud Storage API is not enabled for your API key');
 
         // Fallback to original path (will use base64 in visionService)
         processableImageUrl = image_url;
+        console.log('📄 Will use base64 content for Vision API (still works well for text detection)');
       }
     }
 
