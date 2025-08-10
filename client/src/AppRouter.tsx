@@ -21,7 +21,7 @@ const AppRouter: React.FC = () => {
         <Route path="/shared/:shareId" element={<SharedConversationViewer />} />
 
         {/* Qigong management page with access code protection */}
-        <Route path="/qigong" element={<QigongManagement />} />
+        <Route path="/qigong/*" element={<QigongManagement />} />
 
         {/* Catch all route - redirect to main app */}
         <Route path="*" element={<TailwindApp />} />

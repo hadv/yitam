@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 interface Vessel {
   id?: number;
@@ -14,6 +15,7 @@ interface VesselManagementProps {
 }
 
 const VesselManagement: React.FC<VesselManagementProps> = ({ accessCode }) => {
+  const navigate = useNavigate();
   const [vessels, setVessels] = useState<Vessel[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
@@ -21,6 +23,11 @@ const VesselManagement: React.FC<VesselManagementProps> = ({ accessCode }) => {
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
   const [viewingVessel, setViewingVessel] = useState<Vessel | null>(null);
   const [deletingVesselId, setDeletingVesselId] = useState<number | null>(null);
+
+  const goBack = () => {
+    const params = accessCode ? `?access_code=${encodeURIComponent(accessCode)}` : '';
+    navigate(`/qigong${params}`);
+  };
 
   useEffect(() => {
     fetchVessels();
@@ -113,15 +120,37 @@ const VesselManagement: React.FC<VesselManagementProps> = ({ accessCode }) => {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <button
-          onClick={() => setShowAddForm(true)}
-          className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700"
-        >
-          Thêm Kỳ Kinh mới
-        </button>
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="container mx-auto px-4 py-8">
+        {/* Header with Back Button */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center">
+            <button
+              onClick={goBack}
+              className="mr-4 p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-full transition-colors"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-800">Quản lý 8 Kỳ Kinh</h1>
+              <p className="text-gray-600 mt-1">Quản lý thông tin 8 Kỳ Kinh (Eight Extraordinary Vessels)</p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Thêm Kỳ Kinh mới
+          </button>
+        </div>
+
+        <div className="space-y-6">
 
       {error && (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
@@ -259,6 +288,8 @@ const VesselManagement: React.FC<VesselManagementProps> = ({ accessCode }) => {
           </div>
         </div>
       )}
+        </div>
+      </div>
     </div>
   );
 };
