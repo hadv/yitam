@@ -938,7 +938,7 @@ const AcupointDetailModal: React.FC<AcupointDetailModalProps> = ({ acupoint, ves
                 <p className="text-xs text-gray-400">
                   Click để xem ảnh lớn
                 </p>
-                {acupoint.bounding_box && vessel?.image_url && (
+                {acupoint.x_coordinate !== undefined && acupoint.y_coordinate !== undefined && vessel?.image_url && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -977,12 +977,14 @@ const AcupointDetailModal: React.FC<AcupointDetailModalProps> = ({ acupoint, ves
       )}
 
       {/* Acupoint Spotlight Modal */}
-      {showSpotlight && acupoint.bounding_box && vessel?.image_url && (
+      {showSpotlight && acupoint.x_coordinate !== undefined && acupoint.y_coordinate !== undefined && vessel?.image_url && (
         <AcupointSpotlight
           imageUrl={vessel.image_url.startsWith('http') ? vessel.image_url : `http://localhost:5001${vessel.image_url}`}
           boundingBox={acupoint.bounding_box}
           acupointSymbol={acupoint.symbol}
           vietnameseName={acupoint.vietnamese_name}
+          x_coordinate={acupoint.x_coordinate}
+          y_coordinate={acupoint.y_coordinate}
           onClose={() => setShowSpotlight(false)}
         />
       )}

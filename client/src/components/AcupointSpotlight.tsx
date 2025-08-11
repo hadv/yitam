@@ -13,6 +13,8 @@ interface AcupointSpotlightProps {
   boundingBox?: BoundingBox;
   acupointSymbol: string;
   vietnameseName: string;
+  x_coordinate?: number;
+  y_coordinate?: number;
   onClose: () => void;
 }
 
@@ -21,6 +23,8 @@ const AcupointSpotlight: React.FC<AcupointSpotlightProps> = ({
   boundingBox,
   acupointSymbol,
   vietnameseName,
+  x_coordinate,
+  y_coordinate,
   onClose
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -30,10 +34,10 @@ const AcupointSpotlight: React.FC<AcupointSpotlightProps> = ({
   const [pan, setPan] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
-    if (imageLoaded && boundingBox) {
+    if (imageLoaded && x_coordinate !== undefined && y_coordinate !== undefined) {
       drawSpotlightEffect();
     }
-  }, [imageLoaded, boundingBox, zoom, pan]);
+  }, [imageLoaded, x_coordinate, y_coordinate, zoom, pan]);
 
   // Polyfill for roundRect if not supported
   const roundRect = (ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) => {
@@ -58,9 +62,7 @@ const AcupointSpotlight: React.FC<AcupointSpotlightProps> = ({
   const drawSpotlightEffect = () => {
     const canvas = canvasRef.current;
     const image = imageRef.current;
-    if (!canvas || !image || !boundingBox ||
-        boundingBox.x1 === undefined || boundingBox.y1 === undefined ||
-        boundingBox.x2 === undefined || boundingBox.y2 === undefined) return;
+    if (!canvas || !image || x_coordinate === undefined || y_coordinate === undefined) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -73,51 +75,50 @@ const AcupointSpotlight: React.FC<AcupointSpotlightProps> = ({
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Calculate actual bounding box coordinates with safe defaults
-    const spotlightX1 = ((boundingBox.x1 || 0) / 100) * canvas.width;
-    const spotlightY1 = ((boundingBox.y1 || 0) / 100) * canvas.height;
-    const spotlightX2 = ((boundingBox.x2 || 0) / 100) * canvas.width;
-    const spotlightY2 = ((boundingBox.y2 || 0) / 100) * canvas.height;
+    // Calculate acupoint position coordinates
+    const acupointX = (x_coordinate / 100) * canvas.width;
+    const acupointY = (y_coordinate / 100) * canvas.height;
 
-    // Create spotlight effect
+    // Create spotlight area around acupoint position
+    const spotlightRadius = 40; // Radius around acupoint
+    const spotlightX1 = acupointX - spotlightRadius;
+    const spotlightY1 = acupointY - spotlightRadius;
+    const spotlightWidth = spotlightRadius * 2;
+    const spotlightHeight = spotlightRadius * 2;
+
+    // Create simple spotlight effect without overlay
     ctx.save();
 
-    // Fill entire canvas with semi-transparent black (grayscale effect)
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Draw glowing circle at acupoint position
+    ctx.beginPath();
+    ctx.arc(acupointX, acupointY, spotlightRadius, 0, 2 * Math.PI);
 
-    // Cut out the spotlight area (clear the region)
-    ctx.globalCompositeOperation = 'destination-out';
-    
-    // Add padding around bounding box
-    const padding = 10;
-    const spotlightWidth = spotlightX2 - spotlightX1 + (padding * 2);
-    const spotlightHeight = spotlightY2 - spotlightY1 + (padding * 2);
-    
-    // Create rounded rectangle for spotlight
-    const cornerRadius = 8;
-    roundRect(
-      ctx,
-      spotlightX1 - padding,
-      spotlightY1 - padding,
-      spotlightWidth,
-      spotlightHeight,
-      cornerRadius
-    );
-    ctx.fill();
-
-    // Add glowing border
-    ctx.globalCompositeOperation = 'source-over';
+    // Glowing effect
     ctx.strokeStyle = '#00ff88';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 4;
     ctx.shadowColor = '#00ff88';
-    ctx.shadowBlur = 10;
+    ctx.shadowBlur = 15;
     ctx.stroke();
+
+    // Inner circle
+    ctx.beginPath();
+    ctx.arc(acupointX, acupointY, spotlightRadius - 10, 0, 2 * Math.PI);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.shadowBlur = 5;
+    ctx.stroke();
+
+    // Center dot
+    ctx.beginPath();
+    ctx.arc(acupointX, acupointY, 5, 0, 2 * Math.PI);
+    ctx.fillStyle = '#00ff88';
+    ctx.shadowBlur = 10;
+    ctx.fill();
 
     ctx.restore();
 
     // Add acupoint label
-    drawAcupointLabel(ctx, spotlightX1, spotlightY1, spotlightWidth);
+    drawAcupointLabel(ctx, acupointX - spotlightRadius, acupointY - spotlightRadius - 70, spotlightRadius * 2);
   };
 
   const drawAcupointLabel = (ctx: CanvasRenderingContext2D, x: number, y: number, width: number) => {
@@ -204,9 +205,9 @@ const AcupointSpotlight: React.FC<AcupointSpotlightProps> = ({
         <div className="info-item">
           <strong>Phương pháp:</strong> Tự động phát hiện bằng AI
         </div>
-        {boundingBox && boundingBox.x1 !== undefined && boundingBox.y1 !== undefined && (
+        {x_coordinate !== undefined && y_coordinate !== undefined && (
           <div className="info-item">
-            <strong>Tọa độ:</strong> ({(boundingBox.x1 || 0).toFixed(1)}%, {(boundingBox.y1 || 0).toFixed(1)}%) - ({(boundingBox.x2 || 0).toFixed(1)}%, {(boundingBox.y2 || 0).toFixed(1)}%)
+            <strong>Tọa độ huyệt:</strong> ({x_coordinate.toFixed(1)}%, {y_coordinate.toFixed(1)}%)
           </div>
         )}
       </div>
