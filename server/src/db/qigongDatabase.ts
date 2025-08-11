@@ -49,9 +49,6 @@ export async function initializeQigongDatabase(): Promise<void> {
           usage TEXT,
           notes TEXT,
           image_url TEXT,
-          x_coordinate REAL,
-          y_coordinate REAL,
-          bounding_box TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (vessel_id) REFERENCES vessels (id) ON DELETE CASCADE,
@@ -89,9 +86,6 @@ export interface QigongAcupoint {
   usage?: string;
   notes?: string;
   image_url?: string;
-  x_coordinate?: number;
-  y_coordinate?: number;
-  bounding_box?: any;
   created_at?: string;
   updated_at?: string;
 }
@@ -134,11 +128,10 @@ export function createQigongAcupoint(acupoint: Omit<QigongAcupoint, 'id' | 'crea
     const query = `
       INSERT INTO acupoints (
         symbol, vessel_id, chinese_characters, pinyin, vietnamese_name,
-        description, usage, notes, image_url, x_coordinate, y_coordinate, 
-        bounding_box, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        description, usage, notes, image_url, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     `;
-    
+
     const params = [
       acupoint.symbol,
       acupoint.vessel_id,
@@ -148,10 +141,7 @@ export function createQigongAcupoint(acupoint: Omit<QigongAcupoint, 'id' | 'crea
       acupoint.description || null,
       acupoint.usage || null,
       acupoint.notes || null,
-      acupoint.image_url || null,
-      acupoint.x_coordinate || null,
-      acupoint.y_coordinate || null,
-      acupoint.bounding_box ? JSON.stringify(acupoint.bounding_box) : null
+      acupoint.image_url || null
     ];
     
     qigongDb.run(query, params, function(err) {
@@ -180,11 +170,7 @@ export function getQigongAcupoints(vesselId?: number): Promise<QigongAcupoint[]>
       if (err) {
         reject(err);
       } else {
-        const acupoints = (rows as QigongAcupoint[]).map(row => ({
-          ...row,
-          bounding_box: row.bounding_box ? JSON.parse(row.bounding_box) : null
-        }));
-        resolve(acupoints);
+        resolve(rows as QigongAcupoint[]);
       }
     });
   });

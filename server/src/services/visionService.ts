@@ -49,16 +49,8 @@ if (process.env.GOOGLE_CREDENTIALS_BASE64) {
 export interface DetectedAcupoint {
   symbol: string;
   vietnamese_name: string;
-  x_coordinate: number | null;
-  y_coordinate: number | null;
   confidence: number;
   description?: string;
-  bounding_box?: {
-    x1: number;
-    y1: number;
-    x2: number;
-    y2: number;
-  };
 }
 
 export interface VisionDetectionResult {
@@ -360,18 +352,12 @@ async function processVisionResults(
         // Generate Vietnamese name based on symbol
         const vietnameseName = generateVietnameseName(text, vesselName);
 
-        // Calculate bounding box coordinates (normalized to 0-100%)
-        const boundingBox = calculateBoundingBox(boundingPoly, imageDimensions);
-
-        // Just detect symbols, coordinates will be set manually
+        // Just detect symbols
         detectedAcupoints.push({
           symbol: text.toUpperCase(),
           vietnamese_name: vietnameseName,
-          x_coordinate: null, // Will be set manually
-          y_coordinate: null, // Will be set manually
-          bounding_box: boundingBox,
           confidence: annotation.confidence || 0.8,
-          description: `Auto-detected acupoint symbol ${text.toUpperCase()} on ${vesselName} - coordinates to be set manually`
+          description: `Auto-detected acupoint symbol ${text.toUpperCase()} on ${vesselName}`
         });
       }
     }
@@ -464,20 +450,8 @@ function removeDuplicateAcupoints(acupoints: DetectedAcupoint[]): DetectedAcupoi
     const key = point.symbol;
     
     if (!seen.has(key)) {
-      // Check for proximity duplicates (within 5% distance)
-      const isDuplicate = unique.some(existing => {
-        // Skip distance check if coordinates are null
-        if (existing.x_coordinate === null || existing.y_coordinate === null ||
-            point.x_coordinate === null || point.y_coordinate === null) {
-          return false; // No duplicate if coordinates are null
-        }
-
-        const distance = Math.sqrt(
-          Math.pow(existing.x_coordinate - point.x_coordinate, 2) +
-          Math.pow(existing.y_coordinate - point.y_coordinate, 2)
-        );
-        return distance < 5; // 5% threshold
-      });
+      // Check for symbol duplicates
+      const isDuplicate = unique.some(existing => existing.symbol === point.symbol);
       
       if (!isDuplicate) {
         unique.push(point);
@@ -572,33 +546,4 @@ function isAcupointNumber(text: string): boolean {
   return /^\d{1,2}$/.test(text);
 }
 
-/**
- * Calculate normalized bounding box coordinates (0-100%)
- */
-function calculateBoundingBox(boundingPoly: any, imageDimensions: any): any {
-  if (!boundingPoly?.vertices || !imageDimensions) {
-    return null;
-  }
 
-  const vertices = boundingPoly.vertices;
-  const xs = vertices.map((v: any) => v.x || 0);
-  const ys = vertices.map((v: any) => v.y || 0);
-
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-
-  // Normalize to percentage (0-100%)
-  const x1Percent = (minX / imageDimensions.width) * 100;
-  const y1Percent = (minY / imageDimensions.height) * 100;
-  const x2Percent = (maxX / imageDimensions.width) * 100;
-  const y2Percent = (maxY / imageDimensions.height) * 100;
-
-  return {
-    x1: Math.round(x1Percent * 10) / 10, // Round to 1 decimal
-    y1: Math.round(y1Percent * 10) / 10,
-    x2: Math.round(x2Percent * 10) / 10,
-    y2: Math.round(y2Percent * 10) / 10
-  };
-}

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import AcupointSpotlight from '../AcupointSpotlight';
 
 interface Acupoints {
   id?: number;
@@ -13,14 +12,6 @@ interface Acupoints {
   usage?: string;
   notes?: string;
   image_url?: string;
-  x_coordinate?: number;
-  y_coordinate?: number;
-  bounding_box?: {
-    x1: number;
-    y1: number;
-    x2: number;
-    y2: number;
-  };
   created_at?: string;
   updated_at?: string;
 }
@@ -459,8 +450,7 @@ const AcupointFormModal: React.FC<AcupointFormModalProps> = ({ acupoint, vessels
     usage: acupoint?.usage || '',
     notes: acupoint?.notes || '',
     image_url: acupoint?.image_url || '',
-    x_coordinate: acupoint?.x_coordinate || undefined,
-    y_coordinate: acupoint?.y_coordinate || undefined,
+
     ...(acupoint?.id && { id: acupoint.id })
   });
 
@@ -481,10 +471,7 @@ const AcupointFormModal: React.FC<AcupointFormModalProps> = ({ acupoint, vessels
   const handleChange = (field: keyof Acupoints, value: string | number) => {
     let processedValue: any = value;
 
-    // Handle coordinate fields - convert empty string to undefined
-    if ((field === 'x_coordinate' || field === 'y_coordinate') && value === '') {
-      processedValue = undefined;
-    }
+
 
     setFormData(prev => ({
       ...prev,
@@ -630,44 +617,7 @@ const AcupointFormModal: React.FC<AcupointFormModalProps> = ({ acupoint, vessels
               />
             </div>
 
-            {/* Coordinates */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Tọa độ X (%)
-                  <span className="text-xs text-gray-500 ml-1">- Vị trí ngang trên ảnh Kỳ Kinh</span>
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.1"
-                  value={formData.x_coordinate || ''}
-                  onChange={(e) => handleChange('x_coordinate', e.target.value ? parseFloat(e.target.value) : '')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="50.0"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Tọa độ Y (%)
-                  <span className="text-xs text-gray-500 ml-1">- Vị trí dọc trên ảnh Kỳ Kinh</span>
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.1"
-                  value={formData.y_coordinate || ''}
-                  onChange={(e) => handleChange('y_coordinate', e.target.value ? parseFloat(e.target.value) : '')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="30.0"
-                />
-              </div>
-            </div>
-            <div className="text-xs text-gray-500 -mt-4">
-              <p>💡 Tip: Tọa độ giúp highlight huyệt trên ảnh Kỳ Kinh khi hover. Để trống nếu không cần.</p>
-            </div>
+
 
             {/* Description */}
             <div>
@@ -774,7 +724,6 @@ interface AcupointDetailModalProps {
 const AcupointDetailModal: React.FC<AcupointDetailModalProps> = ({ acupoint, vessels, onClose, onVesselClick }) => {
   const vessel = vessels.find(v => v.id === acupoint.vessel_id);
   const [showImageViewer, setShowImageViewer] = useState<boolean>(false);
-  const [showSpotlight, setShowSpotlight] = useState<boolean>(false);
 
   const handleVesselClick = () => {
     if (vessel && onVesselClick) {
@@ -938,17 +887,7 @@ const AcupointDetailModal: React.FC<AcupointDetailModalProps> = ({ acupoint, ves
                 <p className="text-xs text-gray-400">
                   Click để xem ảnh lớn
                 </p>
-                {acupoint.x_coordinate !== undefined && acupoint.y_coordinate !== undefined && vessel?.image_url && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowSpotlight(true);
-                    }}
-                    className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm font-medium"
-                  >
-                    🎯 Xem vị trí huyệt
-                  </button>
-                )}
+
               </div>
             </div>
           </div>
@@ -976,18 +915,7 @@ const AcupointDetailModal: React.FC<AcupointDetailModalProps> = ({ acupoint, ves
         />
       )}
 
-      {/* Acupoint Spotlight Modal */}
-      {showSpotlight && acupoint.x_coordinate !== undefined && acupoint.y_coordinate !== undefined && vessel?.image_url && (
-        <AcupointSpotlight
-          imageUrl={vessel.image_url.startsWith('http') ? vessel.image_url : `http://localhost:5001${vessel.image_url}`}
-          boundingBox={acupoint.bounding_box}
-          acupointSymbol={acupoint.symbol}
-          vietnameseName={acupoint.vietnamese_name}
-          x_coordinate={acupoint.x_coordinate}
-          y_coordinate={acupoint.y_coordinate}
-          onClose={() => setShowSpotlight(false)}
-        />
-      )}
+
     </div>
   );
 };
