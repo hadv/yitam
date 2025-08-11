@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import AcupointSpotlight from '../AcupointSpotlight';
 
 interface Acupoints {
   id?: number;
@@ -14,6 +15,12 @@ interface Acupoints {
   image_url?: string;
   x_coordinate?: number;
   y_coordinate?: number;
+  bounding_box?: {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+  };
   created_at?: string;
   updated_at?: string;
 }
@@ -767,6 +774,7 @@ interface AcupointDetailModalProps {
 const AcupointDetailModal: React.FC<AcupointDetailModalProps> = ({ acupoint, vessels, onClose, onVesselClick }) => {
   const vessel = vessels.find(v => v.id === acupoint.vessel_id);
   const [showImageViewer, setShowImageViewer] = useState<boolean>(false);
+  const [showSpotlight, setShowSpotlight] = useState<boolean>(false);
 
   const handleVesselClick = () => {
     if (vessel && onVesselClick) {
@@ -926,9 +934,22 @@ const AcupointDetailModal: React.FC<AcupointDetailModalProps> = ({ acupoint, ves
                   Hình ảnh từ Kỳ Kinh: {vessel.name}
                 </p>
               )}
-              <p className="mt-1 text-xs text-gray-400">
-                Click để xem ảnh lớn
-              </p>
+              <div className="mt-3 space-y-2">
+                <p className="text-xs text-gray-400">
+                  Click để xem ảnh lớn
+                </p>
+                {acupoint.bounding_box && vessel?.image_url && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowSpotlight(true);
+                    }}
+                    className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm font-medium"
+                  >
+                    🎯 Xem vị trí huyệt
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -952,6 +973,17 @@ const AcupointDetailModal: React.FC<AcupointDetailModalProps> = ({ acupoint, ves
           imageUrl={getImageUrl()}
           title={getImageTitle()}
           onClose={() => setShowImageViewer(false)}
+        />
+      )}
+
+      {/* Acupoint Spotlight Modal */}
+      {showSpotlight && acupoint.bounding_box && vessel?.image_url && (
+        <AcupointSpotlight
+          imageUrl={vessel.image_url.startsWith('http') ? vessel.image_url : `http://localhost:5001${vessel.image_url}`}
+          boundingBox={acupoint.bounding_box}
+          acupointSymbol={acupoint.symbol}
+          vietnameseName={acupoint.vietnamese_name}
+          onClose={() => setShowSpotlight(false)}
         />
       )}
     </div>
