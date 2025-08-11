@@ -79,6 +79,16 @@ const AcupointSpotlight: React.FC<AcupointSpotlightProps> = ({
     const acupointX = (x_coordinate / 100) * canvas.width;
     const acupointY = (y_coordinate / 100) * canvas.height;
 
+    // Debug logging
+    console.log(`🎯 DEBUG Spotlight:`, {
+      x_coordinate,
+      y_coordinate,
+      canvas: { width: canvas.width, height: canvas.height },
+      image: { width: image.naturalWidth, height: image.naturalHeight },
+      calculated: { acupointX, acupointY },
+      imageRect: rect
+    });
+
     // Create spotlight area around acupoint position
     const spotlightRadius = 40; // Radius around acupoint
     const spotlightX1 = acupointX - spotlightRadius;
@@ -114,6 +124,12 @@ const AcupointSpotlight: React.FC<AcupointSpotlightProps> = ({
     ctx.fillStyle = '#00ff88';
     ctx.shadowBlur = 10;
     ctx.fill();
+
+    // Debug: Draw coordinate text
+    ctx.fillStyle = '#ff0000';
+    ctx.font = '12px Arial';
+    ctx.fillText(`(${x_coordinate.toFixed(1)}%, ${y_coordinate.toFixed(1)}%)`, acupointX + 50, acupointY - 50);
+    ctx.fillText(`Pixel: (${acupointX.toFixed(0)}, ${acupointY.toFixed(0)})`, acupointX + 50, acupointY - 35);
 
     ctx.restore();
 
