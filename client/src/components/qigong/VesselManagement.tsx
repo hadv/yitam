@@ -16,8 +16,6 @@ interface Acupoint {
   vessel_id: number;
   vietnamese_name: string;
   description?: string;
-  x_coordinate?: number;
-  y_coordinate?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -684,11 +682,6 @@ const VesselDetailModal: React.FC<VesselDetailModalProps> = ({ vessel, onClose, 
                   >
                     <div className="font-medium text-sm text-gray-900">{acupoint.symbol}</div>
                     <div className="text-xs text-gray-600 mt-1">{acupoint.vietnamese_name}</div>
-                    {acupoint.x_coordinate && acupoint.y_coordinate && (
-                      <div className="text-xs text-blue-600 mt-1">
-                        📍 ({acupoint.x_coordinate.toFixed(1)}%, {acupoint.y_coordinate.toFixed(1)}%)
-                      </div>
-                    )}
                   </div>
                 ))}
               </div>
@@ -721,29 +714,7 @@ const VesselDetailModal: React.FC<VesselDetailModalProps> = ({ vessel, onClose, 
                   className="max-w-full max-h-full object-contain rounded-lg shadow-lg transition-transform group-hover:scale-105"
                 />
 
-                {/* Acupoint Highlighting Overlay */}
-                {hoveredAcupoint && hoveredAcupoint.x_coordinate && hoveredAcupoint.y_coordinate && (
-                  <div
-                    className="absolute pointer-events-none"
-                    style={{
-                      left: `${hoveredAcupoint.x_coordinate}%`,
-                      top: `${hoveredAcupoint.y_coordinate}%`,
-                      transform: 'translate(-50%, -50%)'
-                    }}
-                  >
-                    {/* Pulsing circle */}
-                    <div className="relative">
-                      <div className="w-6 h-6 bg-red-500 rounded-full animate-ping opacity-75"></div>
-                      <div className="absolute inset-0 w-6 h-6 bg-red-600 rounded-full"></div>
-                      <div className="absolute inset-1 w-4 h-4 bg-white rounded-full"></div>
-                    </div>
 
-                    {/* Tooltip */}
-                    <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-80 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-                      {hoveredAcupoint.symbol} - {hoveredAcupoint.vietnamese_name}
-                    </div>
-                  </div>
-                )}
 
                 {/* Zoom overlay */}
                 <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-200 rounded-lg flex items-center justify-center">
