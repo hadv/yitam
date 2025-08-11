@@ -306,22 +306,29 @@ function processVisionResults(
     }
   }
 
+  // Step 1: Combine adjacent text fragments (GB + - + 41 = GB-41)
+  const combinedTexts = combineAdjacentTexts(textAnnotations);
+  console.log(`🔍 DEBUG: Found ${combinedTexts.length} combined acupoint symbols`);
+
   // Process detected text to find acupoint symbols
   const detectedAcupoints: DetectedAcupoint[] = [];
 
   // Common acupoint symbol patterns
   const acupointPatterns = [
-    // Traditional patterns with hyphen (TE-5, GB-13, LI-4, etc.)
-    /^(LI|ST|SP|HT|SI|BL|KI|PC|TE|GB|LV|GV|CV|EX)-\d+$/i,
-    // Alternative without hyphen (LI4, ST36, etc.)
-    /^(LI|ST|SP|HT|SI|BL|KI|PC|TE|GB|LV|GV|CV|EX)\d+$/i,
+    // Traditional patterns with hyphen (TE-5, GB-13, LI-4, TE-01, GB-1, etc.)
+    /^(LI|ST|SP|HT|SI|BL|KI|PC|TE|GB|LV|GV|CV|EX)-\d{1,2}$/i,
+    // Alternative without hyphen (LI4, ST36, TE5, GB01, etc.)
+    /^(LI|ST|SP|HT|SI|BL|KI|PC|TE|GB|LV|GV|CV|EX)\d{1,2}$/i,
     // Chinese patterns
     /^(手|足|督|任|奇)\w{1,3}\d*$/,
-    // Vietnamese patterns with numbers
+    // Vietnamese patterns with numbers (1-2 digits)
     /^[A-Z]{2,4}-?\d{1,2}$/
   ];
     
-    for (const annotation of textAnnotations.slice(1)) { // Skip first (full text)
+    // Process both individual texts and combined texts
+    const allTexts = [...textAnnotations.slice(1), ...combinedTexts];
+
+    for (const annotation of allTexts) {
       const text = annotation.description?.trim() || '';
       const boundingPoly = annotation.boundingPoly;
       
@@ -501,4 +508,49 @@ export async function validateVisionAPIConfig(): Promise<boolean> {
 
   console.error('No valid Google Cloud credentials found');
   return false;
+}
+
+/**
+ * Combine adjacent text fragments that form acupoint symbols
+ * Example: "GB" + "-" + "41" -> "GB-41"
+ */
+function combineAdjacentTexts(textAnnotations: any[]): any[] {
+  const combinedTexts: any[] = [];
+
+  for (let i = 1; i < textAnnotations.length - 2; i++) { // Skip first (full text)
+    const text1 = textAnnotations[i]?.description?.trim().toUpperCase();
+    const text2 = textAnnotations[i + 1]?.description?.trim();
+    const text3 = textAnnotations[i + 2]?.description?.trim();
+
+    if (!text1 || !text2 || !text3) continue;
+
+    // Pattern: "GB" + "-" + "41"
+    if (isAcupointPrefix(text1) && text2 === '-' && isAcupointNumber(text3)) {
+      const combinedText = `${text1}-${text3}`;
+
+      const combinedAnnotation = {
+        description: combinedText,
+        boundingPoly: textAnnotations[i].boundingPoly // Use first annotation's position
+      };
+
+      combinedTexts.push(combinedAnnotation);
+      console.log(`🔍 DEBUG: Combined "${text1}" + "${text2}" + "${text3}" -> "${combinedText}"`);
+    }
+  }
+
+  return combinedTexts;
+}
+
+/**
+ * Check if text is a valid acupoint prefix
+ */
+function isAcupointPrefix(text: string): boolean {
+  return /^(LI|ST|SP|HT|SI|BL|KI|PC|TE|GB|LV|GV|CV|EX)$/i.test(text);
+}
+
+/**
+ * Check if text is a valid acupoint number
+ */
+function isAcupointNumber(text: string): boolean {
+  return /^\d{1,2}$/.test(text);
 }
