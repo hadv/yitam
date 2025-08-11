@@ -18,18 +18,18 @@ if (process.env.GOOGLE_CREDENTIALS_BASE64) {
       visionClient = new ImageAnnotatorClient({
         credentials: credentials,
       });
-      console.log('Using service account credentials for Vision API');
+
     } else {
       throw new Error('Invalid service account format');
     }
   } catch (error) {
-    console.warn('Invalid GOOGLE_CREDENTIALS_BASE64, falling back to API key');
+
     // Fallback to API key
     if (process.env.GOOGLE_CLOUD_API_KEY) {
       visionClient = new ImageAnnotatorClient({
         apiKey: process.env.GOOGLE_CLOUD_API_KEY,
       });
-      console.log('Using API key for Vision API');
+
     } else {
       visionClient = new ImageAnnotatorClient();
     }
@@ -39,11 +39,11 @@ if (process.env.GOOGLE_CREDENTIALS_BASE64) {
   visionClient = new ImageAnnotatorClient({
     apiKey: process.env.GOOGLE_CLOUD_API_KEY,
   });
-  console.log('Using API key for Vision API');
+
 } else {
   // Fallback to default authentication (GOOGLE_APPLICATION_CREDENTIALS)
   visionClient = new ImageAnnotatorClient();
-  console.log('Using default authentication for Vision API');
+
 }
 
 export interface DetectedAcupoint {
@@ -68,12 +68,11 @@ export interface VisionDetectionResult {
  */
 function getImageBase64(imageUrl: string): string | null {
   try {
-    console.log(`Checking image URL: ${imageUrl}`);
+
     // Check if it's a local file path
     if (imageUrl.startsWith('/uploads/')) {
       const filePath = path.join(process.cwd(), imageUrl);
-      console.log(`Looking for file at: ${filePath}`);
-      console.log(`File exists: ${fs.existsSync(filePath)}`);
+
 
       if (fs.existsSync(filePath)) {
         // Read file with optimization for text detection
@@ -81,26 +80,22 @@ function getImageBase64(imageUrl: string): string | null {
 
         // For better text detection, ensure we're using high-quality images
         const stats = fs.statSync(filePath);
-        console.log(`File size: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
-
         // Check if file is too large (Google Vision API limit: 20MB for base64)
         if (stats.size > 20 * 1024 * 1024) {
-          console.warn('File too large for base64 upload, may need compression');
+          return null; // File too large
         }
 
         const base64 = imageBuffer.toString('base64');
-        console.log(`Successfully read file, base64 length: ${base64.length}`);
-        console.log('Using base64 content for optimal text detection');
         return base64;
       } else {
-        console.log(`File not found: ${filePath}`);
+
       }
     } else {
-      console.log(`Not a local upload path: ${imageUrl}`);
+
     }
     return null;
   } catch (error) {
-    console.error('Error reading image file:', error);
+
     return null;
   }
 }
@@ -149,8 +144,7 @@ async function detectAcupointsWithRestAPI(
 
     // Try to get base64 content for local files
     const imageBase64 = getImageBase64(imageUrl);
-    console.log(`Processing image: ${imageUrl}`);
-    console.log(`Base64 content available: ${!!imageBase64}`);
+
 
     const requestBody = {
       requests: [
@@ -172,7 +166,7 @@ async function detectAcupointsWithRestAPI(
       ]
     };
 
-    console.log(`Request method: ${imageBase64 ? 'base64 content' : 'URL'}`);
+
 
     const response = await fetch(visionApiUrl, {
       method: 'POST',
@@ -193,16 +187,12 @@ async function detectAcupointsWithRestAPI(
     const textAnnotations = result.responses?.[0]?.textAnnotations || [];
     const imageProps = result.responses?.[0]?.imagePropertiesAnnotation;
 
-    // Debug: Log all detected text
-    console.log(`🔍 DEBUG: Total text annotations found: ${textAnnotations.length}`);
-    textAnnotations.forEach((annotation: any, index: number) => {
-      console.log(`🔍 DEBUG: Text ${index}: "${annotation.description}"`);
-    });
+
 
     return await processVisionResults(textAnnotations, imageProps, vesselName, startTime);
 
   } catch (error) {
-    console.error('Google Cloud Vision REST API error:', error);
+
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     throw new Error(`Vision API detection failed: ${errorMessage}`);
   }
@@ -219,7 +209,7 @@ export async function detectAcupointsInImage(
   try {
     return await detectAcupointsWithRestAPI(imageUrl, vesselName);
   } catch (restError) {
-    console.warn('REST API failed, trying SDK:', restError);
+
 
     // Fallback to SDK method
     return await detectAcupointsWithSDK(imageUrl, vesselName);
@@ -248,11 +238,7 @@ async function detectAcupointsWithSDK(
     }
     const textAnnotations = textResult.textAnnotations || [];
 
-    // Debug: Log all detected text
-    console.log(`🔍 DEBUG: Total text annotations found: ${textAnnotations.length}`);
-    textAnnotations.forEach((annotation, index) => {
-      console.log(`🔍 DEBUG: Text ${index}: "${annotation.description}"`);
-    });
+
 
     // Step 2: Detect objects/features in the image (optional)
     // const [objectResult] = await visionClient.objectLocalization(imageUrl);
@@ -273,7 +259,7 @@ async function detectAcupointsWithSDK(
     return await processVisionResults(textAnnotations, imageProps, vesselName, startTime);
 
   } catch (error) {
-    console.error('Google Cloud Vision SDK error:', error);
+
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     throw new Error(`Vision SDK detection failed: ${errorMessage}`);
   }
@@ -306,7 +292,7 @@ async function processVisionResults(
 
   // Step 1: Combine adjacent text fragments (GB + - + 41 = GB-41)
   const combinedTexts = combineAdjacentTexts(textAnnotations);
-  console.log(`🔍 DEBUG: Found ${combinedTexts.length} combined acupoint symbols`);
+
 
   // Process detected text to find acupoint symbols
   const detectedAcupoints: DetectedAcupoint[] = [];
@@ -471,14 +457,14 @@ export async function validateVisionAPIConfig(): Promise<boolean> {
   const base64Credentials = process.env.GOOGLE_CREDENTIALS_BASE64;
 
   if (!apiKey && !base64Credentials) {
-    console.error('Neither GOOGLE_CLOUD_API_KEY nor GOOGLE_CREDENTIALS_BASE64 environment variable is set');
+
     return false;
   }
 
   // Simple validation - just check if credentials are present and valid format
   // Skip actual API test since it may fail due to network restrictions
   if (apiKey && apiKey.startsWith('AIza')) {
-    console.log('Google Cloud API key found and appears valid');
+
     return true;
   }
 
@@ -488,16 +474,16 @@ export async function validateVisionAPIConfig(): Promise<boolean> {
         Buffer.from(base64Credentials, 'base64').toString()
       );
       if (credentials.type === 'service_account' && credentials.private_key) {
-        console.log('Google Cloud service account credentials found and appear valid');
+
         return true;
       }
     } catch (error) {
-      console.error('Invalid base64 credentials format:', error);
+
       return false;
     }
   }
 
-  console.error('No valid Google Cloud credentials found');
+
   return false;
 }
 
@@ -525,7 +511,7 @@ function combineAdjacentTexts(textAnnotations: any[]): any[] {
       };
 
       combinedTexts.push(combinedAnnotation);
-      console.log(`🔍 DEBUG: Combined "${text1}" + "${text2}" + "${text3}" -> "${combinedText}"`);
+
     }
   }
 
