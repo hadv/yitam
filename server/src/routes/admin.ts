@@ -568,7 +568,8 @@ router.post('/detect-acupoints', async (req: any, res: any) => {
             vietnamese_name: detectedPoint.vietnamese_name,
             description: detectedPoint.description,
             x_coordinate: detectedPoint.x_coordinate,
-            y_coordinate: detectedPoint.y_coordinate
+            y_coordinate: detectedPoint.y_coordinate,
+            bounding_box: detectedPoint.bounding_box
           };
 
           const createdId = await createAcupoint(acupointData);
@@ -579,6 +580,7 @@ router.post('/detect-acupoints', async (req: any, res: any) => {
             vietnamese_name: detectedPoint.vietnamese_name,
             x_coordinate: detectedPoint.x_coordinate,
             y_coordinate: detectedPoint.y_coordinate,
+            bounding_box: detectedPoint.bounding_box,
             confidence: detectedPoint.confidence
           });
         }

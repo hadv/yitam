@@ -53,6 +53,12 @@ export interface DetectedAcupoint {
   y_coordinate: number;
   confidence: number;
   description?: string;
+  bounding_box?: {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+  };
 }
 
 export interface VisionDetectionResult {
@@ -353,12 +359,16 @@ function processVisionResults(
         
         // Generate Vietnamese name based on symbol
         const vietnameseName = generateVietnameseName(text, vesselName);
-        
+
+        // Calculate bounding box coordinates (normalized to 0-100%)
+        const boundingBox = calculateBoundingBox(boundingPoly, imageDimensions);
+
         detectedAcupoints.push({
           symbol: text.toUpperCase(),
           vietnamese_name: vietnameseName,
           x_coordinate: Math.round(clampedX * 10) / 10, // Round to 1 decimal
           y_coordinate: Math.round(clampedY * 10) / 10,
+          bounding_box: boundingBox,
           confidence: annotation.confidence || 0.8,
           description: `Auto-detected acupoint on ${vesselName} using Google Cloud Vision`
         });
@@ -553,4 +563,35 @@ function isAcupointPrefix(text: string): boolean {
  */
 function isAcupointNumber(text: string): boolean {
   return /^\d{1,2}$/.test(text);
+}
+
+/**
+ * Calculate normalized bounding box coordinates (0-100%)
+ */
+function calculateBoundingBox(boundingPoly: any, imageDimensions: any): any {
+  if (!boundingPoly?.vertices || !imageDimensions) {
+    return null;
+  }
+
+  const vertices = boundingPoly.vertices;
+  const xs = vertices.map((v: any) => v.x || 0);
+  const ys = vertices.map((v: any) => v.y || 0);
+
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+
+  // Normalize to percentage (0-100%)
+  const x1Percent = (minX / imageDimensions.width) * 100;
+  const y1Percent = (minY / imageDimensions.height) * 100;
+  const x2Percent = (maxX / imageDimensions.width) * 100;
+  const y2Percent = (maxY / imageDimensions.height) * 100;
+
+  return {
+    x1: Math.round(x1Percent * 10) / 10, // Round to 1 decimal
+    y1: Math.round(y1Percent * 10) / 10,
+    x2: Math.round(x2Percent * 10) / 10,
+    y2: Math.round(y2Percent * 10) / 10
+  };
 }

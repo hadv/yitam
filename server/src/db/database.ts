@@ -92,6 +92,7 @@ const createTables = (): Promise<void> => {
         image_url TEXT,
         x_coordinate REAL,
         y_coordinate REAL,
+        bounding_box TEXT, -- JSON string for bounding box coordinates
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (vessel_id) REFERENCES vessels (id)
@@ -282,6 +283,7 @@ export interface CreateAcupointsRequest {
   image_url?: string;
   x_coordinate?: number;
   y_coordinate?: number;
+  bounding_box?: any; // JSON object for bounding box coordinates
 }
 
 export interface UpdateAcupointsRequest {
@@ -507,8 +509,8 @@ export const createAcupoint = (data: CreateAcupointsRequest): Promise<number> =>
     const query = `
       INSERT INTO acupoints (
         symbol, vessel_id, chinese_characters, pinyin, vietnamese_name,
-        description, usage, notes, image_url, x_coordinate, y_coordinate, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        description, usage, notes, image_url, x_coordinate, y_coordinate, bounding_box, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     `;
 
     const params = [
@@ -522,7 +524,8 @@ export const createAcupoint = (data: CreateAcupointsRequest): Promise<number> =>
       data.notes || null,
       data.image_url || null,
       data.x_coordinate || null,
-      data.y_coordinate || null
+      data.y_coordinate || null,
+      data.bounding_box ? JSON.stringify(data.bounding_box) : null
     ];
 
     db.run(query, params, function(err) {
