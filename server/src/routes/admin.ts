@@ -1,31 +1,47 @@
 import express, { Request, Response } from 'express';
-import {
-  getAllAcupoints,
-  getAcupointById,
-  createAcupoint,
-  updateAcupoint,
-  deleteAcupoint,
-  getAllVessels,
-  getVesselById,
-  createVessel,
-  updateVessel,
-  deleteVessel,
-  CreateAcupointsRequest,
-  UpdateAcupointsRequest,
-  CreateVesselRequest,
-  UpdateVesselRequest
-} from '../db/database';
+// No longer using shared database for qigong data
 import { upload, getImageUrl, deleteImageFile, getFilenameFromUrl } from '../services/imageUpload';
 import { detectAcupointsInImage, validateVisionAPIConfig } from '../services/visionService';
 import { uploadRelativePathToCloud, validateCloudStorageConfig } from '../services/cloudStorageService';
 import {
   createQigongVessel,
   getQigongVessels,
+  updateQigongVessel,
+  deleteQigongVessel,
   createQigongAcupoint,
   getQigongAcupoints,
+  updateQigongAcupoint,
+  deleteQigongAcupoint,
   QigongVessel,
   QigongAcupoint
 } from '../db/qigongDatabase';
+
+// Type definitions for vessel operations
+interface CreateVesselRequest {
+  name: string;
+  chinese_name?: string;
+  description?: string;
+  image_url?: string;
+}
+
+interface UpdateVesselRequest {
+  name?: string;
+  chinese_name?: string;
+  description?: string;
+  image_url?: string;
+}
+
+interface UpdateAcupointsRequest {
+  symbol?: string;
+  vessel_id?: number;
+  chinese_characters?: string;
+  pinyin?: string;
+  vietnamese_name?: string;
+  description?: string;
+  usage?: string;
+  notes?: string;
+  image_url?: string;
+}
 
 const router = express.Router();
 
@@ -124,7 +140,7 @@ router.delete('/delete-image/:filename', async (req: Request, res: Response): Pr
 // GET /api/admin/vessels - Get all vessels
 router.get('/vessels', async (req: Request, res: Response): Promise<void> => {
   try {
-    const vessels = await getAllVessels();
+    const vessels = await getQigongVessels();
     res.json({
       success: true,
       data: vessels,
@@ -151,7 +167,8 @@ router.get('/vessels/:id', async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    const vessel = await getVesselById(id);
+    const vessels = await getQigongVessels();
+    const vessel = vessels.find(v => v.id === id);
     if (!vessel) {
       res.status(404).json({
         error: 'Not found',
@@ -188,12 +205,14 @@ router.post('/vessels', async (req: Request, res: Response): Promise<void> => {
 
     const data: CreateVesselRequest = {
       name: name.trim(),
+      chinese_name: undefined,
       description: description?.trim() || undefined,
       image_url: image_url?.trim() || undefined
     };
 
-    const newId = await createVessel(data);
-    const newCategory = await getVesselById(newId);
+    const newId = await createQigongVessel(data);
+    const vessels = await getQigongVessels();
+    const newCategory = vessels.find(v => v.id === newId);
 
     res.status(201).json({
       success: true,
@@ -235,7 +254,7 @@ router.put('/vessels/:id', async (req: Request, res: Response): Promise<void> =>
     if (description !== undefined) data.description = description?.trim() || null;
     if (image_url !== undefined) data.image_url = image_url?.trim() || null;
 
-    const updated = await updateVessel(id, data);
+    const updated = await updateQigongVessel(id, data);
     if (!updated) {
       res.status(404).json({
         error: 'Not found',
@@ -244,7 +263,8 @@ router.put('/vessels/:id', async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    const updatedCategory = await getVesselById(id);
+    const vessels = await getQigongVessels();
+    const updatedCategory = vessels.find(v => v.id === id);
     res.json({
       success: true,
       data: updatedCategory,
@@ -278,7 +298,7 @@ router.delete('/vessels/:id', async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const deleted = await deleteVessel(id);
+    const deleted = await deleteQigongVessel(id);
     if (!deleted) {
       res.status(404).json({
         error: 'Not found',
@@ -313,7 +333,7 @@ router.delete('/vessels/:id', async (req: Request, res: Response): Promise<void>
 router.get('/acupoints', async (req: Request, res: Response): Promise<void> => {
   try {
     const vesselId = req.query.vessel_id ? parseInt(req.query.vessel_id as string) : undefined;
-    const records = await getAllAcupoints(vesselId);
+    const records = await getQigongAcupoints(vesselId);
     res.json({
       success: true,
       data: records,
@@ -340,7 +360,8 @@ router.get('/acupoints/:id', async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const record = await getAcupointById(id);
+    const allAcupoints = await getQigongAcupoints();
+    const record = allAcupoints.find(a => a.id === id);
     if (!record) {
       res.status(404).json({
         error: 'Not found',
@@ -375,7 +396,7 @@ router.post('/acupoints', async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    const data: CreateAcupointsRequest = {
+    const data: QigongAcupoint = {
       symbol: symbol.trim(),
       vessel_id: parseInt(vessel_id),
       chinese_characters: chinese_characters?.trim() || undefined,
@@ -384,13 +405,12 @@ router.post('/acupoints', async (req: Request, res: Response): Promise<void> => 
       description: description?.trim() || undefined,
       usage: usage?.trim() || undefined,
       notes: notes?.trim() || undefined,
-      image_url: image_url?.trim() || undefined,
-      x_coordinate: x_coordinate ? parseFloat(x_coordinate) : undefined,
-      y_coordinate: y_coordinate ? parseFloat(y_coordinate) : undefined
+      image_url: image_url?.trim() || undefined
     };
 
-    const newId = await createAcupoint(data);
-    const newRecord = await getAcupointById(newId);
+    const newId = await createQigongAcupoint(data);
+    const allAcupoints = await getQigongAcupoints();
+    const newRecord = allAcupoints.find(a => a.id === newId);
 
     res.status(201).json({
       success: true,
@@ -437,10 +457,9 @@ router.put('/acupoints/:id', async (req: Request, res: Response): Promise<void> 
     if (usage !== undefined) data.usage = usage?.trim() || null;
     if (notes !== undefined) data.notes = notes?.trim() || null;
     if (image_url !== undefined) data.image_url = image_url?.trim() || null;
-    if (x_coordinate !== undefined) data.x_coordinate = x_coordinate ? parseFloat(x_coordinate) : null;
-    if (y_coordinate !== undefined) data.y_coordinate = y_coordinate ? parseFloat(y_coordinate) : null;
 
-    const updated = await updateAcupoint(id, data);
+
+    const updated = await updateQigongAcupoint(id, data);
     if (!updated) {
       res.status(404).json({
         error: 'Not found',
@@ -449,7 +468,8 @@ router.put('/acupoints/:id', async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const updatedRecord = await getAcupointById(id);
+    const allAcupoints = await getQigongAcupoints();
+    const updatedRecord = allAcupoints.find(a => a.id === id);
     res.json({
       success: true,
       data: updatedRecord,
@@ -483,7 +503,7 @@ router.delete('/acupoints/:id', async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const deleted = await deleteAcupoint(id);
+    const deleted = await deleteQigongAcupoint(id);
     if (!deleted) {
       res.status(404).json({
         error: 'Not found',
@@ -523,7 +543,8 @@ router.post('/detect-acupoints', async (req: any, res: any) => {
     }
 
     // Get vessel information
-    const vessel = await getVesselById(parseInt(vessel_id));
+    const vessels = await getQigongVessels();
+    const vessel = vessels.find(v => v.id === parseInt(vessel_id));
     if (!vessel) {
       return res.status(404).json({ error: 'Vessel not found' });
     }
@@ -564,20 +585,20 @@ router.post('/detect-acupoints', async (req: any, res: any) => {
     for (const detectedPoint of detectionResult.detected_acupoints) {
       try {
         // Check if acupoint with this symbol already exists for this vessel
-        const existingAcupoints = await getAllAcupoints();
+        const existingAcupoints = await getQigongAcupoints();
         const exists = existingAcupoints.some(ap =>
           ap.symbol === detectedPoint.symbol && ap.vessel_id === vessel.id
         );
 
         if (!exists) {
-          const acupointData: CreateAcupointsRequest = {
+          const acupointData: QigongAcupoint = {
             symbol: detectedPoint.symbol,
             vessel_id: vessel.id!,
             vietnamese_name: detectedPoint.vietnamese_name,
             description: detectedPoint.description
           };
 
-          const createdId = await createAcupoint(acupointData);
+          const createdId = await createQigongAcupoint(acupointData);
           createdAcupoints.push({
             id: createdId,
             symbol: detectedPoint.symbol,

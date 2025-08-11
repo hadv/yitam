@@ -176,4 +176,136 @@ export function getQigongAcupoints(vesselId?: number): Promise<QigongAcupoint[]>
   });
 }
 
+// Update vessel
+export function updateQigongVessel(id: number, vessel: Partial<Omit<QigongVessel, 'id' | 'created_at' | 'updated_at'>>): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    const fields = [];
+    const params = [];
+
+    if (vessel.name !== undefined) {
+      fields.push('name = ?');
+      params.push(vessel.name);
+    }
+    if (vessel.chinese_name !== undefined) {
+      fields.push('chinese_name = ?');
+      params.push(vessel.chinese_name);
+    }
+    if (vessel.description !== undefined) {
+      fields.push('description = ?');
+      params.push(vessel.description);
+    }
+    if (vessel.image_url !== undefined) {
+      fields.push('image_url = ?');
+      params.push(vessel.image_url);
+    }
+
+    if (fields.length === 0) {
+      resolve(true);
+      return;
+    }
+
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+    params.push(id);
+
+    const query = `UPDATE vessels SET ${fields.join(', ')} WHERE id = ?`;
+
+    qigongDb.run(query, params, function(err) {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(this.changes > 0);
+      }
+    });
+  });
+}
+
+// Delete vessel
+export function deleteQigongVessel(id: number): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    qigongDb.run('DELETE FROM vessels WHERE id = ?', [id], function(err) {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(this.changes > 0);
+      }
+    });
+  });
+}
+
+// Update acupoint
+export function updateQigongAcupoint(id: number, acupoint: Partial<Omit<QigongAcupoint, 'id' | 'created_at' | 'updated_at'>>): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    const fields = [];
+    const params = [];
+
+    if (acupoint.symbol !== undefined) {
+      fields.push('symbol = ?');
+      params.push(acupoint.symbol);
+    }
+    if (acupoint.vessel_id !== undefined) {
+      fields.push('vessel_id = ?');
+      params.push(acupoint.vessel_id);
+    }
+    if (acupoint.chinese_characters !== undefined) {
+      fields.push('chinese_characters = ?');
+      params.push(acupoint.chinese_characters);
+    }
+    if (acupoint.pinyin !== undefined) {
+      fields.push('pinyin = ?');
+      params.push(acupoint.pinyin);
+    }
+    if (acupoint.vietnamese_name !== undefined) {
+      fields.push('vietnamese_name = ?');
+      params.push(acupoint.vietnamese_name);
+    }
+    if (acupoint.description !== undefined) {
+      fields.push('description = ?');
+      params.push(acupoint.description);
+    }
+    if (acupoint.usage !== undefined) {
+      fields.push('usage = ?');
+      params.push(acupoint.usage);
+    }
+    if (acupoint.notes !== undefined) {
+      fields.push('notes = ?');
+      params.push(acupoint.notes);
+    }
+    if (acupoint.image_url !== undefined) {
+      fields.push('image_url = ?');
+      params.push(acupoint.image_url);
+    }
+
+    if (fields.length === 0) {
+      resolve(true);
+      return;
+    }
+
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+    params.push(id);
+
+    const query = `UPDATE acupoints SET ${fields.join(', ')} WHERE id = ?`;
+
+    qigongDb.run(query, params, function(err) {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(this.changes > 0);
+      }
+    });
+  });
+}
+
+// Delete acupoint
+export function deleteQigongAcupoint(id: number): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    qigongDb.run('DELETE FROM acupoints WHERE id = ?', [id], function(err) {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(this.changes > 0);
+      }
+    });
+  });
+}
+
 
