@@ -3,6 +3,7 @@ import { createServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
 import Anthropic from '@anthropic-ai/sdk';
 import { MCPClient } from './MCPClient';
 import { config } from './config';
@@ -14,7 +15,9 @@ import { handleLegalDocumentRequest } from './routes/legal';
 import { validateAccessCode } from './middleware/AccessControl';
 import { verifyRequestSignature } from './utils/crypto';
 import { initializeDatabase } from './db/database';
+import { initializeQigongDatabase } from './db/qigongDatabase';
 import conversationRoutes from './routes/conversations';
+import adminRoutes from './routes/admin';
 import CacheFactory from './cache/CacheFactory';
 
 // Load environment variables
@@ -23,7 +26,8 @@ dotenv.config();
 // Initialize Express app
 const app: Express = express();
 app.use(cors(config.server.cors));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Apply access control middleware only to specific routes that need it
 // Most conversation management should be available to authenticated users
@@ -32,9 +36,14 @@ app.use((req, res, next) => {
   // - Health check
   // - Viewing shared conversations (public) - both /shared/ and /api/conversations/shared/
   // - All conversation management (sharing, unsharing, etc.) - users manage their own conversations
+  // - Admin routes (they have their own access control)
+  // - Uploaded images (public access for image display)
   if (req.path === '/health' ||
       req.path.startsWith('/api/conversations/') ||
-      req.path.startsWith('/shared/')) {
+      req.path.startsWith('/api/admin/') ||
+      req.path.startsWith('/shared/') ||
+      req.path.startsWith('/uploads/') ||
+      req.path === '/qigong') {
     return next();
   }
 
@@ -44,6 +53,15 @@ app.use((req, res, next) => {
 
 // Add conversation sharing routes (public access)
 app.use('/api/conversations', conversationRoutes);
+
+// Serve uploaded images statically (public access for image display)
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+// Serve test files (for debugging)
+app.use(express.static(path.join(__dirname, '../../')));
+
+// Add admin routes (requires admin access code)
+app.use('/api/admin', adminRoutes);
 
 // Add public route for shared conversations (serves frontend)
 app.get('/shared/:shareId', (req, res) => {
@@ -92,6 +110,62 @@ app.get('/shared/:shareId', (req, res) => {
         // Redirect to the frontend application
         const clientUrl = '${process.env.CLIENT_URL || 'http://localhost:3001'}';
         window.location.href = clientUrl + '/shared/${req.params.shareId}';
+      </script>
+    </body>
+    </html>
+  `);
+});
+
+// Add qigong page route (serves frontend)
+app.get('/qigong', (req, res) => {
+  // Serve a simple HTML page that loads the frontend React app
+  // The React router will handle the /qigong route
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Qigong Management - Yitam</title>
+      <style>
+        body {
+          margin: 0;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+          background: #f5f5f5;
+        }
+        .loading {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+          flex-direction: column;
+        }
+        .spinner {
+          border: 4px solid #f3f3f3;
+          border-top: 4px solid #5D4A38;
+          border-radius: 50%;
+          width: 40px;
+          height: 40px;
+          animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="loading">
+        <div class="spinner"></div>
+        <p style="margin-top: 20px; color: #5D4A38;">Loading qigong management...</p>
+      </div>
+      <script>
+        // Redirect to the frontend application
+        const clientUrl = '${process.env.CLIENT_URL || 'http://localhost:3001'}';
+        const urlParams = new URLSearchParams(window.location.search);
+        const accessCode = urlParams.get('access_code');
+        const qigongUrl = clientUrl + '/qigong' + (accessCode ? '?access_code=' + encodeURIComponent(accessCode) : '');
+        window.location.href = qigongUrl;
       </script>
     </body>
     </html>
@@ -728,14 +802,15 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
-// Initialize database and cache, then start the server
+// Initialize databases and cache, then start the server
 Promise.all([
   initializeDatabase(),
+  initializeQigongDatabase(),
   CacheFactory.createCache()
 ])
-  .then(([, cache]) => {
+  .then(([, , cache]) => {
     const cacheInfo = CacheFactory.getCacheInfo();
-    console.log('Database and cache initialized successfully');
+    console.log('Databases and cache initialized successfully');
     console.log(`Cache type: ${cacheInfo.type} (${cacheInfo.environment} environment)`);
 
     // Start the server

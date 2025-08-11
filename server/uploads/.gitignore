@@ -1,0 +1,8 @@
+# Ignore all uploaded images
+*.jpeg
+*.jpg
+*.png
+*.gif
+*.webp
+*.bmp
+*.svg
