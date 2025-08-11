@@ -7,14 +7,33 @@ let storage: Storage;
 
 // Initialize based on available credentials
 if (process.env.GOOGLE_CREDENTIALS_BASE64) {
-  // Use base64 encoded service account credentials
-  const credentials = JSON.parse(
-    Buffer.from(process.env.GOOGLE_CREDENTIALS_BASE64, 'base64').toString()
-  );
-  storage = new Storage({
-    credentials: credentials,
-    projectId: credentials.project_id,
-  });
+  try {
+    // Use base64 encoded service account credentials
+    const credentials = JSON.parse(
+      Buffer.from(process.env.GOOGLE_CREDENTIALS_BASE64, 'base64').toString()
+    );
+
+    // Validate it's a proper service account
+    if (credentials.type === 'service_account' && credentials.private_key) {
+      storage = new Storage({
+        credentials: credentials,
+        projectId: credentials.project_id,
+      });
+      console.log('Using service account credentials for Cloud Storage');
+    } else {
+      throw new Error('Invalid service account format');
+    }
+  } catch (error) {
+    console.warn('Invalid GOOGLE_CREDENTIALS_BASE64, using project ID only');
+    // Fallback to project ID only
+    const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
+    if (!projectId) {
+      throw new Error('GOOGLE_CLOUD_PROJECT_ID is required for Cloud Storage');
+    }
+    storage = new Storage({
+      projectId: projectId,
+    });
+  }
 } else {
   // For API key or default authentication, we need project ID
   const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
@@ -27,6 +46,7 @@ if (process.env.GOOGLE_CREDENTIALS_BASE64) {
   storage = new Storage({
     projectId: projectId,
   });
+  console.log('Using project ID for Cloud Storage (API key mode)');
 }
 
 export interface CloudUploadResult {
@@ -45,17 +65,25 @@ async function uploadWithRestAPI(
   bucketName: string
 ): Promise<CloudUploadResult> {
   const apiKey = process.env.GOOGLE_CLOUD_API_KEY;
+  console.log(`🔍 DEBUG: API Key available: ${!!apiKey}`);
+  console.log(`🔍 DEBUG: API Key starts with: ${apiKey?.substring(0, 10)}...`);
+
   if (!apiKey) {
     throw new Error('GOOGLE_CLOUD_API_KEY is required for REST API upload');
   }
 
   // Read file content
+  console.log(`🔍 DEBUG: Reading file: ${localFilePath}`);
   const fileBuffer = fs.readFileSync(localFilePath);
   const contentType = getContentType(localFilePath);
+  console.log(`🔍 DEBUG: File size: ${fileBuffer.length} bytes`);
+  console.log(`🔍 DEBUG: Content type: ${contentType}`);
 
   // Upload URL with correct Google Cloud Storage REST API format
   const uploadUrl = `https://www.googleapis.com/upload/storage/v1/b/${bucketName}/o?uploadType=media&name=vessel-images/${fileName}`;
+  console.log(`🔍 DEBUG: Upload URL: ${uploadUrl}`);
 
+  console.log(`🔍 DEBUG: Making upload request...`);
   const response = await fetch(uploadUrl, {
     method: 'POST',
     headers: {
@@ -67,10 +95,18 @@ async function uploadWithRestAPI(
     body: fileBuffer,
   });
 
+  console.log(`🔍 DEBUG: Upload response status: ${response.status}`);
+  console.log(`🔍 DEBUG: Upload response headers:`, Object.fromEntries(response.headers.entries()));
+
   if (!response.ok) {
     const errorText = await response.text();
+    console.log(`🔍 DEBUG: Upload failed with status ${response.status}`);
+    console.log(`🔍 DEBUG: Error response:`, errorText);
     throw new Error(`REST API upload failed: ${response.status} ${errorText}`);
   }
+
+  const uploadResult = await response.json();
+  console.log(`🔍 DEBUG: Upload successful:`, uploadResult);
 
   // Make file public using correct Google Cloud Storage REST API format
   const makePublicUrl = `https://www.googleapis.com/storage/v1/b/${bucketName}/o/vessel-images%2F${fileName}/acl`;
@@ -121,14 +157,17 @@ export async function uploadImageToCloudStorage(
       throw new Error(`Local file not found: ${localFilePath}`);
     }
 
-    // Try REST API first (may not work with API key for write operations)
-    if (process.env.GOOGLE_CLOUD_API_KEY && process.env.GOOGLE_CREDENTIALS_BASE64) {
-      console.log('Using REST API for cloud storage upload');
-      return await uploadWithRestAPI(localFilePath, fileName, bucketName);
-    } else if (process.env.GOOGLE_CLOUD_API_KEY) {
-      console.log('API key detected but Cloud Storage write operations typically require service account');
-      console.log('Skipping cloud upload, will use base64 fallback');
-      throw new Error('API key does not support Cloud Storage write operations');
+    // Try REST API first (debug mode - test with API key)
+    if (process.env.GOOGLE_CLOUD_API_KEY) {
+      console.log('🔍 DEBUG: Attempting REST API upload with API key');
+      try {
+        return await uploadWithRestAPI(localFilePath, fileName, bucketName);
+      } catch (restError) {
+        console.log('🔍 DEBUG: REST API failed, trying SDK fallback');
+        const errorMessage = restError instanceof Error ? restError.message : 'Unknown error';
+        console.log('🔍 DEBUG: REST error:', errorMessage);
+        // Continue to SDK fallback
+      }
     }
 
     // Fallback to SDK (requires service account)

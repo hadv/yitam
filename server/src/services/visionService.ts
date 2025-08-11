@@ -7,21 +7,43 @@ let visionClient: ImageAnnotatorClient;
 
 // Initialize based on available credentials
 if (process.env.GOOGLE_CREDENTIALS_BASE64) {
-  // Use base64 encoded service account credentials
-  const credentials = JSON.parse(
-    Buffer.from(process.env.GOOGLE_CREDENTIALS_BASE64, 'base64').toString()
-  );
-  visionClient = new ImageAnnotatorClient({
-    credentials: credentials,
-  });
+  try {
+    // Use base64 encoded service account credentials
+    const credentials = JSON.parse(
+      Buffer.from(process.env.GOOGLE_CREDENTIALS_BASE64, 'base64').toString()
+    );
+
+    // Validate it's a proper service account
+    if (credentials.type === 'service_account' && credentials.private_key) {
+      visionClient = new ImageAnnotatorClient({
+        credentials: credentials,
+      });
+      console.log('Using service account credentials for Vision API');
+    } else {
+      throw new Error('Invalid service account format');
+    }
+  } catch (error) {
+    console.warn('Invalid GOOGLE_CREDENTIALS_BASE64, falling back to API key');
+    // Fallback to API key
+    if (process.env.GOOGLE_CLOUD_API_KEY) {
+      visionClient = new ImageAnnotatorClient({
+        apiKey: process.env.GOOGLE_CLOUD_API_KEY,
+      });
+      console.log('Using API key for Vision API');
+    } else {
+      visionClient = new ImageAnnotatorClient();
+    }
+  }
 } else if (process.env.GOOGLE_CLOUD_API_KEY) {
   // Use API key
   visionClient = new ImageAnnotatorClient({
     apiKey: process.env.GOOGLE_CLOUD_API_KEY,
   });
+  console.log('Using API key for Vision API');
 } else {
   // Fallback to default authentication (GOOGLE_APPLICATION_CREDENTIALS)
   visionClient = new ImageAnnotatorClient();
+  console.log('Using default authentication for Vision API');
 }
 
 export interface DetectedAcupoint {
@@ -173,6 +195,12 @@ async function detectAcupointsWithRestAPI(
     const textAnnotations = result.responses?.[0]?.textAnnotations || [];
     const imageProps = result.responses?.[0]?.imagePropertiesAnnotation;
 
+    // Debug: Log all detected text
+    console.log(`🔍 DEBUG: Total text annotations found: ${textAnnotations.length}`);
+    textAnnotations.forEach((annotation: any, index: number) => {
+      console.log(`🔍 DEBUG: Text ${index}: "${annotation.description}"`);
+    });
+
     return processVisionResults(textAnnotations, imageProps, vesselName, startTime);
 
   } catch (error) {
@@ -221,7 +249,13 @@ async function detectAcupointsWithSDK(
       [textResult] = await visionClient.textDetection(imageUrl);
     }
     const textAnnotations = textResult.textAnnotations || [];
-    
+
+    // Debug: Log all detected text
+    console.log(`🔍 DEBUG: Total text annotations found: ${textAnnotations.length}`);
+    textAnnotations.forEach((annotation, index) => {
+      console.log(`🔍 DEBUG: Text ${index}: "${annotation.description}"`);
+    });
+
     // Step 2: Detect objects/features in the image (optional)
     // const [objectResult] = await visionClient.objectLocalization(imageUrl);
     // const objects = objectResult.localizedObjectAnnotations || [];
@@ -277,12 +311,14 @@ function processVisionResults(
 
   // Common acupoint symbol patterns
   const acupointPatterns = [
-    // Traditional patterns
+    // Traditional patterns with hyphen (TE-5, GB-13, LI-4, etc.)
+    /^(LI|ST|SP|HT|SI|BL|KI|PC|TE|GB|LV|GV|CV|EX)-\d+$/i,
+    // Alternative without hyphen (LI4, ST36, etc.)
     /^(LI|ST|SP|HT|SI|BL|KI|PC|TE|GB|LV|GV|CV|EX)\d+$/i,
     // Chinese patterns
     /^(手|足|督|任|奇)\w{1,3}\d*$/,
     // Vietnamese patterns with numbers
-    /^[A-Z]{2,4}\d{1,2}$/
+    /^[A-Z]{2,4}-?\d{1,2}$/
   ];
     
     for (const annotation of textAnnotations.slice(1)) { // Skip first (full text)
@@ -340,8 +376,29 @@ function processVisionResults(
  * Generate Vietnamese name for acupoint based on symbol and vessel
  */
 function generateVietnameseName(symbol: string, vesselName: string): string {
-  // Basic mapping for common acupoints
+  // Basic mapping for common acupoints (support both hyphen and non-hyphen formats)
   const commonNames: { [key: string]: string } = {
+    // With hyphen format (standard)
+    'LI-4': 'Hợp Cốc',
+    'LI-20': 'Nghênh Hương',
+    'ST-36': 'Túc Tam Lý',
+    'ST-6': 'Giáp Xa',
+    'SP-6': 'Tam Âm Giao',
+    'SP-3': 'Thái Bạch',
+    'HT-7': 'Thần Môn',
+    'SI-3': 'Hậu Khê',
+    'BL-2': 'Toản Trúc',
+    'BL-40': 'Ủy Trung',
+    'KI-3': 'Thái Khê',
+    'KI-1': 'Dũng Tuyền',
+    'PC-6': 'Nội Quan',
+    'TE-5': 'Ngoại Quan',
+    'GB-34': 'Dương Lăng Tuyền',
+    'GB-20': 'Phong Trì',
+    'LV-3': 'Thái Xung',
+    'GV-20': 'Bách Hội',
+    'CV-17': 'Đàn Trung',
+    // Without hyphen format (backward compatibility)
     'LI4': 'Hợp Cốc',
     'LI20': 'Nghênh Hương',
     'ST36': 'Túc Tam Lý',
