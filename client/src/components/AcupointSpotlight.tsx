@@ -58,7 +58,9 @@ const AcupointSpotlight: React.FC<AcupointSpotlightProps> = ({
   const drawSpotlightEffect = () => {
     const canvas = canvasRef.current;
     const image = imageRef.current;
-    if (!canvas || !image || !boundingBox) return;
+    if (!canvas || !image || !boundingBox ||
+        boundingBox.x1 === undefined || boundingBox.y1 === undefined ||
+        boundingBox.x2 === undefined || boundingBox.y2 === undefined) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -71,11 +73,11 @@ const AcupointSpotlight: React.FC<AcupointSpotlightProps> = ({
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Calculate actual bounding box coordinates
-    const spotlightX1 = (boundingBox.x1 / 100) * canvas.width;
-    const spotlightY1 = (boundingBox.y1 / 100) * canvas.height;
-    const spotlightX2 = (boundingBox.x2 / 100) * canvas.width;
-    const spotlightY2 = (boundingBox.y2 / 100) * canvas.height;
+    // Calculate actual bounding box coordinates with safe defaults
+    const spotlightX1 = ((boundingBox.x1 || 0) / 100) * canvas.width;
+    const spotlightY1 = ((boundingBox.y1 || 0) / 100) * canvas.height;
+    const spotlightX2 = ((boundingBox.x2 || 0) / 100) * canvas.width;
+    const spotlightY2 = ((boundingBox.y2 || 0) / 100) * canvas.height;
 
     // Create spotlight effect
     ctx.save();
@@ -202,9 +204,9 @@ const AcupointSpotlight: React.FC<AcupointSpotlightProps> = ({
         <div className="info-item">
           <strong>Phương pháp:</strong> Tự động phát hiện bằng AI
         </div>
-        {boundingBox && (
+        {boundingBox && boundingBox.x1 !== undefined && boundingBox.y1 !== undefined && (
           <div className="info-item">
-            <strong>Tọa độ:</strong> ({boundingBox.x1.toFixed(1)}%, {boundingBox.y1.toFixed(1)}%) - ({boundingBox.x2.toFixed(1)}%, {boundingBox.y2.toFixed(1)}%)
+            <strong>Tọa độ:</strong> ({(boundingBox.x1 || 0).toFixed(1)}%, {(boundingBox.y1 || 0).toFixed(1)}%) - ({(boundingBox.x2 || 0).toFixed(1)}%, {(boundingBox.y2 || 0).toFixed(1)}%)
           </div>
         )}
       </div>
