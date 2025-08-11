@@ -575,8 +575,8 @@ router.post('/detect-acupoints', async (req: any, res: any) => {
             vessel_id: vessel.id!,
             vietnamese_name: detectedPoint.vietnamese_name,
             description: detectedPoint.description,
-            x_coordinate: detectedPoint.x_coordinate,
-            y_coordinate: detectedPoint.y_coordinate,
+            x_coordinate: detectedPoint.x_coordinate || undefined,
+            y_coordinate: detectedPoint.y_coordinate || undefined,
             bounding_box: detectedPoint.bounding_box
           };
 
@@ -586,8 +586,8 @@ router.post('/detect-acupoints', async (req: any, res: any) => {
             symbol: detectedPoint.symbol,
             vessel_id: vessel.id!,
             vietnamese_name: detectedPoint.vietnamese_name,
-            x_coordinate: detectedPoint.x_coordinate,
-            y_coordinate: detectedPoint.y_coordinate,
+            x_coordinate: detectedPoint.x_coordinate || undefined,
+            y_coordinate: detectedPoint.y_coordinate || undefined,
             bounding_box: detectedPoint.bounding_box,
             confidence: detectedPoint.confidence
           });

@@ -1,7 +1,6 @@
 import { ImageAnnotatorClient } from '@google-cloud/vision';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getAcupointPosition } from '../db/qigongDatabase';
 
 // Initialize Google Cloud Vision client
 let visionClient: ImageAnnotatorClient;
@@ -50,8 +49,8 @@ if (process.env.GOOGLE_CREDENTIALS_BASE64) {
 export interface DetectedAcupoint {
   symbol: string;
   vietnamese_name: string;
-  x_coordinate: number;
-  y_coordinate: number;
+  x_coordinate: number | null;
+  y_coordinate: number | null;
   confidence: number;
   description?: string;
   bounding_box?: {
@@ -364,31 +363,15 @@ async function processVisionResults(
         // Calculate bounding box coordinates (normalized to 0-100%)
         const boundingBox = calculateBoundingBox(boundingPoly, imageDimensions);
 
-        // Get standard acupoint position instead of text detection coordinates
-        const standardPosition = await getAcupointPosition(text.toUpperCase());
-
-        let acupointX = clampedX;
-        let acupointY = clampedY;
-
-        if (standardPosition) {
-          // Use standard anatomical position for the acupoint
-          acupointX = standardPosition.standard_x_coordinate;
-          acupointY = standardPosition.standard_y_coordinate;
-          console.log(`🎯 Using standard position for ${text}: (${acupointX}%, ${acupointY}%)`);
-        } else {
-          console.log(`⚠️ No standard position found for ${text}, using text detection coordinates`);
-        }
-
+        // Just detect symbols, coordinates will be set manually
         detectedAcupoints.push({
           symbol: text.toUpperCase(),
           vietnamese_name: vietnameseName,
-          x_coordinate: Math.round(acupointX * 10) / 10, // Round to 1 decimal
-          y_coordinate: Math.round(acupointY * 10) / 10,
+          x_coordinate: null, // Will be set manually
+          y_coordinate: null, // Will be set manually
           bounding_box: boundingBox,
           confidence: annotation.confidence || 0.8,
-          description: standardPosition
-            ? `Standard acupoint position for ${text.toUpperCase()} - ${standardPosition.description}`
-            : `Auto-detected acupoint on ${vesselName} using Google Cloud Vision`
+          description: `Auto-detected acupoint symbol ${text.toUpperCase()} on ${vesselName} - coordinates to be set manually`
         });
       }
     }
@@ -483,6 +466,12 @@ function removeDuplicateAcupoints(acupoints: DetectedAcupoint[]): DetectedAcupoi
     if (!seen.has(key)) {
       // Check for proximity duplicates (within 5% distance)
       const isDuplicate = unique.some(existing => {
+        // Skip distance check if coordinates are null
+        if (existing.x_coordinate === null || existing.y_coordinate === null ||
+            point.x_coordinate === null || point.y_coordinate === null) {
+          return false; // No duplicate if coordinates are null
+        }
+
         const distance = Math.sqrt(
           Math.pow(existing.x_coordinate - point.x_coordinate, 2) +
           Math.pow(existing.y_coordinate - point.y_coordinate, 2)

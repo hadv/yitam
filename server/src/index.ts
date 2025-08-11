@@ -15,7 +15,7 @@ import { handleLegalDocumentRequest } from './routes/legal';
 import { validateAccessCode } from './middleware/AccessControl';
 import { verifyRequestSignature } from './utils/crypto';
 import { initializeDatabase } from './db/database';
-import { initializeQigongDatabase, seedAcupointPositions } from './db/qigongDatabase';
+import { initializeQigongDatabase } from './db/qigongDatabase';
 import conversationRoutes from './routes/conversations';
 import adminRoutes from './routes/admin';
 import CacheFactory from './cache/CacheFactory';
@@ -811,9 +811,6 @@ Promise.all([
   .then(([, , cache]) => {
     const cacheInfo = CacheFactory.getCacheInfo();
     console.log('Databases and cache initialized successfully');
-
-    // Seed acupoint positions after database initialization
-    seedAcupointPositions();
     console.log(`Cache type: ${cacheInfo.type} (${cacheInfo.environment} environment)`);
 
     // Start the server
