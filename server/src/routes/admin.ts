@@ -18,6 +18,14 @@ import {
 import { upload, getImageUrl, deleteImageFile, getFilenameFromUrl } from '../services/imageUpload';
 import { detectAcupointsInImage, validateVisionAPIConfig } from '../services/visionService';
 import { uploadRelativePathToCloud, validateCloudStorageConfig } from '../services/cloudStorageService';
+import {
+  createQigongVessel,
+  getQigongVessels,
+  createQigongAcupoint,
+  getQigongAcupoints,
+  QigongVessel,
+  QigongAcupoint
+} from '../db/qigongDatabase';
 
 const router = express.Router();
 

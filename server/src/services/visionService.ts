@@ -1,6 +1,7 @@
 import { ImageAnnotatorClient } from '@google-cloud/vision';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getAcupointPosition } from '../db/qigongDatabase';
 
 // Initialize Google Cloud Vision client
 let visionClient: ImageAnnotatorClient;
@@ -207,7 +208,7 @@ async function detectAcupointsWithRestAPI(
       console.log(`🔍 DEBUG: Text ${index}: "${annotation.description}"`);
     });
 
-    return processVisionResults(textAnnotations, imageProps, vesselName, startTime);
+    return await processVisionResults(textAnnotations, imageProps, vesselName, startTime);
 
   } catch (error) {
     console.error('Google Cloud Vision REST API error:', error);
@@ -278,7 +279,7 @@ async function detectAcupointsWithSDK(
     }
     const imageProps = propertiesResult.imagePropertiesAnnotation;
 
-    return processVisionResults(textAnnotations, imageProps, vesselName, startTime);
+    return await processVisionResults(textAnnotations, imageProps, vesselName, startTime);
 
   } catch (error) {
     console.error('Google Cloud Vision SDK error:', error);
@@ -290,12 +291,12 @@ async function detectAcupointsWithSDK(
 /**
  * Process Vision API results (common for both REST and SDK)
  */
-function processVisionResults(
+async function processVisionResults(
   textAnnotations: any[],
   imageProps: any,
   vesselName: string,
   startTime: number
-): VisionDetectionResult {
+): Promise<VisionDetectionResult> {
   // Extract image dimensions
   const imageDimensions = {
     width: 1000, // Default fallback
@@ -363,14 +364,31 @@ function processVisionResults(
         // Calculate bounding box coordinates (normalized to 0-100%)
         const boundingBox = calculateBoundingBox(boundingPoly, imageDimensions);
 
+        // Get standard acupoint position instead of text detection coordinates
+        const standardPosition = await getAcupointPosition(text.toUpperCase());
+
+        let acupointX = clampedX;
+        let acupointY = clampedY;
+
+        if (standardPosition) {
+          // Use standard anatomical position for the acupoint
+          acupointX = standardPosition.standard_x_coordinate;
+          acupointY = standardPosition.standard_y_coordinate;
+          console.log(`🎯 Using standard position for ${text}: (${acupointX}%, ${acupointY}%)`);
+        } else {
+          console.log(`⚠️ No standard position found for ${text}, using text detection coordinates`);
+        }
+
         detectedAcupoints.push({
           symbol: text.toUpperCase(),
           vietnamese_name: vietnameseName,
-          x_coordinate: Math.round(clampedX * 10) / 10, // Round to 1 decimal
-          y_coordinate: Math.round(clampedY * 10) / 10,
+          x_coordinate: Math.round(acupointX * 10) / 10, // Round to 1 decimal
+          y_coordinate: Math.round(acupointY * 10) / 10,
           bounding_box: boundingBox,
           confidence: annotation.confidence || 0.8,
-          description: `Auto-detected acupoint on ${vesselName} using Google Cloud Vision`
+          description: standardPosition
+            ? `Standard acupoint position for ${text.toUpperCase()} - ${standardPosition.description}`
+            : `Auto-detected acupoint on ${vesselName} using Google Cloud Vision`
         });
       }
     }
