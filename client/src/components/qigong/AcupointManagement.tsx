@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import AcupointDetailPage from './AcupointDetailPage';
 
 interface Acupoints {
   id?: number;
@@ -382,9 +383,9 @@ const AcupointManagement: React.FC<AcupointManagementProps> = ({ accessCode }) =
           />
         )}
 
-        {/* Detail View Modal */}
+        {/* Detail View Page */}
         {viewingAcupoint && (
-          <AcupointDetailModal
+          <AcupointDetailPage
             acupoint={viewingAcupoint}
             vessels={vessels}
             onClose={() => setViewingAcupoint(null)}
