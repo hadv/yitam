@@ -457,6 +457,7 @@ const AcupointFormModal: React.FC<AcupointFormModalProps> = ({ acupoint, vessels
 
   const [uploading, setUploading] = useState<boolean>(false);
   const [formError, setFormError] = useState<string>('');
+  const [generatingPinyin, setGeneratingPinyin] = useState<boolean>(false);
   const [imagePreview, setImagePreview] = useState<string>(() => {
     const url = acupoint?.image_url || '';
     return url ? (url.startsWith('http') ? url : `http://localhost:5001${url}`) : '';
@@ -469,15 +470,58 @@ const AcupointFormModal: React.FC<AcupointFormModalProps> = ({ acupoint, vessels
     }
   };
 
-  const handleChange = (field: keyof Acupoints, value: string | number) => {
+  const handleChange = async (field: keyof Acupoints, value: string | number) => {
     let processedValue: any = value;
 
-
-
+    // Update the form data first
     setFormData(prev => ({
       ...prev,
       [field]: processedValue
     }));
+
+    // Auto-generate Pinyin when Chinese characters are entered
+    if (field === 'chinese_characters' && typeof value === 'string' && value.trim()) {
+      await generatePinyin(value.trim());
+    }
+  };
+
+  const generatePinyin = async (chineseText: string) => {
+    if (!chineseText || generatingPinyin) return;
+
+    // Check if text contains Chinese characters (basic check)
+    const chineseRegex = /[\u4e00-\u9fff]/;
+    if (!chineseRegex.test(chineseText)) {
+      return;
+    }
+
+    setGeneratingPinyin(true);
+    try {
+      const response = await fetch(`/api/admin/convert-pinyin?access_code=${encodeURIComponent(accessCode)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chinese_characters: chineseText
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.data.acupoint_pinyin) {
+          setFormData(prev => ({
+            ...prev,
+            pinyin: result.data.acupoint_pinyin
+          }));
+        }
+      } else {
+        console.warn('Failed to generate Pinyin:', response.statusText);
+      }
+    } catch (error) {
+      console.error('Error generating Pinyin:', error);
+    } finally {
+      setGeneratingPinyin(false);
+    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -592,14 +636,42 @@ const AcupointFormModal: React.FC<AcupointFormModalProps> = ({ acupoint, vessels
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Pinyin
+                  {generatingPinyin && (
+                    <span className="ml-2 text-xs text-blue-600">
+                      (Đang tạo tự động...)
+                    </span>
+                  )}
                 </label>
-                <input
-                  type="text"
-                  value={formData.pinyin}
-                  onChange={(e) => handleChange('pinyin', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="hégǔ"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={formData.pinyin}
+                    onChange={(e) => handleChange('pinyin', e.target.value)}
+                    className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="hégǔ"
+                    disabled={generatingPinyin}
+                  />
+                  {formData.chinese_characters && (
+                    <button
+                      type="button"
+                      onClick={() => generatePinyin(formData.chinese_characters)}
+                      disabled={generatingPinyin || !formData.chinese_characters.trim()}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-blue-600 hover:text-blue-800 disabled:text-gray-400"
+                      title="Tạo Pinyin từ chữ Hán"
+                    >
+                      {generatingPinyin ? (
+                        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      ) : (
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
