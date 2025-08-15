@@ -1,4 +1,12 @@
-import pinyin from 'pinyin';
+// @ts-ignore
+const { pinyin: pinyinLib } = require('pinyin');
+
+// Type definitions for pinyin options
+interface PinyinOptions {
+  style?: 'normal' | 'tone' | 'tone2' | 'to3ne' | 'initials' | 'first_letter' | 'passport';
+  heteronym?: boolean;
+  segment?: boolean;
+}
 
 /**
  * Service for converting Chinese characters to Pinyin
@@ -11,12 +19,8 @@ export class PinyinService {
    * @returns Pinyin string with tone marks
    */
   static convertToPinyin(
-    chineseText: string, 
-    options: {
-      style?: 'tone' | 'tone2' | 'normal' | 'initials' | 'first_letter';
-      heteronym?: boolean;
-      segment?: boolean;
-    } = {}
+    chineseText: string,
+    options: PinyinOptions = {}
   ): string {
     if (!chineseText || typeof chineseText !== 'string') {
       return '';
@@ -38,7 +42,7 @@ export class PinyinService {
       };
 
       // Convert to pinyin
-      const pinyinArray = pinyin(cleanText, defaultOptions);
+      const pinyinArray = pinyinLib(cleanText, defaultOptions);
       
       // Join the pinyin syllables with spaces
       const result = pinyinArray.map((syllable: string[]) => syllable[0]).join(' ');
