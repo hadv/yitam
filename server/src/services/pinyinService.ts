@@ -41,7 +41,7 @@ export class PinyinService {
       const pinyinArray = pinyin(cleanText, defaultOptions);
       
       // Join the pinyin syllables with spaces
-      const result = pinyinArray.map(syllable => syllable[0]).join(' ');
+      const result = pinyinArray.map((syllable: string[]) => syllable[0]).join(' ');
       
       return result;
     } catch (error) {
@@ -109,7 +109,7 @@ export class PinyinService {
 
     // Clean up the result - ensure proper capitalization for first letter
     return pinyin.split(' ')
-      .map(syllable => syllable.toLowerCase())
+      .map((syllable: string) => syllable.toLowerCase())
       .join('');
   }
 
