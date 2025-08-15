@@ -3,6 +3,7 @@ import express, { Request, Response } from 'express';
 import { upload, getImageUrl, deleteImageFile, getFilenameFromUrl } from '../services/imageUpload';
 import { detectAcupointsInImage, validateVisionAPIConfig } from '../services/visionService';
 import { uploadRelativePathToCloud, validateCloudStorageConfig } from '../services/cloudStorageService';
+import PinyinService from '../services/pinyinService';
 import {
   createQigongVessel,
   getQigongVessels,
@@ -396,11 +397,25 @@ router.post('/acupoints', async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
+    // Auto-generate Pinyin if Chinese characters are provided but Pinyin is not
+    let finalPinyin = pinyin?.trim() || undefined;
+    const cleanChineseCharacters = chinese_characters?.trim();
+
+    if (cleanChineseCharacters && !finalPinyin) {
+      try {
+        finalPinyin = PinyinService.generateAcupointPinyin(cleanChineseCharacters);
+        console.log(`Auto-generated Pinyin for "${cleanChineseCharacters}": ${finalPinyin}`);
+      } catch (pinyinError) {
+        console.warn('Failed to auto-generate Pinyin:', pinyinError);
+        // Continue without Pinyin if generation fails
+      }
+    }
+
     const data: QigongAcupoint = {
       symbol: symbol.trim(),
       vessel_id: parseInt(vessel_id),
-      chinese_characters: chinese_characters?.trim() || undefined,
-      pinyin: pinyin?.trim() || undefined,
+      chinese_characters: cleanChineseCharacters || undefined,
+      pinyin: finalPinyin,
       vietnamese_name: vietnamese_name.trim(),
       description: description?.trim() || undefined,
       usage: usage?.trim() || undefined,
@@ -415,7 +430,7 @@ router.post('/acupoints', async (req: Request, res: Response): Promise<void> => 
     res.status(201).json({
       success: true,
       data: newRecord,
-      message: 'Herbal medicine record created successfully'
+      message: 'Acupoint record created successfully'
     });
   } catch (error) {
     console.error('Error creating acupoint record:', error);
@@ -451,19 +466,35 @@ router.put('/acupoints/:id', async (req: Request, res: Response): Promise<void> 
     if (symbol !== undefined) data.symbol = symbol.trim();
     if (vessel_id !== undefined) data.vessel_id = parseInt(vessel_id);
     if (chinese_characters !== undefined) data.chinese_characters = chinese_characters?.trim() || null;
-    if (pinyin !== undefined) data.pinyin = pinyin?.trim() || null;
     if (vietnamese_name !== undefined) data.vietnamese_name = vietnamese_name.trim();
     if (description !== undefined) data.description = description?.trim() || null;
     if (usage !== undefined) data.usage = usage?.trim() || null;
     if (notes !== undefined) data.notes = notes?.trim() || null;
     if (image_url !== undefined) data.image_url = image_url?.trim() || null;
 
+    // Handle Pinyin auto-generation logic
+    if (pinyin !== undefined) {
+      // If pinyin is explicitly provided, use it
+      data.pinyin = pinyin?.trim() || null;
+    } else if (chinese_characters !== undefined && data.chinese_characters) {
+      // If Chinese characters are being updated but pinyin is not provided, auto-generate
+      try {
+        const generatedPinyin = PinyinService.generateAcupointPinyin(data.chinese_characters);
+        if (generatedPinyin) {
+          data.pinyin = generatedPinyin;
+          console.log(`Auto-generated Pinyin for "${data.chinese_characters}": ${generatedPinyin}`);
+        }
+      } catch (pinyinError) {
+        console.warn('Failed to auto-generate Pinyin during update:', pinyinError);
+        // Continue without updating Pinyin if generation fails
+      }
+    }
 
     const updated = await updateQigongAcupoint(id, data);
     if (!updated) {
       res.status(404).json({
         error: 'Not found',
-        message: 'Herbal medicine record not found'
+        message: 'Acupoint record not found'
       });
       return;
     }
@@ -473,7 +504,7 @@ router.put('/acupoints/:id', async (req: Request, res: Response): Promise<void> 
     res.json({
       success: true,
       data: updatedRecord,
-      message: 'Herbal medicine record updated successfully'
+      message: 'Acupoint record updated successfully'
     });
   } catch (error) {
     console.error('Error updating acupoint record:', error);
@@ -525,7 +556,66 @@ router.delete('/acupoints/:id', async (req: Request, res: Response): Promise<voi
   }
 });
 
+// POST /api/admin/convert-pinyin - Convert Chinese characters to Pinyin
+router.post('/convert-pinyin', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { chinese_characters } = req.body;
 
+    if (!chinese_characters || typeof chinese_characters !== 'string') {
+      res.status(400).json({
+        error: 'Missing required field',
+        message: 'chinese_characters is required and must be a string'
+      });
+      return;
+    }
+
+    const cleanText = chinese_characters.trim();
+    if (!cleanText) {
+      res.status(400).json({
+        error: 'Empty input',
+        message: 'chinese_characters cannot be empty'
+      });
+      return;
+    }
+
+    // Check if the text contains Chinese characters
+    if (!PinyinService.containsChinese(cleanText)) {
+      res.json({
+        success: true,
+        data: {
+          chinese_characters: cleanText,
+          pinyin: '',
+          message: 'No Chinese characters found in input'
+        }
+      });
+      return;
+    }
+
+    // Generate different Pinyin formats
+    const pinyinWithTones = PinyinService.convertToPinyin(cleanText, { style: 'tone' });
+    const pinyinNormal = PinyinService.convertToNormalPinyin(cleanText);
+    const pinyinNumeric = PinyinService.convertToNumericPinyin(cleanText);
+    const acupointPinyin = PinyinService.generateAcupointPinyin(cleanText);
+
+    res.json({
+      success: true,
+      data: {
+        chinese_characters: cleanText,
+        pinyin: pinyinWithTones,
+        pinyin_normal: pinyinNormal,
+        pinyin_numeric: pinyinNumeric,
+        acupoint_pinyin: acupointPinyin,
+        message: 'Pinyin conversion successful'
+      }
+    });
+  } catch (error) {
+    console.error('Error converting to Pinyin:', error);
+    res.status(500).json({
+      error: 'Conversion failed',
+      message: 'Failed to convert Chinese characters to Pinyin'
+    });
+  }
+});
 
 // Auto-detect acupoints in vessel image using Google Cloud Vision
 router.post('/detect-acupoints', async (req: any, res: any) => {

@@ -8,7 +8,10 @@
     "dev:ts": "NODE_ENV=development nodemon --exec \"ts-node --esm src/index.ts\" --watch src --ext ts",
     "build": "tsc",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "test:pinyin": "npm run build && node dist/scripts/testPinyinService.js",
+    "generate-pinyin": "npm run build && node dist/scripts/generatePinyinForExistingAcupoints.js",
+    "generate-pinyin:preview": "npm run build && node dist/scripts/generatePinyinForExistingAcupoints.js --preview"
   },
   "keywords": [],
   "author": "",
@@ -30,6 +33,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "multer": "^2.0.2",
+    "pinyin": "^4.0.0",
     "socket.io": "^4.8.1",
     "sqlite3": "^5.1.7",
     "uuid": "^11.1.0"
