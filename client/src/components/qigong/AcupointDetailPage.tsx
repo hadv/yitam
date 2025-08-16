@@ -97,7 +97,7 @@ const AcupointDetailPage: React.FC<AcupointDetailPageProps> = ({
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">{acupoint.vietnamese_name}</h1>
-                <div className="text-sm text-gray-600">{acupoint.symbol}</div>
+                <div className="text-base font-semibold text-red-600">{acupoint.symbol}</div>
               </div>
             </div>
 
