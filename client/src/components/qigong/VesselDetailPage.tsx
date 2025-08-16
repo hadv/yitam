@@ -47,7 +47,8 @@ const VesselDetailPage: React.FC<VesselDetailPageProps> = ({
       try {
         const response = await fetch(`/api/admin/acupoints?access_code=${accessCode}`);
         if (response.ok) {
-          const allAcupoints = await response.json();
+          const result = await response.json();
+          const allAcupoints = result.data || [];
           // Filter acupoints for this vessel
           const vesselAcupoints = allAcupoints.filter((ap: Acupoint) => ap.vessel_id === vessel.id);
           setAcupoints(vesselAcupoints);
@@ -80,9 +81,9 @@ const VesselDetailPage: React.FC<VesselDetailPageProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-blue-50 to-green-50 z-50">
+    <div className="fixed inset-0 bg-gradient-to-br from-blue-50 to-green-50 z-50 flex flex-col">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b">
+      <div className="bg-white shadow-sm border-b flex-shrink-0">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <button
@@ -101,9 +102,9 @@ const VesselDetailPage: React.FC<VesselDetailPageProps> = ({
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-hidden flex flex-col">
+      <div className="flex-1 overflow-y-auto flex flex-col">
         {/* Hero Section - Compact */}
-        <div className="bg-white shadow-sm border-b">
+        <div className="bg-white shadow-sm border-b flex-shrink-0">
           <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <div className="inline-flex items-center justify-center w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full">
@@ -127,12 +128,12 @@ const VesselDetailPage: React.FC<VesselDetailPageProps> = ({
           </div>
         </div>
 
-        {/* Main Content Grid - Full Height */}
-        <div className="flex-1 overflow-hidden">
-          <div className="max-w-6xl mx-auto p-6 h-full">
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 h-full">
+        {/* Main Content Grid - Scrollable */}
+        <div className="flex-1 min-h-0">
+          <div className="max-w-6xl mx-auto p-6">
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 min-h-full">
               {/* Left Column - Info */}
-              <div className="lg:col-span-2 space-y-4 overflow-y-auto">
+              <div className="lg:col-span-2 space-y-4">
                 {/* Description */}
                 {vessel.description && (
                   <div className="bg-white rounded-lg shadow p-5">
@@ -165,21 +166,54 @@ const VesselDetailPage: React.FC<VesselDetailPageProps> = ({
                         <span className="ml-2 text-green-700">Đang tải...</span>
                       </div>
                     ) : acupoints.length > 0 ? (
-                      <div className="grid grid-cols-2 gap-2">
-                        {acupoints.map((acupoint) => (
-                          <button
-                            key={acupoint.id}
-                            onClick={() => handleAcupointClick(acupoint)}
-                            className="p-3 bg-white rounded-lg border border-green-200 hover:border-green-400 hover:shadow-md transition-all duration-200 text-left group"
-                          >
-                            <div className="font-medium text-sm text-gray-900 group-hover:text-green-700">
-                              {acupoint.symbol}
-                            </div>
-                            <div className="text-xs text-gray-600 mt-1 group-hover:text-green-600">
-                              {acupoint.vietnamese_name}
-                            </div>
-                          </button>
-                        ))}
+                      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+                        {acupoints.map((acupoint, index) => {
+                          const colorConfigs = [
+                            {
+                              button: 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100 hover:border-blue-300',
+                              tooltip: 'bg-blue-600 border-t-blue-600'
+                            },
+                            {
+                              button: 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100 hover:border-green-300',
+                              tooltip: 'bg-green-600 border-t-green-600'
+                            },
+                            {
+                              button: 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100 hover:border-purple-300',
+                              tooltip: 'bg-purple-600 border-t-purple-600'
+                            },
+                            {
+                              button: 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300',
+                              tooltip: 'bg-indigo-600 border-t-indigo-600'
+                            },
+                            {
+                              button: 'bg-teal-50 border-teal-200 text-teal-700 hover:bg-teal-100 hover:border-teal-300',
+                              tooltip: 'bg-teal-600 border-t-teal-600'
+                            },
+                            {
+                              button: 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100 hover:border-rose-300',
+                              tooltip: 'bg-rose-600 border-t-rose-600'
+                            }
+                          ];
+                          const config = colorConfigs[index % colorConfigs.length];
+
+                          return (
+                            <button
+                              key={acupoint.id}
+                              onClick={() => handleAcupointClick(acupoint)}
+                              className={`group relative p-3 ${config.button} rounded-lg border transition-all duration-200 text-center min-h-[3.5rem] flex items-center justify-center hover:shadow-md`}
+                            >
+                              <div className="font-semibold text-sm whitespace-nowrap">
+                                {acupoint.symbol}
+                              </div>
+
+                              {/* Custom Tooltip with matching color */}
+                              <div className={`absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 ${config.tooltip} text-white text-xs rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10`}>
+                                {acupoint.vietnamese_name}
+                                <div className={`absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent ${config.tooltip}`}></div>
+                              </div>
+                            </button>
+                          );
+                        })}
                       </div>
                     ) : (
                       <div className="text-center py-8 text-green-700">
@@ -192,9 +226,9 @@ const VesselDetailPage: React.FC<VesselDetailPageProps> = ({
               </div>
 
               {/* Right Column - Image & Meta */}
-              <div className="lg:col-span-3 flex flex-col h-full">
+              <div className="lg:col-span-3 flex flex-col">
                 {/* Image - Takes most of the height */}
-                <div className="bg-white rounded-xl shadow-lg overflow-hidden flex-1 flex flex-col">
+                <div className="bg-white rounded-xl shadow-lg overflow-hidden flex flex-col min-h-[600px]">
                   {vessel.image_url ? (
                     <div className="relative group cursor-pointer flex-1 flex items-center justify-center" onClick={handleImageClick}>
                       <img
