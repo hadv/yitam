@@ -240,6 +240,9 @@ const VesselManagement: React.FC<VesselManagementProps> = ({ accessCode }) => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b-2 border-blue-200">
               <tr>
+                <th className="px-6 py-4 text-center text-sm font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                  STT
+                </th>
                 <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                   Tên
                 </th>
@@ -266,6 +269,9 @@ const VesselManagement: React.FC<VesselManagementProps> = ({ accessCode }) => {
                   `}
                   onDoubleClick={() => setViewingVessel(vessel)}
                 >
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 text-center">
+                    {index + 1}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {vessel.name}
                   </td>
@@ -274,13 +280,15 @@ const VesselManagement: React.FC<VesselManagementProps> = ({ accessCode }) => {
                       {vessel.description || '-'}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className="px-6 py-4 text-sm text-gray-500">
                     {vessel.image_url ? (
-                      <img
-                        src={vessel.image_url.startsWith('http') ? vessel.image_url : `http://localhost:5001${vessel.image_url}`}
-                        alt={vessel.name}
-                        className="h-10 w-10 rounded-full object-cover"
-                      />
+                      <div className="flex justify-center">
+                        <img
+                          src={vessel.image_url.startsWith('http') ? vessel.image_url : `http://localhost:5001${vessel.image_url}`}
+                          alt={vessel.name}
+                          className="max-h-48 max-w-72 object-contain rounded-md shadow-sm border border-gray-200"
+                        />
+                      </div>
                     ) : (
                       <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center">
                         <span className="text-gray-500 text-xs">Không có</span>
