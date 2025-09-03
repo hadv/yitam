@@ -38,6 +38,7 @@ import { BetaBanner, ApiKeyWarning } from './TailwindBanners';
 import GDPRNotification from './notifications/GDPRNotification';
 import StorageWarningBanner from './notifications/StorageWarningBanner';
 import CacheDebugPanel from '../debug/CacheDebugPanel';
+import LogViewer from '../debug/LogViewer';
 
 // Utilities
 import { decryptApiKey } from '../../utils/encryption';
@@ -588,6 +589,9 @@ function TailwindApp() {
                 isOpen={showCacheDebug}
                 onClose={() => setShowCacheDebug(false)}
               />
+
+              {/* Debug Log Viewer */}
+              <LogViewer />
             </div>
           </TailwindMessagePersistence>
         </ChatHistoryProvider>

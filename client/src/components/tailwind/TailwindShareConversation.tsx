@@ -69,7 +69,9 @@ const TailwindShareConversation: React.FC<ShareConversationProps> = ({ topicId, 
       const result = await sharedConversationService.shareConversation(shareRequest, user?.email);
 
       if (!result.success) {
-        throw new Error(result.error || 'Failed to share conversation');
+        const errorMsg = result.error || 'Failed to share conversation';
+        console.error('[ShareConversation] API returned failure:', errorMsg);
+        throw new Error(errorMsg);
       }
 
       setShareUrl(result.shareUrl!);
@@ -80,7 +82,20 @@ const TailwindShareConversation: React.FC<ShareConversationProps> = ({ topicId, 
       }
     } catch (err) {
       console.error('Error sharing conversation:', err);
-      setError(err instanceof Error ? err.message : 'Failed to share conversation');
+
+      // Provide more user-friendly error messages
+      let userMessage = 'Failed to share conversation';
+      if (err instanceof Error) {
+        if (err.message.includes('content-type')) {
+          userMessage = 'Server is temporarily unavailable. Please try again in a few moments.';
+        } else if (err.message.includes('Failed to fetch')) {
+          userMessage = 'Network error. Please check your connection and try again.';
+        } else {
+          userMessage = err.message;
+        }
+      }
+
+      setError(userMessage);
     } finally {
       setIsSharing(false);
     }

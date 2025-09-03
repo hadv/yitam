@@ -1,5 +1,6 @@
 import { config } from '../config';
 import { sharedConversationCache, SharedConversationData, ConversationMessage } from './SharedConversationCache';
+import { logger } from '../utils/logger';
 
 interface ShareConversationRequest {
   title: string;
@@ -54,6 +55,77 @@ class SharedConversationService {
   }
 
   /**
+   * Safely parse JSON response with proper error handling
+   */
+  private async safeJsonParse(response: Response): Promise<any> {
+    const contentType = response.headers.get('content-type');
+
+    if (!contentType || !contentType.includes('application/json')) {
+      const responseText = await response.text();
+      logger.error(`Expected JSON but got ${contentType}`, {
+        status: response.status,
+        url: response.url,
+        responsePreview: responseText.substring(0, 500)
+      });
+
+      throw new Error(`Server error: Expected JSON response but received ${contentType || 'unknown content type'}. Status: ${response.status}`);
+    }
+
+    try {
+      return await response.json();
+    } catch (parseError) {
+      const responseText = await response.text();
+      logger.error(`Failed to parse JSON response`, {
+        parseError: parseError instanceof Error ? parseError.message : parseError,
+        status: response.status,
+        url: response.url,
+        responsePreview: responseText.substring(0, 500)
+      });
+
+      throw new Error(`Failed to parse server response as JSON. Status: ${response.status}`);
+    }
+  }
+
+  /**
+   * Retry a fetch request with exponential backoff
+   */
+  private async retryFetch(url: string, options: RequestInit, maxRetries: number = 3): Promise<Response> {
+    let lastError: Error;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`[Service] Attempt ${attempt}/${maxRetries} for ${url}`);
+        const response = await fetch(url, options);
+
+        // If we get a server error (5xx), retry
+        if (response.status >= 500 && attempt < maxRetries) {
+          console.warn(`[Service] Server error ${response.status}, retrying...`);
+          await this.delay(Math.pow(2, attempt - 1) * 1000); // Exponential backoff
+          continue;
+        }
+
+        return response;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        console.error(`[Service] Attempt ${attempt} failed:`, lastError.message);
+
+        if (attempt < maxRetries) {
+          await this.delay(Math.pow(2, attempt - 1) * 1000); // Exponential backoff
+        }
+      }
+    }
+
+    throw lastError!;
+  }
+
+  /**
+   * Simple delay utility
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
    * Share a conversation (create a new shared conversation)
    */
   async shareConversation(request: ShareConversationRequest, ownerId?: string): Promise<ShareConversationResponse> {
@@ -67,21 +139,30 @@ class SharedConversationService {
         headers['x-user-id'] = ownerId;
       }
 
-      const response = await fetch(`${this.baseUrl}/api/conversations/share`, {
+      console.log(`[Service] Sharing conversation to: ${this.baseUrl}/api/conversations/share`);
+
+      const response = await this.retryFetch(`${this.baseUrl}/api/conversations/share`, {
         method: 'POST',
         headers,
         body: JSON.stringify(request)
       });
 
-      const data = await response.json();
+      console.log(`[Service] Response status: ${response.status}`);
+      const data = await this.safeJsonParse(response);
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to share conversation');
+        const errorMsg = data.error || `HTTP ${response.status}: Failed to share conversation`;
+        console.error(`[Service] API error:`, errorMsg);
+        throw new Error(errorMsg);
       }
 
       if (!data.success) {
-        throw new Error(data.error || 'Failed to share conversation');
+        const errorMsg = data.error || 'API returned success: false';
+        console.error(`[Service] API returned failure:`, errorMsg);
+        throw new Error(errorMsg);
       }
+
+      console.log(`[Service] Successfully shared conversation: ${data.shareId}`);
 
       // If successful, we could optionally cache the conversation immediately
       // but we'll let it be cached when someone first views it
@@ -94,9 +175,18 @@ class SharedConversationService {
       };
     } catch (error) {
       console.error('Error sharing conversation:', error);
+
+      // Provide more detailed error information
+      let errorMessage = 'Failed to share conversation';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to share conversation'
+        error: errorMessage
       };
     }
   }
@@ -121,7 +211,8 @@ class SharedConversationService {
       // Fetch from server
       console.log(`[Service] Fetching conversation ${shareId} from server`);
       const response = await fetch(`${this.baseUrl}/api/conversations/shared/${shareId}`);
-      const data = await response.json();
+      console.log(`[Service] Response status: ${response.status}`);
+      const data = await this.safeJsonParse(response);
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to load conversation');
@@ -196,7 +287,7 @@ class SharedConversationService {
   async getCacheStats() {
     try {
       const response = await fetch(`${this.baseUrl}/api/conversations/cache/stats`);
-      const data = await response.json();
+      const data = await this.safeJsonParse(response);
 
       if (data.success) {
         return data.stats;
@@ -223,7 +314,7 @@ class SharedConversationService {
   async getCacheHealth() {
     try {
       const response = await fetch(`${this.baseUrl}/api/conversations/cache/health`);
-      const data = await response.json();
+      const data = await this.safeJsonParse(response);
 
       if (data.success) {
         return data.health;
@@ -243,7 +334,7 @@ class SharedConversationService {
       const response = await fetch(`${this.baseUrl}/api/conversations/cache/clear`, {
         method: 'DELETE'
       });
-      const data = await response.json();
+      const data = await this.safeJsonParse(response);
 
       return data.success;
     } catch (error) {
@@ -317,7 +408,7 @@ class SharedConversationService {
         headers
       });
 
-      const data = await response.json();
+      const data = await this.safeJsonParse(response);
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to unshare conversation');
@@ -364,7 +455,7 @@ class SharedConversationService {
         headers
       });
 
-      const data = await response.json();
+      const data = await this.safeJsonParse(response);
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to fetch owned conversations');
@@ -409,7 +500,7 @@ class SharedConversationService {
         body: JSON.stringify({ shareIds })
       });
 
-      const data = await response.json();
+      const data = await this.safeJsonParse(response);
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to batch unshare conversations');
