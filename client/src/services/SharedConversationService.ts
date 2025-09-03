@@ -94,12 +94,20 @@ class SharedConversationService {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`[Service] Attempt ${attempt}/${maxRetries} for ${url}`);
+        logger.debug(`Attempt ${attempt}/${maxRetries} for ${url}`);
         const response = await fetch(url, options);
+
+        // If we get a rate limit error (429), retry with longer delay
+        if (response.status === 429 && attempt < maxRetries) {
+          const retryDelay = Math.min(5000, Math.pow(2, attempt) * 1000); // Cap at 5 seconds
+          logger.warn(`Rate limited, retrying in ${retryDelay}ms`, { attempt, url });
+          await this.delay(retryDelay);
+          continue;
+        }
 
         // If we get a server error (5xx), retry
         if (response.status >= 500 && attempt < maxRetries) {
-          console.warn(`[Service] Server error ${response.status}, retrying...`);
+          logger.warn(`Server error ${response.status}, retrying...`, { attempt, url });
           await this.delay(Math.pow(2, attempt - 1) * 1000); // Exponential backoff
           continue;
         }
@@ -107,7 +115,7 @@ class SharedConversationService {
         return response;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
-        console.error(`[Service] Attempt ${attempt} failed:`, lastError.message);
+        logger.error(`Attempt ${attempt} failed`, { error: lastError.message, url });
 
         if (attempt < maxRetries) {
           await this.delay(Math.pow(2, attempt - 1) * 1000); // Exponential backoff
@@ -151,8 +159,16 @@ class SharedConversationService {
       const data = await this.safeJsonParse(response);
 
       if (!response.ok) {
-        const errorMsg = data.error || `HTTP ${response.status}: Failed to share conversation`;
-        console.error(`[Service] API error:`, errorMsg);
+        let errorMsg = data.error || `HTTP ${response.status}: Failed to share conversation`;
+
+        // Handle rate limiting specifically
+        if (response.status === 429) {
+          errorMsg = data.error || 'Too many requests. Please wait a moment and try again.';
+          logger.warn('Rate limit exceeded', { status: response.status, url: response.url });
+        } else {
+          logger.error('API error', { status: response.status, error: errorMsg, url: response.url });
+        }
+
         throw new Error(errorMsg);
       }
 

@@ -10,17 +10,48 @@ SharedConversationService.ts:96 Error sharing conversation: SyntaxError: Unexpec
 
 ## Root Cause Analysis
 
-1. **API Response Type Mismatch**: The client was expecting JSON responses but receiving HTML (likely 404 or error pages)
-2. **Missing Content-Type Validation**: The code was attempting to parse all responses as JSON without checking the content type
-3. **Poor Error Handling**: No graceful handling of non-JSON responses
-4. **Limited Production Debugging**: Insufficient logging for production troubleshooting
+**Primary Issue: Nginx Rate Limiting**
+
+After investigation, the root cause was identified as **nginx rate limiting**. When users exceeded the API rate limits (5 requests/second with burst of 10), nginx was returning HTML error pages (`503 Service Temporarily Unavailable`) instead of JSON responses.
+
+**Evidence:**
+- API endpoints work correctly under normal load
+- Rate limit testing showed HTML responses when limits exceeded
+- Error occurs specifically during high-frequency API calls
+
+**Secondary Issues:**
+1. **Missing Content-Type Validation**: The code was attempting to parse all responses as JSON without checking the content type
+2. **Poor Rate Limit Handling**: No graceful handling of rate limiting scenarios
+3. **Limited Production Debugging**: Insufficient logging for production troubleshooting
 
 ## Solution Implemented
 
-### 1. Enhanced Error Handling in SharedConversationService
+### 1. Fixed Nginx Rate Limiting Configuration
+
+**Problem**: Nginx was returning HTML error pages for rate-limited requests instead of JSON.
+
+**Solution**: Updated nginx configuration to return JSON error responses for rate limiting:
+
+```nginx
+# Rate limiting for API endpoints with JSON error response
+limit_req zone=api burst=10 nodelay;
+limit_req_status 429;
+
+# Custom error page for rate limiting that returns JSON
+error_page 429 = @rate_limit_json;
+
+# Custom error handler for rate limiting - returns JSON instead of HTML
+location @rate_limit_json {
+    add_header Content-Type application/json always;
+    return 429 '{"success": false, "error": "Rate limit exceeded. Please try again in a few seconds.", "code": "RATE_LIMIT_EXCEEDED"}';
+}
+```
+
+### 2. Enhanced Error Handling in SharedConversationService
 
 - **Added `safeJsonParse()` method**: Validates content-type before attempting JSON parsing
-- **Added retry mechanism**: Implements exponential backoff for failed requests
+- **Added retry mechanism**: Implements exponential backoff with special handling for rate limits
+- **Rate limit detection**: Specific handling for 429 status codes
 - **Improved error messages**: More descriptive error messages for different failure scenarios
 - **Enhanced logging**: Better logging for production debugging
 

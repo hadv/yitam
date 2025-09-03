@@ -86,7 +86,9 @@ const TailwindShareConversation: React.FC<ShareConversationProps> = ({ topicId, 
       // Provide more user-friendly error messages
       let userMessage = 'Failed to share conversation';
       if (err instanceof Error) {
-        if (err.message.includes('content-type')) {
+        if (err.message.includes('Rate limit') || err.message.includes('Too many requests')) {
+          userMessage = 'You\'re sharing conversations too quickly. Please wait a moment and try again.';
+        } else if (err.message.includes('content-type')) {
           userMessage = 'Server is temporarily unavailable. Please try again in a few moments.';
         } else if (err.message.includes('Failed to fetch')) {
           userMessage = 'Network error. Please check your connection and try again.';

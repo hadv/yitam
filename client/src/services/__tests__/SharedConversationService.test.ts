@@ -69,6 +69,31 @@ describe('SharedConversationService', () => {
       expect(result.error).toContain('Failed to parse server response as JSON');
     });
 
+    it('should handle rate limiting errors gracefully', async () => {
+      // Mock fetch to return rate limit error
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        status: 429,
+        headers: {
+          get: (name: string) => name === 'content-type' ? 'application/json' : null
+        },
+        json: () => Promise.resolve({
+          success: false,
+          error: 'Rate limit exceeded. Please try again in a few seconds.',
+          code: 'RATE_LIMIT_EXCEEDED'
+        })
+      });
+
+      const result = await service.shareConversation({
+        title: 'Test Conversation',
+        messages: [],
+        persona_id: 'test'
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Rate limit exceeded');
+    });
+
     it('should handle successful response correctly', async () => {
       // Mock fetch to return successful JSON response
       (global.fetch as jest.Mock).mockResolvedValue({
