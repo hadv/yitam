@@ -73,6 +73,11 @@ class SharedConversationService {
         body: JSON.stringify(request)
       });
 
+      // Handle 413 Content Too Large error specifically
+      if (response.status === 413) {
+        throw new Error('Conversation is too large to share. Please try sharing a shorter conversation or contact support for assistance.');
+      }
+
       const data = await response.json();
 
       if (!response.ok) {
