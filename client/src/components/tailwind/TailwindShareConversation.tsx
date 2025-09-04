@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { sharedConversationService } from '../../services/SharedConversationService';
 import db, { Topic, Message } from '../../db/ChatHistoryDB';
 import { useAuth } from '../../hooks/useAuth';
+import { calculateConversationSize, formatSize, getSizeReductionSuggestions } from '../../utils/conversationSize';
 
 interface ShareConversationProps {
   topicId: number;
@@ -24,9 +25,52 @@ const TailwindShareConversation: React.FC<ShareConversationProps> = ({ topicId, 
   const [error, setError] = useState<string | null>(null);
   const [expirationDays, setExpirationDays] = useState<number>(30);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [conversationSize, setConversationSize] = useState<string>('');
+  const [sizeWarning, setSizeWarning] = useState<string>('');
 
   // Get user information for ownership tracking
   const { user } = useAuth();
+
+  // Calculate conversation size on component mount
+  useEffect(() => {
+    const calculateSize = async () => {
+      try {
+        const topic = await db.topics.get(topicId);
+        if (!topic) return;
+
+        const messages = await db.messages
+          .where('topicId')
+          .equals(topicId)
+          .sortBy('timestamp');
+
+        const conversationMessages: ConversationMessage[] = messages.map((msg: Message) => ({
+          id: msg.id?.toString() || Date.now().toString(),
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.timestamp,
+          persona_id: topic.personaId
+        }));
+
+        const shareRequest = {
+          title: topic.title,
+          messages: conversationMessages,
+          persona_id: topic.personaId,
+          expires_in_days: expirationDays > 0 ? expirationDays : undefined
+        };
+
+        const sizeInfo = calculateConversationSize(shareRequest);
+        setConversationSize(formatSize(sizeInfo.sizeBytes));
+
+        if (sizeInfo.warning) {
+          setSizeWarning(sizeInfo.warning);
+        }
+      } catch (error) {
+        console.error('Error calculating conversation size:', error);
+      }
+    };
+
+    calculateSize();
+  }, [topicId, expirationDays]);
 
   const handleShare = async () => {
     try {
@@ -64,6 +108,17 @@ const TailwindShareConversation: React.FC<ShareConversationProps> = ({ topicId, 
         persona_id: topic.personaId,
         expires_in_days: expirationDays > 0 ? expirationDays : undefined
       };
+
+      // Validate conversation size before sending
+      const sizeInfo = calculateConversationSize(shareRequest);
+
+      if (!sizeInfo.canShare) {
+        const suggestions = getSizeReductionSuggestions(sizeInfo);
+        const suggestionText = suggestions.length > 0
+          ? `\n\nSuggestions to reduce size:\n• ${suggestions.join('\n• ')}`
+          : '';
+        throw new Error(`${sizeInfo.warning}${suggestionText}`);
+      }
 
       // Use the cached service to share conversation with user identification
       const result = await sharedConversationService.shareConversation(shareRequest, user?.email);
@@ -138,6 +193,23 @@ const TailwindShareConversation: React.FC<ShareConversationProps> = ({ topicId, 
               Liên kết sẽ tự động hết hạn sau thời gian đã chọn
             </p>
           </div>
+
+          {/* Conversation size information */}
+          {conversationSize && (
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-blue-700">
+                  Kích thước cuộc trò chuyện: <strong>{conversationSize}</strong>
+                </span>
+                <span className="text-xs text-blue-600">
+                  Giới hạn: 8MB
+                </span>
+              </div>
+              {sizeWarning && (
+                <p className="text-xs text-blue-600 mt-1">{sizeWarning}</p>
+              )}
+            </div>
+          )}
 
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">

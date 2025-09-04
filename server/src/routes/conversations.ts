@@ -48,6 +48,18 @@ router.post('/share', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // Check total content size
+    const totalContentSize = JSON.stringify(shareRequest).length;
+    const maxContentSize = 8 * 1024 * 1024; // 8MB limit
+    if (totalContentSize > maxContentSize) {
+      const sizeMB = (totalContentSize / (1024 * 1024)).toFixed(2);
+      res.status(413).json({
+        success: false,
+        error: `Conversation content is too large (${sizeMB}MB). Maximum size allowed is 8MB. Please try sharing a shorter conversation.`
+      });
+      return;
+    }
+
     // Limit title length
     if (shareRequest.title.length > 200) {
       res.status(400).json({
