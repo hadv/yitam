@@ -17,6 +17,8 @@ services:
       - "3000:3000"
     volumes:
       - yitam-mcp-dist:/app/mcp:ro
+      - server-data:/app/data
+      - server-uploads:/app/uploads
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -52,3 +54,5 @@ services:
 
 volumes:
   yitam-mcp-dist:
+  server-data:
+  server-uploads:
