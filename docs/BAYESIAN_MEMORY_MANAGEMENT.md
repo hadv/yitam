@@ -95,8 +95,8 @@ await contextEngine.initialize();
 QDRANT_URL=http://localhost:6333
 QDRANT_API_KEY=your-api-key-here
 
-# OpenAI for embeddings
-OPENAI_API_KEY=your-openai-api-key
+# Google Gemini for embeddings
+GOOGLE_API_KEY=your-google-api-key
 ```
 
 ### 4. Sử dụng trong cuộc trò chuyện
@@ -150,12 +150,12 @@ const bayesianConfig = {
   topKSelection: 5      // Chọn top 5 messages có xác suất cao nhất
 };
 
-// Vector store sử dụng Qdrant (mặc định)
+// Vector store sử dụng Qdrant với Gemini embeddings (mặc định)
 const vectorStoreConfig = {
   provider: 'qdrant',
   collectionName: 'yitam_context',
-  dimension: 1536,
-  embeddingModel: 'text-embedding-ada-002'
+  dimension: 768, // Gemini embedding dimension
+  embeddingModel: 'text-embedding-004' // Google Gemini embedding model
 };
 ```
 

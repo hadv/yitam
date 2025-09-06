@@ -16,8 +16,8 @@ describe('BayesianMemoryManager', () => {
     vectorStore = new VectorStoreManager({
       provider: 'qdrant', // Use Qdrant as the default vector store
       collectionName: 'test_collection',
-      dimension: 1536,
-      embeddingModel: 'text-embedding-ada-002'
+      dimension: 768, // Gemini embedding dimension
+      embeddingModel: 'text-embedding-004' // Google Gemini embedding model
     });
 
     try {

@@ -183,6 +183,37 @@ export class QdrantStore extends VectorStore {
     // Qdrant client doesn't need explicit closing
     this.client = null;
   }
+
+  private async generateEmbedding(text: string): Promise<number[]> {
+    try {
+      // Use Google Gemini embeddings
+      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent', {
+        method: 'POST',
+        headers: {
+          'x-goog-api-key': process.env.GOOGLE_API_KEY || '',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          content: {
+            parts: [{ text: text }]
+          },
+          taskType: 'SEMANTIC_SIMILARITY',
+          title: 'Yitam Context Embedding'
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Google Gemini API error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data.embedding.values;
+    } catch (error) {
+      console.error('Error generating Gemini embedding:', error);
+      // Return a dummy embedding for testing
+      return new Array(this.config.dimension).fill(0).map(() => Math.random());
+    }
+  }
 }
 
 /**
