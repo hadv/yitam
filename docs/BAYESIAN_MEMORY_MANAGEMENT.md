@@ -64,7 +64,17 @@ Các yếu tố prior được tính toán:
 
 ## Cách sử dụng
 
-### 1. Khởi tạo
+### 1. Cài đặt Dependencies
+
+```bash
+# Cài đặt Qdrant client
+npm install @qdrant/js-client-rest
+
+# Hoặc nếu sử dụng yarn
+yarn add @qdrant/js-client-rest
+```
+
+### 2. Khởi tạo
 
 ```typescript
 import { ContextEngine } from './services/ContextEngine';
@@ -78,7 +88,18 @@ const contextEngine = new ContextEngine({
 await contextEngine.initialize();
 ```
 
-### 2. Sử dụng trong cuộc trò chuyện
+### 3. Environment Variables
+
+```bash
+# Qdrant configuration
+QDRANT_URL=http://localhost:6333
+QDRANT_API_KEY=your-api-key-here
+
+# OpenAI for embeddings
+OPENAI_API_KEY=your-openai-api-key
+```
+
+### 4. Sử dụng trong cuộc trò chuyện
 
 ```typescript
 // Thêm messages vào cuộc trò chuyện
@@ -100,7 +121,7 @@ const optimizedContext = await contextEngine.getOptimizedContext(
 // - keyFacts: Các sự kiện quan trọng
 ```
 
-### 3. Cấu hình Bayesian
+### 5. Cấu hình Bayesian
 
 ```typescript
 const bayesianConfig = {
