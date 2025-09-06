@@ -119,7 +119,7 @@ export class ContextEngine {
         provider: 'qdrant', // Use Qdrant as default vector store
         collectionName: 'yitam_context',
         dimension: 768, // Gemini embedding dimension
-        embeddingModel: 'text-embedding-004' // Google Gemini embedding model
+        embeddingModel: 'gemini-embedding-001' // Google Gemini embedding model
       });
 
       await this.vectorStore.initialize();

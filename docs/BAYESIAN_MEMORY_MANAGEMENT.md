@@ -67,11 +67,11 @@ Các yếu tố prior được tính toán:
 ### 1. Cài đặt Dependencies
 
 ```bash
-# Cài đặt Qdrant client
-npm install @qdrant/js-client-rest
+# Cài đặt Qdrant client và Google GenAI
+npm install @qdrant/js-client-rest @google/genai
 
 # Hoặc nếu sử dụng yarn
-yarn add @qdrant/js-client-rest
+yarn add @qdrant/js-client-rest @google/genai
 ```
 
 ### 2. Khởi tạo
@@ -155,7 +155,7 @@ const vectorStoreConfig = {
   provider: 'qdrant',
   collectionName: 'yitam_context',
   dimension: 768, // Gemini embedding dimension
-  embeddingModel: 'text-embedding-004' // Google Gemini embedding model
+  embeddingModel: 'gemini-embedding-001' // Google Gemini embedding model
 };
 ```
 
@@ -214,7 +214,7 @@ có thể giúp trả lời câu hỏi của bạn. Đặc biệt, có một th�
 - Hiệu suất ổn định khi conversation tăng trưởng
 
 ### 4. Công nghệ tiên tiến
-- **Google Gemini Embeddings**: Chất lượng cao, chi phí hiệu quả, tối ưu cho semantic similarity
+- **Google Gemini Embeddings**: Model `gemini-embedding-001` với @google/genai library
 - **Qdrant Vector Store**: Database vector production-ready với khả năng filtering nâng cao
 - **Bayesian Inference**: Phương pháp khoa học thay vì heuristics đơn giản
 

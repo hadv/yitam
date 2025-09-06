@@ -186,28 +186,21 @@ export class QdrantStore extends VectorStore {
 
   private async generateEmbedding(text: string): Promise<number[]> {
     try {
-      // Use Google Gemini embeddings
-      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent', {
-        method: 'POST',
-        headers: {
-          'x-goog-api-key': process.env.GOOGLE_API_KEY || '',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          content: {
-            parts: [{ text: text }]
-          },
-          taskType: 'SEMANTIC_SIMILARITY',
-          title: 'Yitam Context Embedding'
-        })
+      // Use Google Gemini embeddings with @google/genai library
+      const { GoogleGenerativeAI } = await import('@google/genai');
+
+      const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
+      const model = genAI.getGenerativeModel({
+        model: this.config.embeddingModel || 'gemini-embedding-001'
       });
 
-      if (!response.ok) {
-        throw new Error(`Google Gemini API error: ${response.statusText}`);
+      const result = await model.embedContent(text);
+
+      if (!result.embedding || !result.embedding.values) {
+        throw new Error('Invalid embedding response from Gemini');
       }
 
-      const data = await response.json();
-      return data.embedding.values;
+      return result.embedding.values;
     } catch (error) {
       console.error('Error generating Gemini embedding:', error);
       // Return a dummy embedding for testing
