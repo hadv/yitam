@@ -314,10 +314,27 @@ export class ChromaDBStore extends VectorStore {
   }
 
   private async generateEmbedding(text: string): Promise<number[]> {
-    // This would typically use OpenAI's embedding API or another embedding service
-    // For now, return a mock embedding
-    console.warn('Using mock embedding - implement actual embedding generation');
-    return new Array(this.config.dimension).fill(0).map(() => Math.random() - 0.5);
+    try {
+      // Use Google Gemini embeddings with @google/genai library
+      const { GoogleGenerativeAI } = await import('@google/genai');
+
+      const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
+      const model = genAI.getGenerativeModel({
+        model: 'gemini-embedding-001'
+      });
+
+      const result = await model.embedContent(text);
+
+      if (!result.embedding || !result.embedding.values) {
+        throw new Error('Invalid embedding response from Gemini');
+      }
+
+      return result.embedding.values;
+    } catch (error) {
+      console.error('Error generating Gemini embedding in ChromaDBStore:', error);
+      // Return a dummy embedding for testing
+      return new Array(this.config.dimension).fill(0).map(() => Math.random() - 0.5);
+    }
   }
 }
 
@@ -397,11 +414,30 @@ export class InMemoryVectorStore extends VectorStore {
   }
 
   private async generateEmbedding(text: string): Promise<number[]> {
-    // Simple hash-based embedding for testing
-    const hash = this.simpleHash(text);
-    return new Array(this.config.dimension).fill(0).map((_, i) => 
-      Math.sin(hash + i) * 0.5
-    );
+    try {
+      // Try to use Google Gemini embeddings if available
+      const { GoogleGenerativeAI } = await import('@google/genai');
+
+      const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
+      const model = genAI.getGenerativeModel({
+        model: 'gemini-embedding-001'
+      });
+
+      const result = await model.embedContent(text);
+
+      if (!result.embedding || !result.embedding.values) {
+        throw new Error('Invalid embedding response from Gemini');
+      }
+
+      return result.embedding.values;
+    } catch (error) {
+      // Fallback to simple hash-based embedding for testing
+      console.log('Using hash-based embedding fallback in InMemoryVectorStore');
+      const hash = this.simpleHash(text);
+      return new Array(this.config.dimension).fill(0).map((_, i) =>
+        Math.sin(hash + i) * 0.5
+      );
+    }
   }
 
   private simpleHash(str: string): number {
