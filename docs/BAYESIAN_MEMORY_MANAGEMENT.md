@@ -74,7 +74,7 @@ npm install @qdrant/js-client-rest @google/genai
 yarn add @qdrant/js-client-rest @google/genai
 ```
 
-### 2. Khởi tạo
+### 5. Khởi tạo
 
 ```typescript
 import { ContextEngine } from './services/ContextEngine';
@@ -95,11 +95,18 @@ await contextEngine.initialize();
 QDRANT_URL=http://localhost:6333
 QDRANT_API_KEY=your-api-key-here
 
-# Google Gemini for embeddings
+# Google Gemini for embeddings (using official @google/genai library)
 GOOGLE_API_KEY=your-google-api-key
 ```
 
-### 4. Sử dụng trong cuộc trò chuyện
+### 4. Technical Specifications
+
+- **Embedding Model**: `gemini-embedding-001` (Google's production-ready embedding model)
+- **Vector Dimensions**: 768 (optimized for semantic similarity tasks)
+- **Vector Store**: Qdrant with Cosine distance metric
+- **Library**: Official `@google/genai` library for reliable API integration
+
+### 6. Sử dụng trong cuộc trò chuyện
 
 ```typescript
 // Thêm messages vào cuộc trò chuyện
@@ -121,7 +128,7 @@ const optimizedContext = await contextEngine.getOptimizedContext(
 // - keyFacts: Các sự kiện quan trọng
 ```
 
-### 5. Cấu hình Bayesian
+### 7. Cấu hình Bayesian
 
 ```typescript
 const bayesianConfig = {
@@ -214,9 +221,10 @@ có thể giúp trả lời câu hỏi của bạn. Đặc biệt, có một th�
 - Hiệu suất ổn định khi conversation tăng trưởng
 
 ### 4. Công nghệ tiên tiến
-- **Google Gemini Embeddings**: Model `gemini-embedding-001` với @google/genai library
+- **Google Gemini Embeddings**: Model `gemini-embedding-001` với @google/genai library chính thức
 - **Qdrant Vector Store**: Database vector production-ready với khả năng filtering nâng cao
 - **Bayesian Inference**: Phương pháp khoa học thay vì heuristics đơn giản
+- **Official Google Library**: Sử dụng thư viện chính thức đảm bảo tính ổn định và hỗ trợ tốt nhất
 
 ## Cấu trúc Database
 
