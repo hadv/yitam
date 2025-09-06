@@ -142,12 +142,44 @@ const createContextTables = (): Promise<void> => {
       `CREATE TABLE IF NOT EXISTS context_analytics (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         chat_id TEXT NOT NULL,
-        operation_type TEXT NOT NULL, -- 'retrieve', 'compress', 'summarize'
+        operation_type TEXT NOT NULL, -- 'retrieve', 'compress', 'summarize', 'bayesian'
         input_tokens INTEGER DEFAULT 0,
         output_tokens INTEGER DEFAULT 0,
         compression_ratio REAL,
         processing_time_ms INTEGER,
         cache_hit BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (chat_id) REFERENCES conversations(chat_id)
+      )`,
+
+      // Bayesian memory management metadata
+      `CREATE TABLE IF NOT EXISTS bayesian_message_metadata (
+        message_id INTEGER PRIMARY KEY,
+        chat_id TEXT NOT NULL,
+        times_referenced INTEGER DEFAULT 0,
+        last_referenced_at TIMESTAMP,
+        average_relevance_score REAL DEFAULT 0.0,
+        extracted_entities TEXT, -- JSON array of entities
+        extracted_topics TEXT,   -- JSON array of topics
+        semantic_fingerprint TEXT, -- Hash for quick comparison
+        conversation_position REAL DEFAULT 0.0, -- 0-1 position in conversation
+        user_interaction_pattern TEXT, -- JSON object with interaction stats
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (message_id) REFERENCES message_metadata(message_id),
+        FOREIGN KEY (chat_id) REFERENCES conversations(chat_id)
+      )`,
+
+      // Bayesian analysis results cache
+      `CREATE TABLE IF NOT EXISTS bayesian_analysis_cache (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chat_id TEXT NOT NULL,
+        query_hash TEXT NOT NULL, -- Hash of the query for caching
+        selected_message_ids TEXT, -- JSON array of selected message IDs
+        analysis_results TEXT, -- JSON of full analysis results
+        average_probability REAL,
+        processing_time_ms INTEGER,
+        expires_at TIMESTAMP NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (chat_id) REFERENCES conversations(chat_id)
       )`
@@ -169,7 +201,12 @@ const createContextTables = (): Promise<void> => {
       'CREATE INDEX IF NOT EXISTS idx_facts_importance ON key_facts(importance_score DESC)',
       'CREATE INDEX IF NOT EXISTS idx_facts_type ON key_facts(fact_type)',
       'CREATE INDEX IF NOT EXISTS idx_analytics_chat_id ON context_analytics(chat_id)',
-      'CREATE INDEX IF NOT EXISTS idx_analytics_operation ON context_analytics(operation_type)'
+      'CREATE INDEX IF NOT EXISTS idx_analytics_operation ON context_analytics(operation_type)',
+      'CREATE INDEX IF NOT EXISTS idx_bayesian_metadata_chat_id ON bayesian_message_metadata(chat_id)',
+      'CREATE INDEX IF NOT EXISTS idx_bayesian_metadata_referenced ON bayesian_message_metadata(times_referenced DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_bayesian_metadata_relevance ON bayesian_message_metadata(average_relevance_score DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_bayesian_cache_chat_query ON bayesian_analysis_cache(chat_id, query_hash)',
+      'CREATE INDEX IF NOT EXISTS idx_bayesian_cache_expires ON bayesian_analysis_cache(expires_at)'
     ];
 
     let completed = 0;

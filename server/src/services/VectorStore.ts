@@ -1,4 +1,8 @@
-import { MessageParam } from "@anthropic-ai/sdk/resources/messages/messages.mjs";
+// Define MessageParam locally to avoid dependency issues
+export interface MessageParam {
+  role: 'user' | 'assistant' | 'system';
+  content: string | any[];
+}
 import { ContextMemoryCache } from './MemoryCache';
 
 export interface VectorSearchResult {
