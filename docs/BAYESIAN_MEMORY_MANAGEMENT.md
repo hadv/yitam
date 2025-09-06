@@ -213,6 +213,11 @@ có thể giúp trả lời câu hỏi của bạn. Đặc biệt, có một th�
 - Không bị giới hạn bởi context window
 - Hiệu suất ổn định khi conversation tăng trưởng
 
+### 4. Công nghệ tiên tiến
+- **Google Gemini Embeddings**: Chất lượng cao, chi phí hiệu quả, tối ưu cho semantic similarity
+- **Qdrant Vector Store**: Database vector production-ready với khả năng filtering nâng cao
+- **Bayesian Inference**: Phương pháp khoa học thay vì heuristics đơn giản
+
 ## Cấu trúc Database
 
 ### Bảng mở rộng cho Bayesian
