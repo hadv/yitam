@@ -1,4 +1,10 @@
-import { MessageParam } from "@anthropic-ai/sdk/resources/messages/messages.mjs";
+// import { MessageParam } from "@anthropic-ai/sdk/resources/messages/messages.mjs";
+
+// Define MessageParam locally to avoid dependency issues
+export interface MessageParam {
+  role: 'user' | 'assistant' | 'system';
+  content: string | any[];
+}
 import {
   initializeContextDatabase,
   runContextQuery,
@@ -6,6 +12,9 @@ import {
   allContextQuery
 } from '../db/contextDatabase';
 import { ContextMemoryCache } from './MemoryCache';
+import { BayesianMemoryManager } from './BayesianMemoryManager';
+import { VectorStoreManager } from './VectorStore';
+import { BayesianContextWindow } from '../types/BayesianTypes';
 
 export interface ContextEngineConfig {
   maxRecentMessages: number;        // Default: 10
@@ -71,6 +80,8 @@ export class ContextEngine {
   private config: ContextEngineConfig;
   private dbInitialized: boolean = false;
   private memoryCache: ContextMemoryCache;
+  private bayesianManager?: BayesianMemoryManager;
+  private vectorStore?: VectorStoreManager;
 
   constructor(config?: Partial<ContextEngineConfig>) {
     this.config = {
@@ -99,11 +110,24 @@ export class ContextEngine {
 
   async initialize(): Promise<void> {
     if (this.dbInitialized) return;
-    
+
     try {
       await initializeContextDatabase();
+
+      // Initialize vector store and Bayesian manager
+      this.vectorStore = new VectorStoreManager({
+        provider: 'qdrant', // Use Qdrant as default vector store
+        collectionName: 'yitam_context',
+        dimension: 768, // Gemini embedding dimension
+        embeddingModel: 'gemini-embedding-001' // Google Gemini embedding model
+      });
+
+      await this.vectorStore.initialize();
+
+      this.bayesianManager = new BayesianMemoryManager(this.vectorStore);
+
       this.dbInitialized = true;
-      console.log('Context Engine initialized successfully');
+      console.log('Context Engine with Bayesian Memory Management initialized successfully');
     } catch (error) {
       console.error('Failed to initialize Context Engine:', error);
       throw error;
@@ -345,7 +369,7 @@ export class ContextEngine {
   }
 
   private generateCacheKey(chatId: string, query?: string): string {
-    const queryHash = query ? Buffer.from(query).toString('base64').slice(0, 8) : 'noquery';
+    const queryHash = query ? btoa(query).slice(0, 8) : 'noquery';
     return `context_${chatId}_${queryHash}`;
   }
 
@@ -401,20 +425,107 @@ export class ContextEngine {
   }
 
   private async buildContextWindow(chatId: string, currentQuery?: string): Promise<ContextWindow> {
-    // This is a simplified version - full implementation would include:
-    // 1. Recent messages retrieval
-    // 2. Semantic search for relevant history
-    // 3. Summary generation
-    // 4. Key facts retrieval
-    // 5. Token budget management
-    
+    // Use Bayesian Memory Management if available and query is provided
+    if (this.bayesianManager && currentQuery) {
+      try {
+        const bayesianContext = await this.bayesianManager.createBayesianContextWindow(
+          chatId,
+          currentQuery,
+          this.config.maxRecentMessages
+        );
+
+        // Convert Bayesian context to standard ContextWindow format
+        return this.convertBayesianToStandardContext(bayesianContext);
+      } catch (error) {
+        console.error('Error using Bayesian memory management, falling back to standard approach:', error);
+      }
+    }
+
+    // Fallback to standard context building
+    return await this.buildStandardContextWindow(chatId, currentQuery);
+  }
+
+  /**
+   * Convert BayesianContextWindow to standard ContextWindow format
+   */
+  private convertBayesianToStandardContext(bayesianContext: BayesianContextWindow): ContextWindow {
+    // Convert historical messages to MessageParam format
+    const recentMessages = bayesianContext.recentMessages.map(msg => this.convertToMessageParam(msg));
+    const relevantHistory = bayesianContext.bayesianSelectedMessages.map(item =>
+      this.convertToMessageParam(item.message)
+    );
+
+    // Convert summaries
+    const summaries = bayesianContext.summaries.map(summary => ({
+      id: summary.segmentId,
+      chatId: bayesianContext.recentMessages[0]?.chatId || '',
+      startMessageId: 0, // Would need to be populated
+      endMessageId: 0,   // Would need to be populated
+      segmentType: 'medium' as const,
+      summary: summary.summary,
+      importanceScore: 0.7,
+      tokenCount: Math.ceil(summary.summary.length / 4),
+      messageCount: summary.messageCount,
+      createdAt: summary.timeRange.start,
+      updatedAt: summary.timeRange.end
+    }));
+
+    // Convert key facts
+    const keyFacts = bayesianContext.keyFacts.map(fact => ({
+      id: 0, // Would need to be generated
+      chatId: bayesianContext.recentMessages[0]?.chatId || '',
+      factText: fact.fact,
+      factType: 'fact' as const,
+      importanceScore: fact.confidence,
+      sourceMessageId: fact.sourceMessageIds[0],
+      extractedAt: new Date(),
+      expiresAt: undefined,
+      createdAt: new Date()
+    }));
+
     return {
-      recentMessages: [],
-      relevantHistory: [],
-      summaries: [],
-      keyFacts: [],
-      totalTokens: 0,
-      compressionRatio: 1.0
+      recentMessages,
+      relevantHistory,
+      summaries,
+      keyFacts,
+      totalTokens: bayesianContext.statistics.totalTokens,
+      compressionRatio: bayesianContext.statistics.compressionRatio
+    };
+  }
+
+  /**
+   * Standard context building (fallback)
+   */
+  private async buildStandardContextWindow(chatId: string, currentQuery?: string): Promise<ContextWindow> {
+    // Get recent messages
+    const recentMessages = await this.getRecentMessagesAsMessageParams(chatId, this.config.maxRecentMessages);
+
+    // Get high importance messages
+    const importantMessages = await this.getImportantMessages(chatId, this.config.vectorSearchLimit);
+
+    // Get summaries and key facts
+    const summaries = await this.getConversationSummaries(chatId);
+    const keyFacts = await this.getKeyFacts(chatId);
+
+    const totalTokens = this.calculateTotalTokens(recentMessages, importantMessages);
+
+    return {
+      recentMessages,
+      relevantHistory: importantMessages,
+      summaries,
+      keyFacts,
+      totalTokens,
+      compressionRatio: this.calculateCompressionRatio(totalTokens)
+    };
+  }
+
+  /**
+   * Convert HistoricalMessage to MessageParam
+   */
+  private convertToMessageParam(historicalMessage: any): MessageParam {
+    return {
+      role: historicalMessage.role || 'user',
+      content: historicalMessage.content || ''
     };
   }
 
@@ -450,9 +561,112 @@ export class ContextEngine {
   }
 
   /**
+   * Helper methods for standard context building
+   */
+  private async getRecentMessagesAsMessageParams(chatId: string, count: number): Promise<MessageParam[]> {
+    const sql = `
+      SELECT
+        mm.message_id,
+        mm.chat_id,
+        mm.created_at
+      FROM message_metadata mm
+      WHERE mm.chat_id = ?
+      ORDER BY mm.message_id DESC
+      LIMIT ?
+    `;
+
+    const rows = await getContextQuery(sql, [chatId, count]);
+
+    // Convert to MessageParam format (simplified)
+    return rows.map((row: any) => ({
+      role: 'user' as const, // Would need to determine actual role
+      content: `Message ${row.message_id}` // Would need to fetch actual content
+    }));
+  }
+
+  private async getImportantMessages(chatId: string, limit: number): Promise<MessageParam[]> {
+    const sql = `
+      SELECT
+        mm.message_id,
+        mm.importance_score
+      FROM message_metadata mm
+      WHERE mm.chat_id = ? AND mm.importance_score > ?
+      ORDER BY mm.importance_score DESC
+      LIMIT ?
+    `;
+
+    const rows = await getContextQuery(sql, [chatId, this.config.importanceThreshold, limit]);
+
+    return rows.map((row: any) => ({
+      role: 'user' as const,
+      content: `Important message ${row.message_id}`
+    }));
+  }
+
+  private async getConversationSummaries(chatId: string): Promise<ConversationSegment[]> {
+    const sql = `
+      SELECT * FROM conversation_segments
+      WHERE chat_id = ?
+      ORDER BY start_message_id ASC
+    `;
+
+    const rows = await getContextQuery(sql, [chatId]);
+
+    return rows.map((row: any) => ({
+      id: row.id,
+      chatId: row.chat_id,
+      startMessageId: row.start_message_id,
+      endMessageId: row.end_message_id,
+      segmentType: row.segment_type,
+      summary: row.summary,
+      importanceScore: row.importance_score,
+      tokenCount: row.token_count,
+      messageCount: row.message_count,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at)
+    }));
+  }
+
+  private async getKeyFacts(chatId: string): Promise<KeyFact[]> {
+    const sql = `
+      SELECT * FROM key_facts
+      WHERE chat_id = ?
+      ORDER BY importance_score DESC
+    `;
+
+    const rows = await getContextQuery(sql, [chatId]);
+
+    return rows.map((row: any) => ({
+      id: row.id,
+      chatId: row.chat_id,
+      factText: row.fact_text,
+      factType: (row.fact_type || 'fact') as 'decision' | 'preference' | 'fact' | 'goal',
+      importanceScore: row.importance_score,
+      sourceMessageId: row.source_message_id,
+      extractedAt: new Date(row.extracted_at),
+      expiresAt: row.expires_at ? new Date(row.expires_at) : undefined,
+      createdAt: new Date(row.created_at)
+    }));
+  }
+
+  private calculateTotalTokens(recentMessages: MessageParam[], relevantHistory: MessageParam[]): number {
+    const recentTokens = recentMessages.reduce((sum, msg) => sum + this.estimateTokenCount(msg.content), 0);
+    const historyTokens = relevantHistory.reduce((sum, msg) => sum + this.estimateTokenCount(msg.content), 0);
+    return recentTokens + historyTokens;
+  }
+
+  private calculateCompressionRatio(totalTokens: number): number {
+    const estimatedFullTokens = totalTokens * 2; // Rough estimate
+    return totalTokens / estimatedFullTokens;
+  }
+
+  /**
    * Cleanup resources
    */
   async cleanup(): Promise<void> {
     this.memoryCache.destroy();
+    if (this.vectorStore) {
+      await this.vectorStore.close();
+    }
   }
 }
