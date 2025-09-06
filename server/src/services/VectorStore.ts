@@ -47,6 +47,145 @@ export abstract class VectorStore {
 }
 
 /**
+ * Qdrant implementation for vector storage
+ */
+export class QdrantStore extends VectorStore {
+  private client: any;
+
+  async initialize(): Promise<void> {
+    try {
+      // Dynamic import for Qdrant client
+      const { QdrantClient } = await import('@qdrant/js-client-rest');
+
+      this.client = new QdrantClient({
+        url: this.config.endpoint || process.env.QDRANT_URL || 'http://localhost:6333',
+        apiKey: process.env.QDRANT_API_KEY
+      });
+
+      // Check if collection exists, create if not
+      try {
+        await this.client.getCollection(this.config.collectionName);
+      } catch (error) {
+        // Collection doesn't exist, create it
+        await this.client.createCollection(this.config.collectionName, {
+          vectors: {
+            size: this.config.dimension,
+            distance: 'Cosine'
+          }
+        });
+      }
+
+      console.log(`Qdrant collection '${this.config.collectionName}' initialized`);
+    } catch (error) {
+      console.error('Failed to initialize Qdrant:', error);
+      throw error;
+    }
+  }
+
+  async addEmbedding(request: EmbeddingRequest): Promise<string> {
+    if (!this.client) {
+      throw new Error('Qdrant client not initialized');
+    }
+
+    try {
+      const embedding = await this.generateEmbedding(request.text);
+      const vectorId = `${request.type}_${request.messageId || request.segmentId}_${Date.now()}`;
+
+      await this.client.upsert(this.config.collectionName, {
+        wait: true,
+        points: [{
+          id: vectorId,
+          vector: embedding,
+          payload: {
+            text: request.text,
+            messageId: request.messageId,
+            segmentId: request.segmentId,
+            type: request.type,
+            timestamp: new Date().toISOString()
+          }
+        }]
+      });
+
+      return vectorId;
+    } catch (error) {
+      console.error('Error adding embedding to Qdrant:', error);
+      throw error;
+    }
+  }
+
+  async searchSimilar(query: string, limit: number = 10, filter?: any): Promise<SearchResult[]> {
+    if (!this.client) {
+      throw new Error('Qdrant client not initialized');
+    }
+
+    try {
+      const queryEmbedding = await this.generateEmbedding(query);
+
+      const searchResult = await this.client.search(this.config.collectionName, {
+        vector: queryEmbedding,
+        limit,
+        with_payload: true,
+        filter: filter
+      });
+
+      return searchResult.map((result: any) => ({
+        vectorId: result.id,
+        similarity: result.score,
+        text: result.payload.text,
+        messageId: result.payload.messageId,
+        segmentId: result.payload.segmentId,
+        metadata: {
+          type: result.payload.type,
+          timestamp: result.payload.timestamp
+        }
+      }));
+    } catch (error) {
+      console.error('Error searching in Qdrant:', error);
+      return [];
+    }
+  }
+
+  async deleteEmbedding(vectorId: string): Promise<void> {
+    if (!this.client) {
+      throw new Error('Qdrant client not initialized');
+    }
+
+    try {
+      await this.client.delete(this.config.collectionName, {
+        points: [vectorId]
+      });
+    } catch (error) {
+      console.error('Error deleting embedding from Qdrant:', error);
+      throw error;
+    }
+  }
+
+  async getEmbedding(vectorId: string): Promise<any> {
+    if (!this.client) {
+      throw new Error('Qdrant client not initialized');
+    }
+
+    try {
+      const result = await this.client.retrieve(this.config.collectionName, {
+        ids: [vectorId],
+        with_payload: true,
+        with_vector: true
+      });
+
+      return result.length > 0 ? result[0] : null;
+    } catch (error) {
+      console.error('Error getting embedding from Qdrant:', error);
+      return null;
+    }
+  }
+
+  async close(): Promise<void> {
+    // Qdrant client doesn't need explicit closing
+    this.client = null;
+  }
+}
+
+/**
  * ChromaDB implementation for vector storage
  */
 export class ChromaDBStore extends VectorStore {
@@ -274,10 +413,10 @@ export class InMemoryVectorStore extends VectorStore {
  */
 export function createVectorStore(config: VectorStoreConfig): VectorStore {
   switch (config.provider) {
+    case 'qdrant':
+      return new QdrantStore(config);
     case 'chromadb':
       return new ChromaDBStore(config);
-    case 'qdrant':
-      throw new Error('Qdrant implementation not yet available');
     case 'pinecone':
       throw new Error('Pinecone implementation not yet available');
     default:

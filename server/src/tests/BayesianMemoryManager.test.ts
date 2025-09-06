@@ -12,9 +12,9 @@ describe('BayesianMemoryManager', () => {
   let vectorStore: VectorStoreManager;
 
   beforeEach(async () => {
-    // Create in-memory vector store for testing
+    // Create vector store for testing
     vectorStore = new VectorStoreManager({
-      provider: 'chromadb', // Use chromadb as it's the default supported provider
+      provider: 'qdrant', // Use Qdrant as the default vector store
       collectionName: 'test_collection',
       dimension: 1536,
       embeddingModel: 'text-embedding-ada-002'
@@ -23,8 +23,8 @@ describe('BayesianMemoryManager', () => {
     try {
       await vectorStore.initialize();
     } catch (error) {
-      // If ChromaDB fails, skip the test
-      console.log('ChromaDB not available, skipping vector store initialization');
+      // If Qdrant fails, skip the test
+      console.log('Qdrant not available, skipping vector store initialization');
     }
 
     // Create Bayesian manager with test config

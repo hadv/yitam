@@ -116,7 +116,7 @@ export class ContextEngine {
 
       // Initialize vector store and Bayesian manager
       this.vectorStore = new VectorStoreManager({
-        provider: 'chromadb', // Use chromadb as default
+        provider: 'qdrant', // Use Qdrant as default vector store
         collectionName: 'yitam_context',
         dimension: 1536,
         embeddingModel: 'text-embedding-ada-002'

@@ -20,7 +20,7 @@ P(Thông tin cũ quan trọng | Nội dung thông tin cũ, Câu hỏi hiện t�
 
 ### 1. BayesianMemoryManager
 
-Module chính thực hiện tính toán Bayesian inference:
+Module chính thực hiện tính toán Bayesian inference với Qdrant vector store:
 
 ```typescript
 class BayesianMemoryManager {
@@ -72,7 +72,7 @@ import { ContextEngine } from './services/ContextEngine';
 const contextEngine = new ContextEngine({
   maxRecentMessages: 10,
   maxContextTokens: 8000,
-  // Bayesian config sẽ được tự động khởi tạo
+  // Bayesian config sẽ được tự động khởi tạo với Qdrant vector store
 });
 
 await contextEngine.initialize();
@@ -127,6 +127,14 @@ const bayesianConfig = {
     minRelevanceProbability: 0.4  // Chỉ chọn messages có P >= 0.4
   },
   topKSelection: 5      // Chọn top 5 messages có xác suất cao nhất
+};
+
+// Vector store sử dụng Qdrant (mặc định)
+const vectorStoreConfig = {
+  provider: 'qdrant',
+  collectionName: 'yitam_context',
+  dimension: 1536,
+  embeddingModel: 'text-embedding-ada-002'
 };
 ```
 
