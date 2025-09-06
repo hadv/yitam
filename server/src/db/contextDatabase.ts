@@ -232,10 +232,10 @@ const createContextTables = (): Promise<void> => {
       });
     });
 
-    // Create indexes
+    // Create indexes (only after tables are created)
     indexes.forEach((sql) => {
       contextDb!.run(sql, (err) => {
-        if (err) {
+        if (err && !err.message.includes('no such table')) {
           console.error('Error creating index:', err);
           reject(err);
           return;

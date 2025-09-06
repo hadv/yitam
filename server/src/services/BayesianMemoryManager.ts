@@ -474,4 +474,3 @@ export class BayesianMemoryManager {
     return { ...defaultConfig, ...config };
   }
 }
-}
