@@ -40,8 +40,8 @@ export const defaultContextConfig: YitamContextConfig = {
     endpoint: process.env.VECTOR_STORE_ENDPOINT || 'http://localhost:8000',
     apiKey: process.env.VECTOR_STORE_API_KEY,
     collectionName: process.env.VECTOR_STORE_COLLECTION || 'yitam_context',
-    dimension: parseInt(process.env.VECTOR_STORE_DIMENSION || '1536'),
-    embeddingModel: process.env.EMBEDDING_MODEL || 'text-embedding-ada-002'
+    dimension: parseInt(process.env.VECTOR_STORE_DIMENSION || '768'),
+    embeddingModel: process.env.EMBEDDING_MODEL || 'gemini-embedding-001'
   },
   
   enableMCPServer: process.env.ENABLE_MCP_CONTEXT_SERVER === 'true',
@@ -150,8 +150,8 @@ export const environmentVariables = {
   VECTOR_STORE_ENDPOINT: 'Vector store endpoint URL (default: http://localhost:8000)',
   VECTOR_STORE_API_KEY: 'API key for vector store (if required)',
   VECTOR_STORE_COLLECTION: 'Collection name for embeddings (default: yitam_context)',
-  VECTOR_STORE_DIMENSION: 'Embedding dimension (default: 1536)',
-  EMBEDDING_MODEL: 'Embedding model name (default: text-embedding-ada-002)',
+  VECTOR_STORE_DIMENSION: 'Embedding dimension (default: 768)',
+  EMBEDDING_MODEL: 'Embedding model name (default: gemini-embedding-001)',
   
   // MCP Server
   ENABLE_MCP_CONTEXT_SERVER: 'Enable MCP context server (default: false)',

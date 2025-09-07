@@ -44,8 +44,8 @@ export class ContextMCPServer {
     const vectorConfig: VectorStoreConfig = {
       provider: 'chromadb',
       collectionName: 'yitam_context',
-      dimension: 1536,
-      embeddingModel: 'text-embedding-ada-002',
+      dimension: 768,
+      embeddingModel: 'gemini-embedding-001',
       endpoint: process.env.CHROMADB_ENDPOINT || 'http://localhost:8000'
     };
     

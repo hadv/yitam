@@ -191,7 +191,7 @@ export class QdrantStore extends VectorStore {
 
       const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
       const model = genAI.getGenerativeModel({
-        model: this.config.embeddingModel || 'text-embedding-004'
+        model: this.config.embeddingModel || 'gemini-embedding-001'
       });
 
       const result = await model.embedContent(text);
@@ -320,7 +320,7 @@ export class ChromaDBStore extends VectorStore {
 
       const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
       const model = genAI.getGenerativeModel({
-        model: 'text-embedding-004'
+        model: 'gemini-embedding-001'
       });
 
       const result = await model.embedContent(text);
@@ -420,7 +420,7 @@ export class InMemoryVectorStore extends VectorStore {
 
       const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
       const model = genAI.getGenerativeModel({
-        model: 'text-embedding-004'
+        model: 'gemini-embedding-001'
       });
 
       const result = await model.embedContent(text);

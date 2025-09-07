@@ -169,7 +169,7 @@ interface VectorStoreConfig {
   endpoint?: string;              // Vector DB endpoint
   apiKey?: string;               // API key if required
   collectionName: string;        // Collection for embeddings
-  dimension: number;             // Embedding dimension (default: 1536)
+  dimension: number;             // Embedding dimension (default: 768)
   embeddingModel: string;        // Model for generating embeddings
 }
 ```

@@ -30,8 +30,8 @@ CONTEXT_CACHE_EXPIRATION=30
 VECTOR_STORE_PROVIDER=chromadb
 VECTOR_STORE_ENDPOINT=http://localhost:8000
 VECTOR_STORE_COLLECTION=yitam_context
-VECTOR_STORE_DIMENSION=1536
-EMBEDDING_MODEL=text-embedding-ada-002
+VECTOR_STORE_DIMENSION=768
+EMBEDDING_MODEL=gemini-embedding-001
 
 # Memory Cache Configuration
 MEMORY_CACHE_ENABLED=true
@@ -206,7 +206,7 @@ const aggressiveConfig = {
 vectorStoreConfig: {
   provider: 'chromadb',
   collectionName: 'yitam_dev',
-  dimension: 384  // Smaller for faster processing
+  dimension: 768  // Google Gemini embedding dimension
 }
 
 // Production
@@ -214,7 +214,7 @@ vectorStoreConfig: {
   provider: 'chromadb',
   endpoint: 'https://your-chromadb-instance.com',
   collectionName: 'yitam_prod',
-  dimension: 1536,
+  dimension: 768,  // Google Gemini embedding dimension
   apiKey: process.env.CHROMADB_API_KEY
 }
 ```

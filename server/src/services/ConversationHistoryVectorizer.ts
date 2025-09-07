@@ -191,7 +191,7 @@ export class ConversationHistoryVectorizer {
 
       const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
       const model = genAI.getGenerativeModel({
-        model: 'text-embedding-004'
+        model: 'gemini-embedding-001'
       });
 
       const result = await model.embedContent(text);
