@@ -28,6 +28,7 @@ export const defaultContextConfig: YitamContextConfig = {
     importanceThreshold: parseFloat(process.env.CONTEXT_IMPORTANCE_THRESHOLD || '0.3'),
     vectorSearchLimit: parseInt(process.env.CONTEXT_VECTOR_SEARCH_LIMIT || '5'),
     cacheExpiration: parseInt(process.env.CONTEXT_CACHE_EXPIRATION || '30'),
+    useBayesianMemory: process.env.CONTEXT_USE_BAYESIAN_MEMORY !== 'false', // Default: true
     compressionLevels: {
       medium: parseFloat(process.env.CONTEXT_COMPRESSION_MEDIUM || '0.7'),
       long: parseFloat(process.env.CONTEXT_COMPRESSION_LONG || '0.85'),
@@ -117,14 +118,16 @@ export function validateContextConfig(config: YitamContextConfig): string[] {
     errors.push('vectorStore.dimension must be at least 100');
   }
   
-  // Validate compression levels
-  const { medium, long, ancient } = config.contextEngine.compressionLevels;
-  if (medium < 0 || medium > 1 || long < 0 || long > 1 || ancient < 0 || ancient > 1) {
-    errors.push('compression levels must be between 0 and 1');
-  }
-  
-  if (medium >= long || long >= ancient) {
-    errors.push('compression levels must be increasing: medium < long < ancient');
+  // Validate compression levels (legacy - only if provided)
+  if (config.contextEngine.compressionLevels) {
+    const { medium, long, ancient } = config.contextEngine.compressionLevels;
+    if (medium < 0 || medium > 1 || long < 0 || long > 1 || ancient < 0 || ancient > 1) {
+      errors.push('compression levels must be between 0 and 1');
+    }
+
+    if (medium >= long || long >= ancient) {
+      errors.push('compression levels must be increasing: medium < long < ancient');
+    }
   }
   
   return errors;
@@ -137,13 +140,14 @@ export const environmentVariables = {
   // Context Engine
   CONTEXT_MAX_RECENT_MESSAGES: 'Maximum number of recent messages to include in full (default: 10)',
   CONTEXT_MAX_TOKENS: 'Maximum tokens for context window (default: 8000)',
-  CONTEXT_SUMMARIZATION_THRESHOLD: 'Number of messages before creating summaries (default: 20)',
-  CONTEXT_IMPORTANCE_THRESHOLD: 'Minimum importance score for message inclusion (default: 0.3)',
-  CONTEXT_VECTOR_SEARCH_LIMIT: 'Maximum relevant messages from vector search (default: 5)',
+  CONTEXT_USE_BAYESIAN_MEMORY: 'Enable Bayesian Memory Management (default: true)',
+  CONTEXT_SUMMARIZATION_THRESHOLD: 'Number of messages before creating summaries - legacy (default: 20)',
+  CONTEXT_IMPORTANCE_THRESHOLD: 'Minimum importance score for message inclusion - legacy (default: 0.3)',
+  CONTEXT_VECTOR_SEARCH_LIMIT: 'Maximum relevant messages from vector search - legacy (default: 5)',
   CONTEXT_CACHE_EXPIRATION: 'Context cache expiration in minutes (default: 30)',
-  CONTEXT_COMPRESSION_MEDIUM: 'Compression ratio for medium-term messages (default: 0.7)',
-  CONTEXT_COMPRESSION_LONG: 'Compression ratio for long-term messages (default: 0.85)',
-  CONTEXT_COMPRESSION_ANCIENT: 'Compression ratio for ancient messages (default: 0.95)',
+  CONTEXT_COMPRESSION_MEDIUM: 'Compression ratio for medium-term messages - legacy (default: 0.7)',
+  CONTEXT_COMPRESSION_LONG: 'Compression ratio for long-term messages - legacy (default: 0.85)',
+  CONTEXT_COMPRESSION_ANCIENT: 'Compression ratio for ancient messages - legacy (default: 0.95)',
   
   // Vector Store
   VECTOR_STORE_PROVIDER: 'Vector store provider: chromadb, qdrant, pinecone (default: chromadb)',
