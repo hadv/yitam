@@ -42,11 +42,11 @@ export class ContextMCPServer {
 
     // Initialize vector store with in-memory provider for development
     const vectorConfig: VectorStoreConfig = {
-      provider: 'chromadb',
+      provider: 'qdrant',
       collectionName: 'yitam_context',
-      dimension: 1536,
-      embeddingModel: 'text-embedding-ada-002',
-      endpoint: process.env.CHROMADB_ENDPOINT || 'http://localhost:8000'
+      dimension: 768,
+      embeddingModel: 'gemini-embedding-001',
+      endpoint: process.env.QDRANT_URL || 'http://localhost:6333'
     };
     
     this.vectorStore = new VectorStoreManager(vectorConfig);

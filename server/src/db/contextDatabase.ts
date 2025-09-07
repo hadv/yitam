@@ -102,8 +102,8 @@ const createContextTables = (): Promise<void> => {
         segment_id INTEGER,
         embedding_type TEXT NOT NULL CHECK (embedding_type IN ('message', 'segment', 'summary')),
         vector_id TEXT NOT NULL, -- reference to vector DB
-        dimension INTEGER DEFAULT 1536,
-        model_name TEXT DEFAULT 'text-embedding-ada-002',
+        dimension INTEGER DEFAULT 768,
+        model_name TEXT DEFAULT 'gemini-embedding-001',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (message_id) REFERENCES message_metadata(message_id),
         FOREIGN KEY (segment_id) REFERENCES conversation_segments(id)

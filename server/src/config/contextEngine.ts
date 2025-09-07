@@ -36,12 +36,12 @@ export const defaultContextConfig: YitamContextConfig = {
   },
   
   vectorStore: {
-    provider: (process.env.VECTOR_STORE_PROVIDER as 'chromadb' | 'qdrant' | 'pinecone') || 'chromadb',
-    endpoint: process.env.VECTOR_STORE_ENDPOINT || 'http://localhost:8000',
+    provider: (process.env.VECTOR_STORE_PROVIDER as 'chromadb' | 'qdrant' | 'pinecone') || 'qdrant',
+    endpoint: process.env.VECTOR_STORE_ENDPOINT || 'http://localhost:6333',
     apiKey: process.env.VECTOR_STORE_API_KEY,
     collectionName: process.env.VECTOR_STORE_COLLECTION || 'yitam_context',
-    dimension: parseInt(process.env.VECTOR_STORE_DIMENSION || '1536'),
-    embeddingModel: process.env.EMBEDDING_MODEL || 'text-embedding-ada-002'
+    dimension: parseInt(process.env.VECTOR_STORE_DIMENSION || '768'),
+    embeddingModel: process.env.EMBEDDING_MODEL || 'gemini-embedding-001'
   },
   
   enableMCPServer: process.env.ENABLE_MCP_CONTEXT_SERVER === 'true',
@@ -146,12 +146,12 @@ export const environmentVariables = {
   CONTEXT_COMPRESSION_ANCIENT: 'Compression ratio for ancient messages (default: 0.95)',
   
   // Vector Store
-  VECTOR_STORE_PROVIDER: 'Vector store provider: chromadb, qdrant, pinecone (default: chromadb)',
-  VECTOR_STORE_ENDPOINT: 'Vector store endpoint URL (default: http://localhost:8000)',
+  VECTOR_STORE_PROVIDER: 'Vector store provider: chromadb, qdrant, pinecone (default: qdrant)',
+  VECTOR_STORE_ENDPOINT: 'Vector store endpoint URL (default: http://localhost:6333)',
   VECTOR_STORE_API_KEY: 'API key for vector store (if required)',
   VECTOR_STORE_COLLECTION: 'Collection name for embeddings (default: yitam_context)',
-  VECTOR_STORE_DIMENSION: 'Embedding dimension (default: 1536)',
-  EMBEDDING_MODEL: 'Embedding model name (default: text-embedding-ada-002)',
+  VECTOR_STORE_DIMENSION: 'Embedding dimension (default: 768)',
+  EMBEDDING_MODEL: 'Embedding model name (default: gemini-embedding-001)',
   
   // MCP Server
   ENABLE_MCP_CONTEXT_SERVER: 'Enable MCP context server (default: false)',
@@ -199,8 +199,8 @@ export const developmentContextConfig: YitamContextConfig = {
   },
   vectorStore: {
     ...defaultContextConfig.vectorStore,
-    provider: 'chromadb', // Use in-memory for development
-    endpoint: 'http://localhost:8000'
+    provider: 'qdrant', // Use Qdrant for development
+    endpoint: 'http://localhost:6333'
   },
   enableMCPServer: true,
   memoryCache: {
