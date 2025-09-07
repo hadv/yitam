@@ -19,15 +19,18 @@ import { BayesianContextWindow } from '../types/BayesianTypes';
 export interface ContextEngineConfig {
   maxRecentMessages: number;        // Default: 10
   maxContextTokens: number;         // Default: 8000
-  summarizationThreshold: number;   // Messages before summarization
-  importanceThreshold: number;      // Minimum importance score
-  vectorSearchLimit: number;        // Max relevant messages to retrieve
+  summarizationThreshold: number;   // Messages before summarization (legacy)
+  importanceThreshold: number;      // Minimum importance score (legacy)
+  vectorSearchLimit: number;        // Max relevant messages to retrieve (legacy)
   cacheExpiration: number;          // Context cache TTL in minutes
-  compressionLevels: {
-    medium: number;    // 70% compression
-    long: number;      // 85% compression  
-    ancient: number;   // 95% compression
+  // Legacy compression levels - replaced by Bayesian Memory Management
+  compressionLevels?: {
+    medium: number;    // 70% compression (deprecated)
+    long: number;      // 85% compression (deprecated)
+    ancient: number;   // 95% compression (deprecated)
   };
+  // Bayesian Memory Management is now the primary approach
+  useBayesianMemory: boolean;       // Default: true
 }
 
 export interface ConversationSegment {
@@ -87,14 +90,16 @@ export class ContextEngine {
     this.config = {
       maxRecentMessages: 10,
       maxContextTokens: 8000,
-      summarizationThreshold: 20,
-      importanceThreshold: 0.3,
-      vectorSearchLimit: 5,
+      summarizationThreshold: 20,  // Legacy - kept for fallback
+      importanceThreshold: 0.3,    // Legacy - kept for fallback
+      vectorSearchLimit: 5,        // Legacy - kept for fallback
       cacheExpiration: 30, // 30 minutes
+      useBayesianMemory: true,     // Primary approach
+      // Legacy compression levels - kept for fallback only
       compressionLevels: {
-        medium: 0.7,  // 70% compression
-        long: 0.85,   // 85% compression
-        ancient: 0.95 // 95% compression
+        medium: 0.7,  // 70% compression (deprecated)
+        long: 0.85,   // 85% compression (deprecated)
+        ancient: 0.95 // 95% compression (deprecated)
       },
       ...config
     };
@@ -425,9 +430,11 @@ export class ContextEngine {
   }
 
   private async buildContextWindow(chatId: string, currentQuery?: string): Promise<ContextWindow> {
-    // Use Bayesian Memory Management if available and query is provided
-    if (this.bayesianManager && currentQuery) {
+    // PRIMARY APPROACH: Bayesian Memory Management
+    // This is the intelligent, probabilistic approach that replaces traditional compression
+    if (this.config.useBayesianMemory && this.bayesianManager && currentQuery) {
       try {
+        console.log('Using Bayesian Memory Management for intelligent context selection');
         const bayesianContext = await this.bayesianManager.createBayesianContextWindow(
           chatId,
           currentQuery,
@@ -437,11 +444,13 @@ export class ContextEngine {
         // Convert Bayesian context to standard ContextWindow format
         return this.convertBayesianToStandardContext(bayesianContext);
       } catch (error) {
-        console.error('Error using Bayesian memory management, falling back to standard approach:', error);
+        console.error('Error using Bayesian memory management, falling back to legacy approach:', error);
       }
     }
 
-    // Fallback to standard context building
+    // FALLBACK: Legacy hierarchical compression approach
+    // Only used when Bayesian is disabled or fails
+    console.log('Using legacy compression approach (consider enabling Bayesian Memory Management)');
     return await this.buildStandardContextWindow(chatId, currentQuery);
   }
 
