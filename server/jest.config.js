@@ -10,8 +10,17 @@ module.exports = {
   transform: {
     '^.+\\.(ts|tsx)$': ['ts-jest', {
       tsconfig: 'tsconfig.json',
-      isolatedModules: true
+      useESM: true
     }]
   },
-  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node']
-}; 
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+  // Handle ESM modules properly
+  extensionsToTreatAsEsm: ['.ts'],
+  // Improve test cleanup
+  setupFilesAfterEnv: ['<rootDir>/src/tests/setup.ts'],
+  // Handle dynamic imports
+  testTimeout: 10000,
+  // Detect open handles to prevent hanging
+  detectOpenHandles: true,
+  forceExit: true
+};
