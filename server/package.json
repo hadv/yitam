@@ -10,6 +10,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:pinyin": "npm run build && node dist/scripts/testPinyinService.js",
+    "test:weaviate": "npm run build && node dist/scripts/testWeaviateEmbedded.js",
     "generate-pinyin": "npm run build && node dist/scripts/generatePinyinForExistingAcupoints.js",
     "generate-pinyin:preview": "npm run build && node dist/scripts/generatePinyinForExistingAcupoints.js --preview"
   },
@@ -36,7 +37,8 @@
     "pinyin": "^4.0.0",
     "socket.io": "^4.8.1",
     "sqlite3": "^5.1.7",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "weaviate-ts-embedded": "^1.2.0"
   },
   "devDependencies": {
     "@jest/globals": "^29.7.0",

@@ -29,10 +29,18 @@ The Yitam Context Engine is an intelligent conversation memory management system
 
 ```bash
 # Install dependencies
-npm install chromadb sqlite3
+npm install sqlite3
 
-# Optional: Install vector database
+# Choose your vector database:
+# Option 1: Weaviate Embedded (Recommended - no external server)
+npm install weaviate-ts-embedded
+
+# Option 2: ChromaDB (requires external server)
+npm install chromadb
 docker run -p 8000:8000 chromadb/chroma
+
+# Option 3: Qdrant (requires external server)
+npm install @qdrant/js-client-rest
 ```
 
 ### 2. Configuration
@@ -96,9 +104,11 @@ The core service that manages conversation segmentation, summarization, and cont
 Handles semantic embeddings and similarity search for context retrieval.
 
 **Supported Providers:**
-- **ChromaDB**: Open-source vector database
+- **Weaviate Embedded**: Self-contained vector database (Recommended)
+- **ChromaDB**: Open-source vector database (requires external server)
+- **Qdrant**: High-performance vector database (requires external server)
 - **In-Memory**: For development and testing
-- **Qdrant/Pinecone**: (Coming soon)
+- **Pinecone**: (Coming soon)
 
 ### 3. Enhanced Conversation (`EnhancedConversation.ts`)
 Drop-in replacement for the original Conversation service with context engine integration.

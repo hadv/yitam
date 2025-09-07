@@ -37,12 +37,13 @@ export const defaultContextConfig: YitamContextConfig = {
   },
   
   vectorStore: {
-    provider: (process.env.VECTOR_STORE_PROVIDER as 'chromadb' | 'qdrant' | 'pinecone') || 'chromadb',
+    provider: (process.env.VECTOR_STORE_PROVIDER as 'chromadb' | 'qdrant' | 'pinecone' | 'weaviate-embedded') || 'chromadb',
     endpoint: process.env.VECTOR_STORE_ENDPOINT || 'http://localhost:8000',
     apiKey: process.env.VECTOR_STORE_API_KEY,
     collectionName: process.env.VECTOR_STORE_COLLECTION || 'yitam_context',
     dimension: parseInt(process.env.VECTOR_STORE_DIMENSION || '768'),
-    embeddingModel: process.env.EMBEDDING_MODEL || 'gemini-embedding-001'
+    embeddingModel: process.env.EMBEDDING_MODEL || 'gemini-embedding-001',
+    dataPath: process.env.VECTOR_STORE_DATA_PATH || './data/weaviate'
   },
   
   enableMCPServer: process.env.ENABLE_MCP_CONTEXT_SERVER === 'true',
@@ -150,12 +151,13 @@ export const environmentVariables = {
   CONTEXT_COMPRESSION_ANCIENT: 'Compression ratio for ancient messages - legacy (default: 0.95)',
   
   // Vector Store
-  VECTOR_STORE_PROVIDER: 'Vector store provider: chromadb, qdrant, pinecone (default: chromadb)',
+  VECTOR_STORE_PROVIDER: 'Vector store provider: chromadb, qdrant, pinecone, weaviate-embedded (default: chromadb)',
   VECTOR_STORE_ENDPOINT: 'Vector store endpoint URL (default: http://localhost:8000)',
   VECTOR_STORE_API_KEY: 'API key for vector store (if required)',
   VECTOR_STORE_COLLECTION: 'Collection name for embeddings (default: yitam_context)',
   VECTOR_STORE_DIMENSION: 'Embedding dimension (default: 768)',
   EMBEDDING_MODEL: 'Embedding model name (default: gemini-embedding-001)',
+  VECTOR_STORE_DATA_PATH: 'Data path for embedded vector stores (default: ./data/weaviate)',
   
   // MCP Server
   ENABLE_MCP_CONTEXT_SERVER: 'Enable MCP context server (default: false)',
