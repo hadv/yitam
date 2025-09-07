@@ -39,9 +39,9 @@ export class MemoryCache {
 
   constructor(config: MemoryCacheConfig) {
     this.config = {
-      cleanupIntervalMinutes: 5, // Default cleanup every 5 minutes
-      enableStats: true,
-      ...config
+      ...config,
+      cleanupIntervalMinutes: config.cleanupIntervalMinutes || 5, // Default cleanup every 5 minutes
+      enableStats: config.enableStats !== undefined ? config.enableStats : true
     };
 
     // Start automatic cleanup
@@ -354,14 +354,14 @@ export class ContextMemoryCache extends MemoryCache {
    */
   getCachedContext(chatId: string, query: string): any | null {
     const cacheKey = this.generateContextKey(chatId, query);
-    const cached = this.get(cacheKey);
-    
+    const cached = this.get<{contextData: any, timestamp: number, chatId: string, query: string}>(cacheKey);
+
     if (cached) {
       // Update hit count for analytics
       this.increment(`stats:context_hits:${chatId}`);
       return cached.contextData;
     }
-    
+
     this.increment(`stats:context_misses:${chatId}`);
     return null;
   }
@@ -402,8 +402,8 @@ export class ContextMemoryCache extends MemoryCache {
    * Get cache statistics for a specific chat
    */
   getChatCacheStats(chatId: string): {hits: number, misses: number, hitRate: number} {
-    const hits = this.get(`stats:context_hits:${chatId}`) || 0;
-    const misses = this.get(`stats:context_misses:${chatId}`) || 0;
+    const hits = (this.get<number>(`stats:context_hits:${chatId}`) || 0) as number;
+    const misses = (this.get<number>(`stats:context_misses:${chatId}`) || 0) as number;
     const total = hits + misses;
     const hitRate = total > 0 ? hits / total : 0;
 

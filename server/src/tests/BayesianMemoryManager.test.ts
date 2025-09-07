@@ -12,9 +12,9 @@ describe('BayesianMemoryManager', () => {
   let vectorStore: VectorStoreManager;
 
   beforeEach(async () => {
-    // Create vector store for testing
+    // Create vector store for testing - use memory provider to avoid ESM issues
     vectorStore = new VectorStoreManager({
-      provider: 'qdrant', // Use Qdrant as the default vector store
+      provider: 'memory', // Use memory provider for testing to avoid dynamic import issues
       collectionName: 'test_collection',
       dimension: 768, // Gemini embedding dimension
       embeddingModel: 'gemini-embedding-001' // Google Gemini embedding model
@@ -23,8 +23,14 @@ describe('BayesianMemoryManager', () => {
     try {
       await vectorStore.initialize();
     } catch (error) {
-      // If Qdrant fails, skip the test
-      console.log('Qdrant not available, skipping vector store initialization');
+      // If initialization fails, create a mock vector store
+      console.log('Vector store initialization failed, using mock implementation');
+      vectorStore = {
+        initialize: jest.fn().mockResolvedValue(undefined),
+        findRelevantMessages: jest.fn().mockResolvedValue([]),
+        storeMessage: jest.fn().mockResolvedValue(undefined),
+        close: jest.fn().mockResolvedValue(undefined)
+      } as any;
     }
 
     // Create Bayesian manager with test config

@@ -415,13 +415,13 @@ export class ContextMCPServer {
 }
 
 // Start the server if this file is run directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (require.main === module) {
   const server = new ContextMCPServer();
-  
+
   process.on('SIGINT', async () => {
     await server.stop();
     process.exit(0);
   });
-  
+
   server.start().catch(console.error);
 }

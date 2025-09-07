@@ -28,6 +28,13 @@ class ExampleQueryService {
   }
 
   /**
+   * Get current chat ID
+   */
+  getCurrentChatId(): string | undefined {
+    return this.conversation.getCurrentChatId();
+  }
+
+  /**
    * Process a query with context optimization
    * This replaces the existing processQuery method
    */
@@ -185,7 +192,7 @@ async function demonstrateContextEngine() {
       const response = await queryService.processQuery(query, chatId);
       
       if (!chatId) {
-        chatId = queryService.conversation?.getCurrentChatId();
+        chatId = queryService.getCurrentChatId();
       }
       
       console.log(`Response: ${response.substring(0, 100)}...\n`);

@@ -346,7 +346,7 @@ export class BayesianMemoryManager {
   private async updateMessageStatistics(
     selectedMessages: Array<{ message: HistoricalMessage; bayesianScore: BayesianPosterior; rank: number }>
   ): Promise<void> {
-    for (const { message } of selectedMessages) {
+    for (const { message, bayesianScore } of selectedMessages) {
       const sql = `
         UPDATE message_metadata
         SET
@@ -356,7 +356,7 @@ export class BayesianMemoryManager {
       `;
 
       // Tăng importance nếu được chọn bởi Bayesian analysis
-      const shouldMark = message.bayesianScore?.relevanceProbability > 0.7;
+      const shouldMark = bayesianScore?.relevanceProbability > 0.7;
       await runContextQuery(sql, [shouldMark, message.messageId]);
     }
   }

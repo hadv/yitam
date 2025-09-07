@@ -1,6 +1,6 @@
-import { MessageParam, ContentBlockParam } from "@anthropic-ai/sdk/resources/messages/messages.mjs";
+import { MessageParam as AnthropicMessageParam, ContentBlockParam } from "@anthropic-ai/sdk/resources/messages/messages.mjs";
 import { Persona, getDefaultPersona, getPersonaById } from '../constants/Personas';
-import { ContextEngine, ContextWindow } from './ContextEngine';
+import { ContextEngine, ContextWindow, MessageParam as ContextMessageParam } from './ContextEngine';
 import { VectorStoreManager, VectorStoreConfig } from './VectorStore';
 
 export interface ConversationMessage {
@@ -23,7 +23,7 @@ export interface ConversationConfig {
  * Enhanced conversation service with context engine integration
  */
 export class EnhancedConversation {
-  private conversationHistory: MessageParam[] = [];
+  private conversationHistory: ContextMessageParam[] = [];
   private messageHistory: ConversationMessage[] = [];
   private chatId: string = '';
   private currentPersona: Persona = getDefaultPersona();
@@ -95,7 +95,7 @@ export class EnhancedConversation {
   /**
    * Adds a message to an existing conversation
    */
-  async addToExistingChat(chatId: string, message: MessageParam): Promise<boolean> {
+  async addToExistingChat(chatId: string, message: ContextMessageParam): Promise<boolean> {
     if (this.chatId !== chatId) {
       console.error(`Chat ID mismatch: ${chatId} vs ${this.chatId}`);
       return false;
@@ -131,17 +131,17 @@ export class EnhancedConversation {
   /**
    * Returns optimized conversation history using context engine
    */
-  async getConversationHistory(currentQuery?: string): Promise<MessageParam[]> {
+  async getConversationHistory(currentQuery?: string): Promise<AnthropicMessageParam[]> {
     if (!this.config.enableContextEngine || !this.contextEngine) {
-      // Fallback to traditional full history
-      return [...this.conversationHistory];
+      // Fallback to traditional full history - convert to Anthropic format
+      return this.convertToAnthropicMessages(this.conversationHistory);
     }
 
     try {
       // Get optimized context from context engine
       const contextWindow = await this.contextEngine.getOptimizedContext(this.chatId, currentQuery);
       
-      // Convert context window back to MessageParam format
+      // Convert context window back to ContextMessageParam format
       const optimizedHistory = this.buildOptimizedHistory(contextWindow);
       
       console.log(`Context engine provided ${optimizedHistory.length} messages (${contextWindow.totalTokens} tokens, ${(contextWindow.compressionRatio * 100).toFixed(1)}% compression)`);
@@ -149,7 +149,7 @@ export class EnhancedConversation {
       return optimizedHistory;
     } catch (error) {
       console.error('Error getting optimized context, falling back to full history:', error);
-      return [...this.conversationHistory];
+      return this.convertToAnthropicMessages(this.conversationHistory);
     }
   }
 
@@ -167,7 +167,7 @@ export class EnhancedConversation {
    * Adds a user message to the conversation
    */
   async addUserMessage(query: string, importance?: number): Promise<void> {
-    const message: MessageParam = {
+    const message: ContextMessageParam = {
       role: "user",
       content: query,
     };
@@ -189,7 +189,7 @@ export class EnhancedConversation {
       );
     }
 
-    const message: MessageParam = {
+    const message: ContextMessageParam = {
       role: "assistant",
       content: processedContent,
     };
@@ -201,7 +201,7 @@ export class EnhancedConversation {
    * Adds a tool use message to the conversation
    */
   async addToolUseMessage(toolId: string, toolName: string, toolInput: any): Promise<void> {
-    const message: MessageParam = {
+    const message: ContextMessageParam = {
       role: "assistant",
       content: [{ type: "tool_use", id: toolId, name: toolName, input: toolInput }],
     };
@@ -213,7 +213,7 @@ export class EnhancedConversation {
    * Adds a tool result message to the conversation
    */
   async addToolResultMessage(toolUseId: string, content: any): Promise<void> {
-    const message: MessageParam = {
+    const message: ContextMessageParam = {
       role: "user",
       content: [
         {
@@ -282,7 +282,7 @@ export class EnhancedConversation {
 
   // Private helper methods
 
-  private async addMessage(message: MessageParam, importance?: number): Promise<void> {
+  private async addMessage(message: ContextMessageParam, importance?: number): Promise<void> {
     // Add to traditional history
     this.conversationHistory.push(message);
     
@@ -309,7 +309,7 @@ export class EnhancedConversation {
     }
   }
 
-  private calculateImportance(message: MessageParam): number {
+  private calculateImportance(message: ContextMessageParam): number {
     let score = 0.5; // Base score
     
     const content = typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
@@ -336,14 +336,23 @@ export class EnhancedConversation {
     return Math.ceil(JSON.stringify(content).length / 4);
   }
 
-  private buildOptimizedHistory(contextWindow: ContextWindow): MessageParam[] {
-    const optimizedHistory: MessageParam[] = [];
-    
-    // Add recent messages (full detail)
-    optimizedHistory.push(...contextWindow.recentMessages);
-    
-    // Add relevant history
-    optimizedHistory.push(...contextWindow.relevantHistory);
+  private convertToAnthropicMessages(messages: ContextMessageParam[]): AnthropicMessageParam[] {
+    return messages
+      .filter(msg => msg.role !== 'system') // Filter out system messages as Anthropic doesn't support them
+      .map(msg => ({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content
+      }));
+  }
+
+  private buildOptimizedHistory(contextWindow: ContextWindow): AnthropicMessageParam[] {
+    const optimizedHistory: AnthropicMessageParam[] = [];
+
+    // Convert and add recent messages (full detail)
+    optimizedHistory.push(...this.convertToAnthropicMessages(contextWindow.recentMessages));
+
+    // Convert and add relevant history
+    optimizedHistory.push(...this.convertToAnthropicMessages(contextWindow.relevantHistory));
     
     // Add summaries as system messages
     for (const summary of contextWindow.summaries) {

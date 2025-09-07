@@ -52,10 +52,9 @@ export class ConversationHistoryVectorizer {
     };
 
     // Store in vector database
-    await this.vectorStore.addEmbedding({
-      text: message.content,
-      messageId: message.messageId,
-      type: 'message'
+    await this.vectorStore.addMessage(message.messageId, {
+      role: message.role,
+      content: message.content
     });
 
     // Update message metadata with extracted information
@@ -187,12 +186,12 @@ export class ConversationHistoryVectorizer {
 
   private async generateEmbedding(text: string): Promise<number[]> {
     try {
-      // Use Google Gemini embeddings with @google/genai library
-      const { GoogleGenerativeAI } = await import('@google/genai');
+      // Use Google Gemini embeddings with @google/generative-ai library
+      const { GoogleGenerativeAI } = await import('@google/generative-ai');
 
       const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
       const model = genAI.getGenerativeModel({
-        model: 'gemini-embedding-001'
+        model: 'text-embedding-004'
       });
 
       const result = await model.embedContent(text);
