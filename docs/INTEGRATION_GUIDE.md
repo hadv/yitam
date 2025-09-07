@@ -10,7 +10,14 @@ This guide explains how to integrate the Yitam Context Engine into your existing
 
 ```bash
 cd server
+# For ChromaDB (external server required)
 npm install chromadb
+
+# For Weaviate Embedded (no external server required)
+npm install weaviate-ts-embedded
+
+# For Qdrant (external server required)
+npm install @qdrant/js-client-rest
 ```
 
 ### 2. Environment Configuration
@@ -117,7 +124,14 @@ This single change enables context optimization based on the current query.
 
 ### 6. Optional: Vector Database Setup
 
-#### ChromaDB (Recommended for development)
+#### Weaviate Embedded (Recommended - No external server required)
+
+```bash
+# No additional setup required - runs embedded in your application
+# Just set VECTOR_STORE_PROVIDER=weaviate-embedded in your .env file
+```
+
+#### ChromaDB (External server required)
 
 ```bash
 # Using Docker

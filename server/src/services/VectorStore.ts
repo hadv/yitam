@@ -20,12 +20,13 @@ export interface EmbeddingRequest {
 }
 
 export interface VectorStoreConfig {
-  provider: 'chromadb' | 'qdrant' | 'pinecone' | 'memory';
+  provider: 'chromadb' | 'qdrant' | 'pinecone' | 'memory' | 'weaviate-embedded';
   apiKey?: string;
   endpoint?: string;
   collectionName: string;
   dimension: number;
   embeddingModel: string;
+  dataPath?: string; // For embedded databases like Weaviate Embedded
 }
 
 /**
@@ -339,6 +340,251 @@ export class ChromaDBStore extends VectorStore {
 }
 
 /**
+ * Weaviate Embedded implementation for vector storage
+ */
+export class WeaviateEmbeddedStore extends VectorStore {
+  private client: any;
+  private isInitialized: boolean = false;
+
+  async initialize(): Promise<void> {
+    if (this.isInitialized) return;
+
+    try {
+      // Dynamic import for Weaviate Embedded client
+      const weaviate = await import('weaviate-ts-embedded');
+      const { EmbeddedOptions } = weaviate;
+
+      // Initialize Weaviate Embedded instance
+      const options = new EmbeddedOptions();
+      this.client = weaviate.default.client(options);
+
+      // Start the embedded instance
+      await this.client.embedded.start();
+
+      // Check if collection exists, create if not
+      try {
+        await this.client.schema.classGetter().withClassName(this.config.collectionName).do();
+      } catch (error) {
+        // Collection doesn't exist, create it
+        const classObj = {
+          class: this.config.collectionName,
+          description: 'Yitam Context Engine embeddings',
+          properties: [
+            {
+              name: 'content',
+              dataType: ['text'],
+              description: 'The text content'
+            },
+            {
+              name: 'messageId',
+              dataType: ['int'],
+              description: 'Message ID'
+            },
+            {
+              name: 'segmentId',
+              dataType: ['int'],
+              description: 'Segment ID'
+            },
+            {
+              name: 'type',
+              dataType: ['text'],
+              description: 'Type of content'
+            },
+            {
+              name: 'timestamp',
+              dataType: ['text'],
+              description: 'Timestamp'
+            }
+          ],
+          vectorizer: 'none', // We'll provide our own vectors
+          vectorIndexConfig: {
+            distance: 'cosine'
+          }
+        };
+
+        await this.client.schema.classCreator().withClass(classObj).do();
+      }
+
+      this.isInitialized = true;
+      console.log(`Weaviate Embedded collection '${this.config.collectionName}' initialized`);
+    } catch (error) {
+      console.error('Failed to initialize Weaviate Embedded:', error);
+      throw error;
+    }
+  }
+
+  async addEmbedding(request: EmbeddingRequest): Promise<string> {
+    if (!this.client || !this.isInitialized) {
+      throw new Error('Weaviate Embedded client not initialized');
+    }
+
+    try {
+      const embedding = await this.generateEmbedding(request.text);
+
+      // Generate a UUID for Weaviate
+      const { v4: uuidv4 } = await import('uuid');
+      const vectorId = uuidv4();
+
+      await this.client.data.creator()
+        .withClassName(this.config.collectionName)
+        .withId(vectorId)
+        .withProperties({
+          content: request.text,
+          messageId: request.messageId || 0,
+          segmentId: request.segmentId || 0,
+          type: request.type,
+          timestamp: new Date().toISOString()
+        })
+        .withVector(embedding)
+        .do();
+
+      return vectorId;
+    } catch (error) {
+      console.error('Error adding embedding to Weaviate Embedded:', error);
+      throw error;
+    }
+  }
+
+  async searchSimilar(query: string, limit: number = 10, threshold: number = 0.7): Promise<VectorSearchResult[]> {
+    if (!this.client || !this.isInitialized) {
+      throw new Error('Weaviate Embedded client not initialized');
+    }
+
+    try {
+      const queryEmbedding = await this.generateEmbedding(query);
+
+      // Use the Weaviate client's data getter to retrieve all objects with vectors
+      const result = await this.client.data.getter()
+        .withClassName(this.config.collectionName)
+        .withVector()
+        .withLimit(1000) // Get more objects to search through
+        .do();
+
+      if (!result.objects || !Array.isArray(result.objects)) {
+        return [];
+      }
+
+      // Calculate cosine similarity manually
+      const results = result.objects
+        .map((obj: any) => {
+          if (!obj.vector || !obj.properties) return null;
+
+          const similarity = this.calculateCosineSimilarity(queryEmbedding, obj.vector);
+
+          return {
+            messageId: obj.properties.messageId || 0,
+            similarity,
+            content: obj.properties.content || '',
+            metadata: {
+              type: obj.properties.type || '',
+              timestamp: obj.properties.timestamp || '',
+              segmentId: obj.properties.segmentId || 0
+            }
+          };
+        })
+        .filter((result: any) => result && result.similarity >= threshold)
+        .sort((a: any, b: any) => b.similarity - a.similarity)
+        .slice(0, limit);
+
+      return results;
+    } catch (error) {
+      console.error('Error searching in Weaviate Embedded:', error);
+      return [];
+    }
+  }
+
+  private calculateCosineSimilarity(vecA: number[], vecB: number[]): number {
+    if (vecA.length !== vecB.length) return 0;
+
+    let dotProduct = 0;
+    let normA = 0;
+    let normB = 0;
+
+    for (let i = 0; i < vecA.length; i++) {
+      dotProduct += vecA[i] * vecB[i];
+      normA += vecA[i] * vecA[i];
+      normB += vecB[i] * vecB[i];
+    }
+
+    if (normA === 0 || normB === 0) return 0;
+
+    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+  }
+
+  async deleteEmbedding(vectorId: string): Promise<void> {
+    if (!this.client || !this.isInitialized) {
+      throw new Error('Weaviate Embedded client not initialized');
+    }
+
+    try {
+      await this.client.data.deleter()
+        .withClassName(this.config.collectionName)
+        .withId(vectorId)
+        .do();
+    } catch (error) {
+      console.error('Error deleting embedding from Weaviate Embedded:', error);
+      throw error;
+    }
+  }
+
+  async getEmbedding(vectorId: string): Promise<any> {
+    if (!this.client || !this.isInitialized) {
+      throw new Error('Weaviate Embedded client not initialized');
+    }
+
+    try {
+      const result = await this.client.data.getterById()
+        .withClassName(this.config.collectionName)
+        .withId(vectorId)
+        .withVector()
+        .do();
+      return result;
+    } catch (error) {
+      console.error('Error getting embedding from Weaviate Embedded:', error);
+      throw error;
+    }
+  }
+
+  async close(): Promise<void> {
+    if (this.client && this.isInitialized) {
+      try {
+        await this.client.embedded.stop();
+        this.isInitialized = false;
+        console.log('Weaviate Embedded connection closed');
+      } catch (error) {
+        console.error('Error closing Weaviate Embedded:', error);
+      }
+    }
+  }
+
+  protected async generateEmbedding(text: string): Promise<number[]> {
+    try {
+      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+
+      if (!process.env.GOOGLE_CLOUD_API_KEY) {
+        console.warn('GOOGLE_CLOUD_API_KEY not found, using dummy embedding');
+        return new Array(this.config.dimension).fill(0).map(() => Math.random() - 0.5);
+      }
+
+      const genAI = new GoogleGenerativeAI(process.env.GOOGLE_CLOUD_API_KEY);
+      const model = genAI.getGenerativeModel({ model: this.config.embeddingModel });
+
+      const result = await model.embedContent(text);
+
+      if (!result.embedding || !result.embedding.values) {
+        throw new Error('Invalid embedding response from Gemini');
+      }
+
+      return result.embedding.values;
+    } catch (error) {
+      console.error('Error generating Gemini embedding in WeaviateEmbeddedStore:', error);
+      // Return a dummy embedding for testing
+      return new Array(this.config.dimension).fill(0).map(() => Math.random() - 0.5);
+    }
+  }
+}
+
+/**
  * In-memory vector store for development/testing
  */
 export class InMemoryVectorStore extends VectorStore {
@@ -477,6 +723,8 @@ export function createVectorStore(config: VectorStoreConfig): VectorStore {
       return new QdrantStore(config);
     case 'chromadb':
       return new ChromaDBStore(config);
+    case 'weaviate-embedded':
+      return new WeaviateEmbeddedStore(config);
     case 'memory':
       return new InMemoryVectorStore(config);
     case 'pinecone':
