@@ -113,7 +113,7 @@ export class QdrantStore extends VectorStore {
     }
   }
 
-  async searchSimilar(query: string, limit: number = 10, filter?: any): Promise<SearchResult[]> {
+  async searchSimilar(query: string, limit: number = 10, filter?: any): Promise<VectorSearchResult[]> {
     if (!this.client) {
       throw new Error('Qdrant client not initialized');
     }
@@ -129,12 +129,12 @@ export class QdrantStore extends VectorStore {
       });
 
       return searchResult.map((result: any) => ({
-        vectorId: result.id,
+        messageId: result.payload.messageId || 0,
         similarity: result.score,
-        text: result.payload.text,
-        messageId: result.payload.messageId,
-        segmentId: result.payload.segmentId,
+        content: result.payload.text,
         metadata: {
+          vectorId: result.id,
+          segmentId: result.payload.segmentId,
           type: result.payload.type,
           timestamp: result.payload.timestamp
         }
@@ -187,7 +187,8 @@ export class QdrantStore extends VectorStore {
   private async generateEmbedding(text: string): Promise<number[]> {
     try {
       // Use Google Gemini embeddings with @google/genai library
-      const { GoogleGenerativeAI } = await import('@google/genai');
+      const genaiModule = await import('@google/genai');
+      const GoogleGenerativeAI = genaiModule.GoogleGenerativeAI;
 
       const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
       const model = genAI.getGenerativeModel({
@@ -219,7 +220,9 @@ export class ChromaDBStore extends VectorStore {
   async initialize(): Promise<void> {
     try {
       // Dynamic import for ChromaDB client
-      const { ChromaApi, Configuration } = await import('chromadb');
+      const chromaModule = await import('chromadb');
+      const ChromaApi = chromaModule.ChromaApi;
+      const Configuration = chromaModule.Configuration;
       
       this.client = new ChromaApi(new Configuration({
         basePath: this.config.endpoint || 'http://localhost:8000'
@@ -316,7 +319,8 @@ export class ChromaDBStore extends VectorStore {
   private async generateEmbedding(text: string): Promise<number[]> {
     try {
       // Use Google Gemini embeddings with @google/genai library
-      const { GoogleGenerativeAI } = await import('@google/genai');
+      const genaiModule = await import('@google/genai');
+      const GoogleGenerativeAI = genaiModule.GoogleGenerativeAI;
 
       const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
       const model = genAI.getGenerativeModel({
@@ -416,7 +420,8 @@ export class InMemoryVectorStore extends VectorStore {
   private async generateEmbedding(text: string): Promise<number[]> {
     try {
       // Try to use Google Gemini embeddings if available
-      const { GoogleGenerativeAI } = await import('@google/genai');
+      const genaiModule = await import('@google/genai');
+      const GoogleGenerativeAI = genaiModule.GoogleGenerativeAI;
 
       const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
       const model = genAI.getGenerativeModel({

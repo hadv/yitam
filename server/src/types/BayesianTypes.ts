@@ -67,21 +67,24 @@ export interface HistoricalMessage {
   role: 'user' | 'assistant';
   timestamp: Date;
   tokenCount: number;
-  
+
   /** Current importance score from existing system */
   currentImportanceScore: number;
-  
+
   /** Extracted entities and topics */
   entities?: string[];
   topics?: string[];
-  
+
   /** Semantic hash for quick comparison */
   semanticHash?: string;
-  
+
   /** User interaction metadata */
   userMarked: boolean;
   timesReferenced: number;
   lastReferencedAt?: Date;
+
+  /** Bayesian analysis score (added during analysis) */
+  bayesianScore?: BayesianPosterior;
 }
 
 export interface BayesianMemoryConfig {
