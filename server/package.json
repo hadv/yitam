@@ -33,6 +33,8 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "graphql": "^16.8.1",
+    "graphql-request": "^6.1.0",
     "multer": "^2.0.2",
     "pinyin": "^4.0.0",
     "socket.io": "^4.8.1",
