@@ -19,17 +19,33 @@ services:
       - yitam-mcp-dist:/app/mcp:ro
       - server-data:/app/data
       - server-uploads:/app/uploads
+      - context-cache:/app/cache
+      - weaviate-data:/app/data/weaviate
     environment:
       - NODE_ENV=production
       - PORT=3000
       - CLIENT_URL=https://yitam.org
       - MCP_SERVER_PATH=/app/mcp/core/server/yitam-tools.js
+      # Cache Configuration
+      - CACHE_TYPE=memory
+      - CACHE_MAX_SIZE=1000
+      - CACHE_TTL_MINUTES=60
 
     env_file:
       - prod.env
     depends_on:
       - yitam-mcp
     restart: unless-stopped
+
+  # Optional Redis for enhanced caching (uncomment to enable)
+  # redis:
+  #   image: redis:7-alpine
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis-data:/data
+  #   restart: unless-stopped
+  #   command: redis-server --appendonly yes
 
   client:
     build:
@@ -56,3 +72,6 @@ volumes:
   yitam-mcp-dist:
   server-data:
   server-uploads:
+  context-cache:
+  weaviate-data:
+  # redis-data:  # Uncomment if using Redis

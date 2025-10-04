@@ -1,0 +1,97 @@
+version: '3.8'
+
+services:
+
+  yitam-mcp:
+    build:
+      context: ../yitam-mcp
+      dockerfile: Dockerfile
+    volumes:
+      - yitam-mcp-dist:/app/dist
+
+  # Note: Using Weaviate Embedded (no external service needed)
+  # Weaviate runs embedded within the server container
+
+  # Redis for development caching
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - yitam-mcp-dist:/app/mcp:ro
+      - server-data:/app/data
+      - server-uploads:/app/uploads
+      - context-cache:/app/cache
+      - weaviate-data-dev:/app/data/weaviate
+      - ./server/src:/app/src:ro  # For development hot reload
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - CLIENT_URL=http://localhost:3001
+      - MCP_SERVER_PATH=/app/mcp/core/server/yitam-tools.js
+      # Context Engine Configuration for Development
+      - CONTEXT_ENGINE_ENABLED=true
+      - CONTEXT_MAX_RECENT_MESSAGES=5
+      - CONTEXT_MAX_TOKENS=8000
+      - CONTEXT_SUMMARIZATION_THRESHOLD=10
+      - CONTEXT_IMPORTANCE_THRESHOLD=0.3
+      - CONTEXT_VECTOR_SEARCH_LIMIT=5
+      - CONTEXT_CACHE_EXPIRATION=5
+      - CONTEXT_USE_BAYESIAN_MEMORY=true
+      # Vector Store Configuration (using Weaviate Embedded)
+      - VECTOR_STORE_PROVIDER=weaviate-embedded
+      - VECTOR_STORE_ENDPOINT=http://localhost:8080
+      - VECTOR_STORE_COLLECTION=yitam_context_dev
+      - VECTOR_STORE_DIMENSION=768
+      - VECTOR_STORE_DATA_PATH=/app/data/weaviate
+      - EMBEDDING_MODEL=gemini-embedding-001
+      # Cache Configuration (using Redis)
+      - CACHE_TYPE=redis
+      - REDIS_URL=redis://redis:6379
+      - CACHE_MAX_SIZE=500
+      - CACHE_TTL_MINUTES=10
+      # Debug Settings
+      - CONTEXT_DEBUG_MODE=true
+      - CONTEXT_VERBOSE_LOGGING=true
+
+    env_file:
+      - server/.env  # Development environment file
+    depends_on:
+      - yitam-mcp
+      - redis
+    restart: unless-stopped
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        - VITE_SERVER_URL=http://localhost:3000
+        - VITE_CLIENT_URL=http://localhost:3001
+        - VITE_GOOGLE_CLIENT_ID=1027650180838-6ora2sdrjre213ujv9hjah4m8mu3v8ju.apps.googleusercontent.com
+    ports:
+      - "3001:80"
+    volumes:
+      - ./client/src:/app/src:ro  # For development hot reload
+    depends_on:
+      - server
+    restart: unless-stopped
+
+volumes:
+  yitam-mcp-dist:
+  server-data:
+  server-uploads:
+  context-cache:
+  weaviate-data-dev:
+  redis-data:
