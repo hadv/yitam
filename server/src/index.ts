@@ -5,7 +5,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import Anthropic from '@anthropic-ai/sdk';
-import { MCPClient } from './MCPClient';
+import { MCPClient } from './MCPClient.js';
 import { config } from './config';
 import { sampleQuestions } from './data/SampleQuestions';
 import { contentSafetyService } from './services/ContentSafety';
@@ -19,6 +19,8 @@ import { initializeQigongDatabase } from './db/qigongDatabase';
 import conversationRoutes from './routes/conversations';
 import adminRoutes from './routes/admin';
 import CacheFactory from './cache/CacheFactory';
+import { ContextEngine } from './services/ContextEngine';
+import { getContextConfig } from './config/contextEngine';
 
 // Load environment variables
 dotenv.config();
@@ -216,6 +218,24 @@ io.use((socket, next) => {
 // Initialize services
 const legalService = LegalService.getInstance();
 
+// Initialize Context Engine
+let contextEngine: ContextEngine | null = null;
+const initializeContextEngine = async (): Promise<void> => {
+  if (process.env.CONTEXT_ENGINE_ENABLED === 'true') {
+    try {
+      const contextConfig = getContextConfig();
+      contextEngine = new ContextEngine(contextConfig.contextEngine);
+      await contextEngine.initialize();
+      console.log('Context Engine initialized successfully');
+    } catch (error) {
+      console.error('Failed to initialize Context Engine:', error);
+      console.log('Continuing without Context Engine - using direct Anthropic API');
+    }
+  } else {
+    console.log('Context Engine disabled - using direct Anthropic API');
+  }
+};
+
 // Error messages for different languages
 const ERROR_MESSAGES = {
   restricted_content: {
@@ -329,15 +349,18 @@ io.on('connection', (socket: Socket) => {
   });
 
   // Handle chat messages
-  socket.on('chat-message', async (data: { message: string; personaId?: string }) => {
+  socket.on('chat-message', async (data: { message: string; personaId?: string; chatId?: string }) => {
     try {
       const userMessage = data.message;
       const personaId = data.personaId;
-      
+      // Use provided chatId or generate a session-based one
+      const chatId = data.chatId || `${socket.data.user.email}_${socket.id}`;
+
       console.log('Received message:', userMessage);
       if (personaId) {
         console.log('Using persona:', personaId);
       }
+      console.log('Chat ID:', chatId);
 
       // Check if API key is available
       if (!socket.data.user.apiKey) {
@@ -429,9 +452,18 @@ io.on('connection', (socket: Socket) => {
       // Check if MCP client is connected and use it if available
       if (mcpClient && mcpConnected) {
         try {
+          // Store user message in context engine if available
+          if (contextEngine) {
+            await contextEngine.createConversation(chatId, socket.data.user.email);
+            await contextEngine.addMessage(chatId, Date.now(), {
+              role: 'user',
+              content: sanitizedMessage
+            });
+          }
+
           // Process message using MCP client with streaming callback
           await mcpClient.processQueryWithStreaming(
-            sanitizedMessage, 
+            sanitizedMessage,
             async (chunk) => {
               try {
                 // Use different validation based on whether AI safety is enabled
@@ -501,7 +533,19 @@ io.on('connection', (socket: Socket) => {
           
           // If no safety error occurred, finalize the response
           if (!safetyErrorOccurred) {
-            socket.emit('bot-response-end', { 
+            // Store assistant response in context engine if available
+            if (contextEngine && responseBuffer) {
+              try {
+                await contextEngine.addMessage(chatId, Date.now() + 1, {
+                  role: 'assistant',
+                  content: responseBuffer
+                });
+              } catch (error) {
+                console.error('Error storing MCP assistant response in context engine:', error);
+              }
+            }
+
+            socket.emit('bot-response-end', {
               id: messageId,
               text: responseBuffer,
               responseTime: Date.now() - startTime
@@ -542,14 +586,73 @@ io.on('connection', (socket: Socket) => {
         }
       } else {
         try {
-          // Use direct Anthropic API since MCP is not available
-          const stream = await anthropic.messages.stream({
-            model: config.model.name,
-            max_tokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000),
-            messages: [
-              { role: 'user', content: sanitizedMessage }
-            ],
-          });
+          // Use Context Engine if available, otherwise fall back to direct Anthropic API
+          let stream;
+
+          if (contextEngine) {
+            // Use context-aware processing
+            console.log('Using Context Engine for enhanced conversation processing');
+
+            // Create conversation if it doesn't exist
+            await contextEngine.createConversation(chatId, socket.data.user.email);
+
+            // Store the user message in context engine
+            await contextEngine.addMessage(chatId, Date.now(), {
+              role: 'user',
+              content: sanitizedMessage
+            });
+
+            // Get optimized context
+            const contextWindow = await contextEngine.getOptimizedContext(chatId, sanitizedMessage);
+
+            // Combine all context messages
+            const allContextMessages = [
+              ...contextWindow.recentMessages,
+              ...contextWindow.relevantHistory
+            ];
+
+            console.log(`Context optimization: Using ${allContextMessages.length} messages with ${contextWindow.totalTokens} tokens`);
+
+            // Create system message from summaries and key facts
+            let systemMessage = '';
+            if (contextWindow.summaries.length > 0) {
+              systemMessage += 'Previous conversation context:\n';
+              systemMessage += contextWindow.summaries.map(s => s.summary).join('\n');
+              systemMessage += '\n\n';
+            }
+            if (contextWindow.keyFacts.length > 0) {
+              systemMessage += 'Key facts from conversation:\n';
+              systemMessage += contextWindow.keyFacts.map(f => f.factText).join('\n');
+              systemMessage += '\n\n';
+            }
+            if (systemMessage) {
+              systemMessage += 'Please respond naturally while being aware of this context.';
+            }
+
+            // Use optimized context for Anthropic API call
+            stream = await anthropic.messages.stream({
+              model: config.model.name,
+              max_tokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000),
+              messages: allContextMessages
+                .filter(msg => msg.role === 'user' || msg.role === 'assistant') // Filter out system messages
+                .map(msg => ({
+                  role: msg.role as 'user' | 'assistant',
+                  content: msg.content
+                })),
+              // Include context summary if available
+              system: systemMessage || undefined
+            });
+          } else {
+            // Fall back to direct Anthropic API
+            console.log('Using direct Anthropic API (Context Engine not available)');
+            stream = await anthropic.messages.stream({
+              model: config.model.name,
+              max_tokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000),
+              messages: [
+                { role: 'user', content: sanitizedMessage }
+              ],
+            });
+          }
           
           for await (const chunk of stream) {
             if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
@@ -614,7 +717,19 @@ io.on('connection', (socket: Socket) => {
           
           // If no safety error occurred, signal that the streaming has completed
           if (!safetyErrorOccurred) {
-            socket.emit('bot-response-end', { 
+            // Store assistant response in context engine if available
+            if (contextEngine && responseBuffer) {
+              try {
+                await contextEngine.addMessage(chatId, Date.now() + 1, {
+                  role: 'assistant',
+                  content: responseBuffer
+                });
+              } catch (error) {
+                console.error('Error storing assistant response in context engine:', error);
+              }
+            }
+
+            socket.emit('bot-response-end', {
               id: messageId,
               text: responseBuffer,
               responseTime: Date.now() - startTime
@@ -802,21 +917,24 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
-// Initialize databases and cache, then start the server
+// Initialize databases, cache, and context engine, then start the server
 Promise.all([
   initializeDatabase(),
   initializeQigongDatabase(),
-  CacheFactory.createCache()
+  CacheFactory.createCache(),
+  initializeContextEngine()
 ])
   .then(([, , cache]) => {
     const cacheInfo = CacheFactory.getCacheInfo();
-    console.log('Databases and cache initialized successfully');
+    console.log('Databases, cache, and context engine initialized successfully');
     console.log(`Cache type: ${cacheInfo.type} (${cacheInfo.environment} environment)`);
+    console.log(`Context Engine: ${contextEngine ? 'Enabled' : 'Disabled'}`);
 
     // Start the server
     server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
       console.log(`Cache status: ${cache.isAvailable() ? 'Available' : 'Unavailable'} (${cacheInfo.type})`);
+      console.log(`Context Engine status: ${contextEngine ? 'Active' : 'Inactive'}`);
     });
   })
   .catch((error) => {
