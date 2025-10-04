@@ -119,13 +119,11 @@ export class ContextEngine {
     try {
       await initializeContextDatabase();
 
-      // Initialize vector store and Bayesian manager
-      this.vectorStore = new VectorStoreManager({
-        provider: 'qdrant', // Use Qdrant as default vector store
-        collectionName: 'yitam_context',
-        dimension: 768, // Gemini embedding dimension
-        embeddingModel: 'gemini-embedding-001' // Google Gemini embedding model
-      });
+      // Initialize vector store and Bayesian manager using configuration
+      const { getContextConfig } = await import('../config/contextEngine.js');
+      const contextConfig = getContextConfig();
+
+      this.vectorStore = new VectorStoreManager(contextConfig.vectorStore);
 
       await this.vectorStore.initialize();
 
