@@ -480,6 +480,14 @@ io.on('connection', (socket: Socket) => {
                 }))
             ];
 
+            // If no context messages exist (first message), add the current user message
+            if (optimizedContext.length === 0) {
+              optimizedContext.push({
+                role: 'user',
+                content: sanitizedMessage
+              });
+            }
+
             console.log(`Context Engine: Providing ${optimizedContext.length} optimized messages to MCP client (${contextWindow.totalTokens} tokens, ${(contextWindow.compressionRatio * 100).toFixed(1)}% compression)`);
           }
 
@@ -628,11 +636,19 @@ io.on('connection', (socket: Socket) => {
             // Get optimized context
             const contextWindow = await contextEngine.getOptimizedContext(chatId, sanitizedMessage);
 
-            // Combine all context messages
+            // Combine all context messages and ensure current user message is included
             const allContextMessages = [
               ...contextWindow.recentMessages,
               ...contextWindow.relevantHistory
             ];
+
+            // If no context messages exist (first message), add the current user message
+            if (allContextMessages.length === 0) {
+              allContextMessages.push({
+                role: 'user',
+                content: sanitizedMessage
+              });
+            }
 
             console.log(`Context optimization: Using ${allContextMessages.length} messages with ${contextWindow.totalTokens} tokens`);
 
