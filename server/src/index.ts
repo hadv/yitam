@@ -466,14 +466,18 @@ io.on('connection', (socket: Socket) => {
 
             // Convert context window to message format for MCP client
             optimizedContext = [
-              ...contextWindow.recentMessages.map(msg => ({
-                role: msg.role as 'user' | 'assistant',
-                content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
-              })),
-              ...contextWindow.relevantHistory.map(msg => ({
-                role: msg.role as 'user' | 'assistant',
-                content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
-              }))
+              ...contextWindow.recentMessages
+                .filter(msg => msg.content && typeof msg.content === 'string' && msg.content.trim())
+                .map(msg => ({
+                  role: msg.role as 'user' | 'assistant',
+                  content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+                })),
+              ...contextWindow.relevantHistory
+                .filter(msg => msg.content && typeof msg.content === 'string' && msg.content.trim())
+                .map(msg => ({
+                  role: msg.role as 'user' | 'assistant',
+                  content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+                }))
             ];
 
             console.log(`Context Engine: Providing ${optimizedContext.length} optimized messages to MCP client (${contextWindow.totalTokens} tokens, ${(contextWindow.compressionRatio * 100).toFixed(1)}% compression)`);
@@ -648,16 +652,33 @@ io.on('connection', (socket: Socket) => {
               systemMessage += 'Please respond naturally while being aware of this context.';
             }
 
+            // Filter and validate messages before sending to Anthropic API
+            const validMessages = allContextMessages
+              .filter(msg => msg.role === 'user' || msg.role === 'assistant') // Filter out system messages
+              .filter(msg => msg.content && typeof msg.content === 'string' && msg.content.trim()) // Filter out empty content
+              .map(msg => ({
+                role: msg.role as 'user' | 'assistant',
+                content: msg.content
+              }));
+
+            // Ensure we have at least one valid message
+            if (validMessages.length === 0) {
+              console.error('No valid messages to send to Anthropic API');
+              socket.emit('bot-response-end', {
+                id: messageId,
+                error: true,
+                errorMessage: 'Không có tin nhắn hợp lệ để xử lý.'
+              });
+              return;
+            }
+
+            console.log(`Sending ${validMessages.length} valid messages to Anthropic API`);
+
             // Use optimized context for Anthropic API call
             stream = await anthropic.messages.stream({
               model: config.model.name,
               max_tokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000),
-              messages: allContextMessages
-                .filter(msg => msg.role === 'user' || msg.role === 'assistant') // Filter out system messages
-                .map(msg => ({
-                  role: msg.role as 'user' | 'assistant',
-                  content: msg.content
-                })),
+              messages: validMessages,
               // Include context summary if available
               system: systemMessage || undefined
             });

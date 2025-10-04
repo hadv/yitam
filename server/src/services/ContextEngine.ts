@@ -456,11 +456,13 @@ export class ContextEngine {
    * Convert BayesianContextWindow to standard ContextWindow format
    */
   private convertBayesianToStandardContext(bayesianContext: BayesianContextWindow): ContextWindow {
-    // Convert historical messages to MessageParam format
-    const recentMessages = bayesianContext.recentMessages.map(msg => this.convertToMessageParam(msg));
-    const relevantHistory = bayesianContext.bayesianSelectedMessages.map(item =>
-      this.convertToMessageParam(item.message)
-    );
+    // Convert historical messages to MessageParam format, filtering out null values
+    const recentMessages = bayesianContext.recentMessages
+      .map(msg => this.convertToMessageParam(msg))
+      .filter(msg => msg !== null);
+    const relevantHistory = bayesianContext.bayesianSelectedMessages
+      .map(item => this.convertToMessageParam(item.message))
+      .filter(msg => msg !== null);
 
     // Convert summaries
     const summaries = bayesianContext.summaries.map(summary => ({
@@ -529,10 +531,17 @@ export class ContextEngine {
   /**
    * Convert HistoricalMessage to MessageParam
    */
-  private convertToMessageParam(historicalMessage: any): MessageParam {
+  private convertToMessageParam(historicalMessage: any): MessageParam | null {
+    // Ensure we have valid content - skip messages with empty content
+    const content = historicalMessage.content || '';
+    if (!content.trim()) {
+      console.warn('Skipping message with empty content:', historicalMessage);
+      return null;
+    }
+
     return {
       role: historicalMessage.role || 'user',
-      content: historicalMessage.content || ''
+      content: content
     };
   }
 

@@ -427,11 +427,28 @@ export class Query {
     }
     
     // Use optimized context messages if provided, otherwise fall back to conversation history
-    const messages = contextMessages || this.conversation.getConversationHistory();
+    const rawMessages = contextMessages || this.conversation.getConversationHistory();
+
+    // Filter out messages with empty content
+    const messages = rawMessages.filter(msg => {
+      if (!msg.content || (typeof msg.content === 'string' && !msg.content.trim())) {
+        console.warn('Filtering out message with empty content:', msg);
+        return false;
+      }
+      return true;
+    });
+
     if (contextMessages) {
-      console.log(`Using optimized context with ${messages.length} messages (streaming)`);
+      console.log(`Using optimized context with ${messages.length} messages (${rawMessages.length - messages.length} filtered out) (streaming)`);
     } else {
-      console.log(`Using conversation history with ${messages.length} messages (streaming)`);
+      console.log(`Using conversation history with ${messages.length} messages (${rawMessages.length - messages.length} filtered out) (streaming)`);
+    }
+
+    // Ensure we have at least one valid message
+    if (messages.length === 0) {
+      console.error('No valid messages for streaming query');
+      await callback('Xin lỗi, không có tin nhắn hợp lệ để xử lý.');
+      return;
     }
 
     try {
