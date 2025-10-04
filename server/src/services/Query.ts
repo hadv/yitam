@@ -383,10 +383,11 @@ export class Query {
    * Process a query with streaming responses
    */
   async processQueryWithStreaming(
-    query: string, 
-    callback: (chunk: string) => boolean | Promise<boolean> | void, 
+    query: string,
+    callback: (chunk: string) => boolean | Promise<boolean> | void,
     chatId?: string,
-    personaId?: string
+    personaId?: string,
+    contextMessages?: Array<{ role: 'user' | 'assistant'; content: string }>
   ): Promise<void> {
     // Helper function to send escaped chunks to the client
     const sendChunk = async (chunk: string): Promise<boolean> => {
@@ -425,9 +426,13 @@ export class Query {
       this.conversation.addUserMessage(query);
     }
     
-    // Use the complete conversation history for context
-    const messages = this.conversation.getConversationHistory();
-    console.log(`Using conversation history with ${messages.length} messages (streaming)`);
+    // Use optimized context messages if provided, otherwise fall back to conversation history
+    const messages = contextMessages || this.conversation.getConversationHistory();
+    if (contextMessages) {
+      console.log(`Using optimized context with ${messages.length} messages (streaming)`);
+    } else {
+      console.log(`Using conversation history with ${messages.length} messages (streaming)`);
+    }
 
     try {
       const { searchQuery, domains } = await this._determineSearchQuery(query);

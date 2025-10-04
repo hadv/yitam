@@ -97,14 +97,16 @@ export class MCPClient {
    * @param streamCallback Callback function called for each text chunk, should return true to continue streaming or false to stop
    * @param chatId Optional chat ID for continuing an existing conversation
    * @param personaId Optional persona ID to use for this query
+   * @param contextMessages Optional optimized context messages from the main server's context engine
    */
   public async processQueryWithStreaming(
-    query: string, 
+    query: string,
     streamCallback: (text: string) => boolean | Promise<boolean> | void,
     chatId?: string,
-    personaId?: string
+    personaId?: string,
+    contextMessages?: Array<{ role: 'user' | 'assistant'; content: string }>
   ): Promise<void> {
-    return this.query.processQueryWithStreaming(query, streamCallback, chatId, personaId);
+    return this.query.processQueryWithStreaming(query, streamCallback, chatId, personaId, contextMessages);
   }
 
   getTools(): AnthropicTool[] {

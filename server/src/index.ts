@@ -452,16 +452,34 @@ io.on('connection', (socket: Socket) => {
       // Check if MCP client is connected and use it if available
       if (mcpClient && mcpConnected) {
         try {
-          // Store user message in context engine if available
+          // Get optimized context from context engine if available
+          let optimizedContext: Array<{ role: 'user' | 'assistant'; content: string }> | undefined;
           if (contextEngine) {
             await contextEngine.createConversation(chatId, socket.data.user.email);
             await contextEngine.addMessage(chatId, Date.now(), {
               role: 'user',
               content: sanitizedMessage
             });
+
+            // Get optimized context window
+            const contextWindow = await contextEngine.getOptimizedContext(chatId, sanitizedMessage);
+
+            // Convert context window to message format for MCP client
+            optimizedContext = [
+              ...contextWindow.recentMessages.map(msg => ({
+                role: msg.role as 'user' | 'assistant',
+                content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+              })),
+              ...contextWindow.relevantHistory.map(msg => ({
+                role: msg.role as 'user' | 'assistant',
+                content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+              }))
+            ];
+
+            console.log(`Context Engine: Providing ${optimizedContext.length} optimized messages to MCP client (${contextWindow.totalTokens} tokens, ${(contextWindow.compressionRatio * 100).toFixed(1)}% compression)`);
           }
 
-          // Process message using MCP client with streaming callback
+          // Process message using MCP client with optimized context
           await mcpClient.processQueryWithStreaming(
             sanitizedMessage,
             async (chunk) => {
@@ -524,8 +542,9 @@ io.on('connection', (socket: Socket) => {
                 }
               }
             },
-            undefined, // Use default chat ID
-            personaId // Pass persona ID if provided
+            chatId, // Pass the actual chat ID
+            personaId, // Pass persona ID if provided
+            optimizedContext // Pass optimized context from context engine
           );
           
           // Clear the timeout since we got a response
