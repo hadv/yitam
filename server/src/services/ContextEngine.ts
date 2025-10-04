@@ -372,7 +372,7 @@ export class ContextEngine {
   }
 
   private generateCacheKey(chatId: string, query?: string): string {
-    const queryHash = query ? btoa(query).slice(0, 8) : 'noquery';
+    const queryHash = query ? Buffer.from(query, 'utf8').toString('base64').slice(0, 8) : 'noquery';
     return `context_${chatId}_${queryHash}`;
   }
 
