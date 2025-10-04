@@ -15,7 +15,7 @@ import {
 } from '../types/BayesianTypes';
 import { ConversationHistoryVectorizer } from './ConversationHistoryVectorizer';
 import { VectorStoreManager } from './VectorStore';
-import { getContextQuery, runContextQuery } from '../db/contextDatabase';
+import { getContextQuery, runContextQuery, allContextQuery } from '../db/contextDatabase';
 
 export class BayesianMemoryManager {
   private vectorizer: ConversationHistoryVectorizer;
@@ -381,7 +381,7 @@ export class BayesianMemoryManager {
       LIMIT ?
     `;
 
-    const rows = await getContextQuery(sql, [chatId, count]);
+    const rows = await allContextQuery(sql, [chatId, count]);
 
     return rows.map((row: any) => ({
       messageId: row.message_id,

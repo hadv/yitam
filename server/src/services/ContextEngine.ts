@@ -119,13 +119,11 @@ export class ContextEngine {
     try {
       await initializeContextDatabase();
 
-      // Initialize vector store and Bayesian manager
-      this.vectorStore = new VectorStoreManager({
-        provider: 'qdrant', // Use Qdrant as default vector store
-        collectionName: 'yitam_context',
-        dimension: 768, // Gemini embedding dimension
-        embeddingModel: 'gemini-embedding-001' // Google Gemini embedding model
-      });
+      // Initialize vector store and Bayesian manager using configuration
+      const { getContextConfig } = await import('../config/contextEngine.js');
+      const contextConfig = getContextConfig();
+
+      this.vectorStore = new VectorStoreManager(contextConfig.vectorStore);
 
       await this.vectorStore.initialize();
 
@@ -584,7 +582,7 @@ export class ContextEngine {
       LIMIT ?
     `;
 
-    const rows = await getContextQuery(sql, [chatId, count]);
+    const rows = await allContextQuery(sql, [chatId, count]);
 
     // Convert to MessageParam format (simplified)
     return rows.map((row: any) => ({
@@ -604,7 +602,7 @@ export class ContextEngine {
       LIMIT ?
     `;
 
-    const rows = await getContextQuery(sql, [chatId, this.config.importanceThreshold, limit]);
+    const rows = await allContextQuery(sql, [chatId, this.config.importanceThreshold, limit]);
 
     return rows.map((row: any) => ({
       role: 'user' as const,
@@ -619,7 +617,7 @@ export class ContextEngine {
       ORDER BY start_message_id ASC
     `;
 
-    const rows = await getContextQuery(sql, [chatId]);
+    const rows = await allContextQuery(sql, [chatId]);
 
     return rows.map((row: any) => ({
       id: row.id,
@@ -643,7 +641,7 @@ export class ContextEngine {
       ORDER BY importance_score DESC
     `;
 
-    const rows = await getContextQuery(sql, [chatId]);
+    const rows = await allContextQuery(sql, [chatId]);
 
     return rows.map((row: any) => ({
       id: row.id,
