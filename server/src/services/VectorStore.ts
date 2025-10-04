@@ -187,21 +187,23 @@ export class QdrantStore extends VectorStore {
 
   private async generateEmbedding(text: string): Promise<number[]> {
     try {
-      // Use Google Gemini embeddings with @google/generative-ai library
-      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      // Use Google Gemini embeddings with @google/genai library
+      const { GoogleGenAI } = await import('@google/genai');
 
-      const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
-      const model = genAI.getGenerativeModel({
-        model: this.config.embeddingModel || 'gemini-embedding-001'
+      const ai = new GoogleGenAI({
+        apiKey: process.env.GEMINI_API_KEY || ''
       });
 
-      const result = await model.embedContent(text);
+      const response = await ai.models.embedContent({
+        model: this.config.embeddingModel || 'gemini-embedding-001',
+        contents: text
+      });
 
-      if (!result.embedding || !result.embedding.values) {
+      if (!response.embeddings || !response.embeddings[0] || !response.embeddings[0].values) {
         throw new Error('Invalid embedding response from Gemini');
       }
 
-      return result.embedding.values;
+      return response.embeddings[0].values;
     } catch (error) {
       console.error('Error generating Gemini embedding:', error);
       // Return a dummy embedding for testing
@@ -316,21 +318,23 @@ export class ChromaDBStore extends VectorStore {
 
   private async generateEmbedding(text: string): Promise<number[]> {
     try {
-      // Use Google Gemini embeddings with @google/generative-ai library
-      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      // Use Google Gemini embeddings with @google/genai library
+      const { GoogleGenAI } = await import('@google/genai');
 
-      const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
-      const model = genAI.getGenerativeModel({
-        model: 'gemini-embedding-001'
+      const ai = new GoogleGenAI({
+        apiKey: process.env.GEMINI_API_KEY || ''
       });
 
-      const result = await model.embedContent(text);
+      const response = await ai.models.embedContent({
+        model: 'gemini-embedding-001',
+        contents: text
+      });
 
-      if (!result.embedding || !result.embedding.values) {
+      if (!response.embeddings || !response.embeddings[0] || !response.embeddings[0].values) {
         throw new Error('Invalid embedding response from Gemini');
       }
 
-      return result.embedding.values;
+      return response.embeddings[0].values;
     } catch (error) {
       console.error('Error generating Gemini embedding in ChromaDBStore:', error);
       // Return a dummy embedding for testing
@@ -559,23 +563,27 @@ export class WeaviateEmbeddedStore extends VectorStore {
 
   protected async generateEmbedding(text: string): Promise<number[]> {
     try {
-      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      const { GoogleGenAI } = await import('@google/genai');
 
-      if (!process.env.GOOGLE_CLOUD_API_KEY) {
-        console.warn('GOOGLE_CLOUD_API_KEY not found, using dummy embedding');
+      if (!process.env.GEMINI_API_KEY) {
+        console.warn('GEMINI_API_KEY not found, using dummy embedding');
         return new Array(this.config.dimension).fill(0).map(() => Math.random() - 0.5);
       }
 
-      const genAI = new GoogleGenerativeAI(process.env.GOOGLE_CLOUD_API_KEY);
-      const model = genAI.getGenerativeModel({ model: this.config.embeddingModel });
+      const ai = new GoogleGenAI({
+        apiKey: process.env.GEMINI_API_KEY
+      });
 
-      const result = await model.embedContent(text);
+      const response = await ai.models.embedContent({
+        model: this.config.embeddingModel || 'gemini-embedding-001',
+        contents: text
+      });
 
-      if (!result.embedding || !result.embedding.values) {
+      if (!response.embeddings || !response.embeddings[0] || !response.embeddings[0].values) {
         throw new Error('Invalid embedding response from Gemini');
       }
 
-      return result.embedding.values;
+      return response.embeddings[0].values;
     } catch (error) {
       console.error('Error generating Gemini embedding in WeaviateEmbeddedStore:', error);
       // Return a dummy embedding for testing
@@ -662,20 +670,22 @@ export class InMemoryVectorStore extends VectorStore {
   private async generateEmbedding(text: string): Promise<number[]> {
     try {
       // Try to use Google Gemini embeddings if available
-      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      const { GoogleGenAI } = await import('@google/genai');
 
-      const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
-      const model = genAI.getGenerativeModel({
-        model: 'gemini-embedding-001'
+      const ai = new GoogleGenAI({
+        apiKey: process.env.GEMINI_API_KEY || ''
       });
 
-      const result = await model.embedContent(text);
+      const response = await ai.models.embedContent({
+        model: 'gemini-embedding-001',
+        contents: text
+      });
 
-      if (!result.embedding || !result.embedding.values) {
+      if (!response.embeddings || !response.embeddings[0] || !response.embeddings[0].values) {
         throw new Error('Invalid embedding response from Gemini');
       }
 
-      return result.embedding.values;
+      return response.embeddings[0].values;
     } catch (error) {
       // Fallback to simple hash-based embedding for testing
       console.log('Using hash-based embedding fallback in InMemoryVectorStore');
