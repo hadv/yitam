@@ -57,14 +57,13 @@ if [ "$CERT_COUNT" -gt 1 ]; then
         exit 1
     fi
 elif [ "$CERT_COUNT" -eq 1 ]; then
-    # Check if it has a suffix
+    # Get the actual certificate name (might have a suffix)
     CERT_NAME=$(certbot certificates 2>/dev/null | grep "Certificate Name:" | grep "yitam.org" | awk '{print $3}')
     if [[ "$CERT_NAME" != "yitam.org" ]]; then
         echo "⚠️  Certificate has suffix: $CERT_NAME"
-        echo "Renaming to base name..."
-        certbot rename --cert-name "$CERT_NAME" --new-name yitam.org --non-interactive
-        echo "✅ Renamed to yitam.org"
+        echo "Note: Certificate will be used as-is. Certbot will handle renewal automatically."
     fi
+    echo "✅ Found certificate: $CERT_NAME"
 fi
 
 echo ""
