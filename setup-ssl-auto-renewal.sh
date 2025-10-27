@@ -14,14 +14,25 @@ fi
 
 # Configuration
 # Auto-detect project directory
-if [ -d "/root/yitam" ]; then
+# First, try to get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Check if we're in the yitam directory
+if [ -f "$SCRIPT_DIR/package.json" ] && grep -q "yitam" "$SCRIPT_DIR/package.json" 2>/dev/null; then
+    PROJECT_DIR="$SCRIPT_DIR"
+# Try common locations
+elif [ -d "/root/yitam" ]; then
     PROJECT_DIR="/root/yitam"
-elif [ -d "/home/*/yitam" ]; then
-    PROJECT_DIR=$(find /home -type d -name "yitam" 2>/dev/null | head -n1)
 else
-    echo "ERROR: Cannot find yitam project directory"
-    echo "Please edit this script and set PROJECT_DIR manually"
-    exit 1
+    # Search in /home and /Users directories
+    PROJECT_DIR=$(find /home /Users -maxdepth 2 -type d -name "yitam" 2>/dev/null | head -n1)
+
+    if [ -z "$PROJECT_DIR" ]; then
+        echo "ERROR: Cannot find yitam project directory"
+        echo "Please edit this script and set PROJECT_DIR manually"
+        echo "Tried: $SCRIPT_DIR, /root/yitam, /home/*/yitam, /Users/*/yitam"
+        exit 1
+    fi
 fi
 
 RENEWAL_SCRIPT="${PROJECT_DIR}/renew-ssl-certs.sh"
