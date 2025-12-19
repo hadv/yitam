@@ -127,7 +127,7 @@ const defaultConfig: ContentSafetyConfig = {
   useAiContentSafety: false, // Default to false for backward compatibility
   language: 'vi',
   model: {
-    name: "claude-3-haiku-20240307",
+    name: "claude-haiku-4-5-20251001",
   },
 };
 
@@ -188,16 +188,16 @@ export class ContentSafetyService {
   private getCachedResult(content: string): { isSafe: boolean, reason?: string, category?: string } | null {
     const key = this.getCacheKey(content);
     const cached = this.safetyCache.get(key);
-    
+
     if (cached && (Date.now() - cached.timestamp) < this.CACHE_TTL) {
       console.log('Using cached content safety result');
-      return { 
+      return {
         isSafe: cached.isSafe,
         reason: cached.reason,
         category: cached.category
       };
     }
-    
+
     return null;
   }
 
@@ -212,7 +212,7 @@ export class ContentSafetyService {
       reason: result.reason,
       category: result.category
     });
-    
+
     // Cleanup old cache entries if cache gets too large
     if (this.safetyCache.size > 1000) {
       const now = Date.now();
@@ -243,7 +243,7 @@ export class ContentSafetyService {
       }
       return; // Content is safe and cached
     }
-    
+
     // Use AI-based validation if enabled
     if (this.config.useAiContentSafety && this.aiClient) {
       try {
@@ -254,8 +254,8 @@ export class ContentSafetyService {
       } catch (error) {
         if (error instanceof ContentSafetyError) {
           // Cache unsuccessful result with reason
-          this.setCacheResult(content, { 
-            isSafe: false, 
+          this.setCacheResult(content, {
+            isSafe: false,
             reason: error.message,
             category: error.code
           });
@@ -270,7 +270,7 @@ export class ContentSafetyService {
     if (this.config.enablePromptInjectionCheck) {
       this.checkPromptInjection(content);
     }
-    
+
     // If we got here without throwing, content is safe
     this.setCacheResult(content, { isSafe: true });
   }
@@ -291,27 +291,27 @@ export class ContentSafetyService {
     }
 
     console.time('content-safety-check');
-    
+
     const response = await this.aiClient.messages.create({
-      model: "claude-3-7-sonnet-20250219", // Use Sonnet for content safety
+      model: "claude-sonnet-4-5-20250929", // Use Sonnet for content safety
       max_tokens: 150, // Reduced from 1024 to improve speed
       system: SystemPrompts.CONTENT_SAFETY,
       messages: [
         { role: 'user', content }
       ],
     });
-    
+
     console.timeEnd('content-safety-check');
 
     try {
       // Get the response text
-      const responseText = response.content[0].type === 'text' 
-        ? response.content[0].text 
+      const responseText = response.content[0].type === 'text'
+        ? response.content[0].text
         : JSON.stringify(response.content[0]);
-      
+
       // Extract JSON from the response - AI might include extra text
       const aiResponse = this.extractJsonFromText(responseText);
-      
+
       if (!aiResponse) {
         console.error('Failed to extract valid JSON from AI response:', responseText);
         throw new ContentSafetyError(
@@ -320,7 +320,7 @@ export class ContentSafetyService {
           this.config.language || 'en'
         );
       }
-      
+
       if (!aiResponse.isSafe) {
         throw new ContentSafetyError(
           `Content contains restricted topic: ${aiResponse.reason || 'unknown reason'}`,
@@ -330,7 +330,7 @@ export class ContentSafetyService {
       }
     } catch (error) {
       if (error instanceof ContentSafetyError) throw error;
-      
+
       console.error('Error parsing AI content safety response:', error);
       console.error('Raw response text:', response.content[0].type === 'text' ? response.content[0].text : 'non-text response');
       throw new ContentSafetyError(
@@ -412,15 +412,15 @@ export class ContentSafetyService {
 
     // Check for common indicators of unsafe content
     const lowerText = text.toLowerCase();
-    
+
     // Only mark as unsafe if we're confident
     // Look for strong signals of unsafe content
-    if ((lowerText.includes('not safe') && lowerText.includes('unsafe')) || 
-        (lowerText.includes('unsafe') && lowerText.includes('false')) ||
-        (lowerText.includes('dangerous') && lowerText.includes('harmful'))) {
-      
+    if ((lowerText.includes('not safe') && lowerText.includes('unsafe')) ||
+      (lowerText.includes('unsafe') && lowerText.includes('false')) ||
+      (lowerText.includes('dangerous') && lowerText.includes('harmful'))) {
+
       isSafe = false;
-      
+
       // Try to determine category
       if (lowerText.includes('medical') && (lowerText.includes('treatment') || lowerText.includes('diagnosis'))) {
         category = 'medical_advice';
@@ -474,15 +474,15 @@ export class ContentSafetyService {
       }
       return; // Skip all other checks when disabled
     }
-    
+
     // For response validation, only check for prompt injection
     // This is much faster than running AI validation on each response chunk
-    
+
     // Skip empty content
     if (!content || content.trim().length === 0) {
       return;
     }
-    
+
     // Check cache first for existing results
     const cachedResult = this.getCachedResult(content);
     if (cachedResult) {
@@ -495,7 +495,7 @@ export class ContentSafetyService {
       }
       return; // Content is safe and cached
     }
-    
+
     // Only do full AI validation for longer responses
     // For short response chunks, just check for prompt injection
     if (content.length > 500 && this.config.useAiContentSafety && this.aiClient) {
@@ -505,8 +505,8 @@ export class ContentSafetyService {
         return; // If AI validation passes, we're done
       } catch (error) {
         if (error instanceof ContentSafetyError) {
-          this.setCacheResult(content, { 
-            isSafe: false, 
+          this.setCacheResult(content, {
+            isSafe: false,
             reason: error.message,
             category: error.code
           });
@@ -519,20 +519,20 @@ export class ContentSafetyService {
 
     // Fall back to prompt injection check - this is fast
     if (this.containsPromptInjection(content)) {
-      const result = { 
-        isSafe: false, 
+      const result = {
+        isSafe: false,
         reason: 'Content contains prompt injection',
         category: 'prompt_injection'
       };
       this.setCacheResult(content, result);
-      
+
       throw new ContentSafetyError(
         SAFETY_RULES.PROMPT_INJECTION.TEMPLATE_LITERAL.message[language],
         'prompt_injection',
         language
       );
     }
-    
+
     // Content is safe
     this.setCacheResult(content, { isSafe: true });
   }
@@ -577,39 +577,39 @@ export class ContentSafetyService {
     if (this.config.enableUnicodeSafety) {
       content = this.normalizeUnicode(content);
     }
-    
+
     // Basic sanitization - remove HTML tags
     content = content.replace(/<[^>]*>/g, '');
-    
+
     // Remove potential script injections
     content = content.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-    
+
     // Remove potential markdown code block injections
     content = content.replace(/```(?:.*\n)*```/g, '');
-    
+
     // Remove potential LaTeX injections
     content = content.replace(/\$\$(.*?)\$\$/g, '');
     content = content.replace(/\$(.*?)\$/g, '');
-    
+
     // Remove backticks that might be used for code injection
     content = content.replace(/`/g, '');
-    
+
     // Remove excessive whitespace
     content = content.replace(/\s+/g, ' ');
-    
+
     return content.trim();
   }
 
   private normalizeUnicode(content: string): string {
     // Normalize unicode to remove alternative representations
     content = content.normalize('NFKC');
-    
+
     // Remove characters from suspicious unicode ranges
     const ranges = Object.values(SAFETY_RULES.UNICODE);
     const suspicious = ranges.map(([start, end]) => {
       return String.fromCharCode(...Array(end - start + 1).fill(0).map((_, i) => start + i));
     }).join('');
-    
+
     return content.replace(new RegExp(`[${suspicious}]`, 'g'), '');
   }
 
@@ -617,7 +617,7 @@ export class ContentSafetyService {
     // Check all prompt injection patterns, including system prompt patterns
     return Object.values(SAFETY_RULES.PROMPT_INJECTION).some(rule =>
       rule.patterns.some(pattern => pattern.test(content))
-    ) || SAFETY_RULES.PROMPT_INJECTION.SYSTEM_PROMPT.patterns.some(pattern => 
+    ) || SAFETY_RULES.PROMPT_INJECTION.SYSTEM_PROMPT.patterns.some(pattern =>
       pattern.test(content)
     );
   }
@@ -631,25 +631,25 @@ export class ContentSafetyService {
     if (!content || content.trim().length === 0) {
       return true; // Empty content is fine
     }
-    
+
     // Check cache first for existing results
     const cachedResult = this.getCachedResult(content);
     if (cachedResult) {
       return cachedResult.isSafe; // Use cached result
     }
-    
+
     // Only check for critical prompt injection patterns
     const hasCriticalInjection = SAFETY_RULES.PROMPT_INJECTION.SYSTEM_PROMPT.patterns.some(
       pattern => pattern.test(content)
     );
-    
+
     // Cache the result
-    this.setCacheResult(content, { 
+    this.setCacheResult(content, {
       isSafe: !hasCriticalInjection,
       reason: hasCriticalInjection ? 'Potential prompt injection detected' : undefined,
       category: hasCriticalInjection ? 'prompt_injection' : undefined
     });
-    
+
     return !hasCriticalInjection;
   }
 }
