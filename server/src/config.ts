@@ -5,10 +5,12 @@ dotenv.config();
 
 export const config = {
   model: {
-    name: process.env.ANTHROPIC_MODEL || 'claude-3-7-sonnet-20250219',
+    name: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5-20250929',
     maxTokens: parseInt(process.env.MODEL_MAX_TOKENS || '10000'),
     // Add model-specific max token limits to prevent errors
     tokenLimits: {
+      'claude-sonnet-4-5-20250929': 10000,
+      'claude-haiku-4-5-20251001': 10000,
       'claude-3-7-sonnet-20250219': 10000,
       'claude-3-haiku-20240307': 4000,
       'default': 4000 // Fallback for models not explicitly listed
@@ -18,7 +20,7 @@ export const config = {
     port: parseInt(process.env.PORT || '5001'),
     clientUrl: process.env.CLIENT_URL || 'http://localhost:3001',
     cors: {
-      origin: process.env.CLIENT_URL || function(origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+      origin: process.env.CLIENT_URL || function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
         // Allow all localhost origins in development
         if (!origin || origin.startsWith('http://localhost:') || origin.startsWith('https://localhost:')) {
           callback(null, true);
