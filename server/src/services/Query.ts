@@ -348,7 +348,7 @@ export class Query {
           const followUpResponse = await this.anthropic.messages.create({
             model: config.model.name,
             // Reduce token limits for follow-up to avoid rate limits
-            max_tokens: Math.min(2000, config.model.maxTokens),
+            max_tokens: Math.min(8000, config.model.maxTokens),
             system: personaFollowUpPrompt,
             messages: this.conversation.getConversationHistory(),
           });
@@ -571,7 +571,7 @@ export class Query {
                     const followUpStream = await this.anthropic.messages.stream({
                       model: config.model.name,
                       // Reduce token limits for follow-up to avoid rate limits
-                      max_tokens: Math.min(2000, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 2000),
+                      max_tokens: Math.min(8000, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 8000),
                       system: personaFollowUpPrompt,
                       messages: this.conversation.getConversationHistory(),
                     });
