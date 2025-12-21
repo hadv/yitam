@@ -356,6 +356,35 @@ export class Query {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
+      // Check if we need a final response after loop exhaustion
+      const history = this.conversation.getConversationHistory();
+      const lastMessage = history[history.length - 1];
+
+      if (lastMessage && lastMessage.role === 'user' && Array.isArray(lastMessage.content) && lastMessage.content.some(c => c.type === 'tool_result')) {
+        console.log("Loop ended with tool result (non-streaming). Generating final response...");
+
+        const response = await this.anthropic.messages.create({
+          model: config.model.name,
+          max_tokens: config.model.maxTokens,
+          system: personaSystemPrompt,
+          messages: this.conversation.getConversationHistory(),
+          // No tools passed here
+        });
+
+        const assistantContent = response.content;
+        this.conversation.addAssistantMessageContent(assistantContent);
+
+        for (const content of assistantContent) {
+          if (content.type === "text") {
+            let textContent = content.text;
+            if (currentPersona.id !== 'yitam' && !textContent.startsWith(currentPersona.displayName)) {
+              textContent = `${currentPersona.displayName}: ${textContent}`;
+            }
+            finalText.push(textContent);
+          }
+        }
+      }
+
       return finalText.join("\n");
     } catch (error: any) {
       console.error("Error processing query:", error);
@@ -488,6 +517,47 @@ export class Query {
         }
 
         // Loop continues to next step...
+      }
+
+      // After loop ends, check if we provided a final text response.
+      // If the last message in history is a tool_result, we need to generate a final answer.
+      const history = this.conversation.getConversationHistory();
+      const lastMessage = history[history.length - 1];
+
+      if (lastMessage && lastMessage.role === 'user' && Array.isArray(lastMessage.content) && lastMessage.content.some(c => c.type === 'tool_result')) {
+        console.log("Loop ended with tool result. Generating final response...");
+
+        const currentPersona = this.conversation.getCurrentPersona();
+        const personaSystemPrompt = getPersonaSystemPrompt(SystemPrompts.INITIAL, currentPersona);
+        // Note: We do NOT pass tools here to force a text response
+
+        let stream;
+        try {
+          stream = this.anthropic.messages.stream({
+            model: config.model.name,
+            max_tokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000),
+            system: personaSystemPrompt,
+            messages: this.conversation.getConversationHistory(),
+            // No tools passed here to ensure a final answer
+          });
+        } catch (streamError: any) {
+          console.error("Error creating final stream:", streamError);
+          throw streamError;
+        }
+
+        for await (const chunk of stream) {
+          if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+            const shouldContinue = await sendChunk(chunk.delta.text);
+            if (!shouldContinue) {
+              stream.controller.abort();
+              return;
+            }
+          }
+        }
+
+        // Add the final response to history
+        const finalMessage = await stream.finalMessage();
+        this.conversation.addAssistantMessageContent(finalMessage.content);
       }
 
     } catch (error: any) {
