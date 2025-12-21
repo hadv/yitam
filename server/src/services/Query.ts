@@ -313,10 +313,16 @@ export class Query {
         const messages = this.conversation.getConversationHistory();
         console.log(`Step ${currentStep}/${MAX_STEPS} - Messages count: ${messages.length}`);
 
+        // Dynamic system prompt to discourage excessive looping
+        let currentSystemPrompt = personaSystemPrompt;
+        if (currentStep > 1) {
+          currentSystemPrompt += `\n\n(Important: You have already used tools ${currentStep - 1} times. If the information you have gathered is sufficient to answer the user's request, please STOP using tools and provide your final response now.)`;
+        }
+
         const response = await this.anthropic.messages.create({
           model: config.model.name,
           max_tokens: config.model.maxTokens,
-          system: personaSystemPrompt,
+          system: currentSystemPrompt,
           messages,
           tools: tools.length > 0 ? tools : undefined,
         });
@@ -460,10 +466,16 @@ export class Query {
 
         let stream;
         try {
+          // Dynamic system prompt to discourage excessive looping
+          let currentSystemPrompt = personaSystemPrompt;
+          if (currentStep > 1) {
+            currentSystemPrompt += `\n\n(Important: You have already used tools ${currentStep - 1} times. If the information you have gathered is sufficient to answer the user's request, please STOP using tools and provide your final response now.)`;
+          }
+
           stream = this.anthropic.messages.stream({
             model: config.model.name,
             max_tokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000),
-            system: personaSystemPrompt,
+            system: currentSystemPrompt,
             messages: currentMessages,
             tools: tools.length > 0 ? tools : undefined,
           });
