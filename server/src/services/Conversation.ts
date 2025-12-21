@@ -5,27 +5,27 @@ export class Conversation {
   private conversationHistory: MessageParam[] = [];
   private chatId: string = '';
   private currentPersona: Persona = getDefaultPersona();
-  
-  constructor() {}
-  
+
+  constructor() { }
+
   /**
    * Starts a new conversation and returns the new chat ID
    */
   startNewChat(personaId?: string): string {
     this.conversationHistory = [];
     this.chatId = `chat_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    
+
     // Set persona if provided, otherwise use default
     if (personaId) {
       this.setPersona(personaId);
     } else {
       this.currentPersona = getDefaultPersona();
     }
-    
+
     console.log(`Starting new chat with ID: ${this.chatId} using persona: ${this.currentPersona.displayName}`);
     return this.chatId;
   }
-  
+
   /**
    * Adds a message to an existing conversation
    */
@@ -37,21 +37,21 @@ export class Conversation {
     this.conversationHistory.push(message);
     return true;
   }
-  
+
   /**
    * Returns the current chat ID
    */
   getCurrentChatId(): string {
     return this.chatId;
   }
-  
+
   /**
    * Returns the current persona
    */
   getCurrentPersona(): Persona {
     return this.currentPersona;
   }
-  
+
   /**
    * Sets the current persona by ID
    */
@@ -60,14 +60,14 @@ export class Conversation {
     this.currentPersona = newPersona;
     console.log(`Set persona to ${newPersona.displayName} for chat ${this.chatId}`);
   }
-  
+
   /**
    * Returns a copy of the current conversation history
    */
   getConversationHistory(): MessageParam[] {
     return [...this.conversationHistory];
   }
-  
+
   /**
    * Clears the current conversation history
    */
@@ -75,7 +75,7 @@ export class Conversation {
     this.conversationHistory = [];
     console.log(`Cleared conversation history for chat ${this.chatId}`);
   }
-  
+
   /**
    * Adds a user message to the conversation
    */
@@ -85,7 +85,7 @@ export class Conversation {
       content: query,
     });
   }
-  
+
   /**
    * Adds an assistant message to the conversation
    */
@@ -94,10 +94,10 @@ export class Conversation {
     if (typeof content === 'string' && this.currentPersona.id !== 'yitam') {
       // Replace "Yitam" or "Yitam:" at the beginning of responses
       const modifiedContent = content.replace(
-        /^(Yitam:?\s+|Yitam\s+)/g, 
+        /^(Yitam:?\s+|Yitam\s+)/g,
         `${this.currentPersona.displayName}: `
       );
-      
+
       this.conversationHistory.push({
         role: "assistant",
         content: modifiedContent,
@@ -109,7 +109,7 @@ export class Conversation {
       });
     }
   }
-  
+
   /**
    * Adds a tool use message to the conversation
    */
@@ -119,7 +119,7 @@ export class Conversation {
       content: [{ type: "tool_use", id: toolId, name: toolName, input: toolInput }],
     });
   }
-  
+
   /**
    * Adds a tool result message to the conversation
    */
@@ -130,11 +130,20 @@ export class Conversation {
         {
           type: "tool_result",
           tool_use_id: toolUseId,
-          content: typeof content === 'object' 
+          content: typeof content === 'object'
             ? JSON.stringify(content, null, 2)
             : String(content),
         },
       ],
+    });
+  }
+  /**
+   * Adds an assistant message with full content blocks (text + tool_use)
+   */
+  addAssistantMessageContent(content: ContentBlockParam[]): void {
+    this.conversationHistory.push({
+      role: "assistant",
+      content,
     });
   }
 } 
