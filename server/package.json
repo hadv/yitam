@@ -19,7 +19,7 @@
   "license": "MIT",
   "description": "",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.71.2",
+    "@anthropic-ai/sdk": "0.100.1",
     "@google-cloud/storage": "^7.16.0",
     "@google-cloud/vision": "^5.3.3",
     "@google/genai": "^1.11.0",
