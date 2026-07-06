@@ -30,7 +30,7 @@ SIGNING_SECRET=replace_with_secure_random_string_in_production
 
 ## Model Configuration
 ```
-ANTHROPIC_MODEL=claude-3-7-sonnet-20250219
+ANTHROPIC_MODEL=claude-5-sonnet
 MODEL_MAX_TOKENS=10000
 ```
 

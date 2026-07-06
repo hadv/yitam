@@ -293,8 +293,8 @@ export class ContentSafetyService {
     console.time('content-safety-check');
 
     const response = await this.aiClient.messages.create({
-      model: "claude-sonnet-4-5-20250929", // Use Sonnet for content safety
-      max_tokens: 150, // Reduced from 1024 to improve speed
+      model: "claude-5-sonnet", // Use Sonnet for content safety
+      max_tokens: 100, // Reduced from 1024 to improve speed
       system: SystemPrompts.CONTENT_SAFETY,
       messages: [
         { role: 'user', content }

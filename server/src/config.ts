@@ -5,10 +5,11 @@ dotenv.config();
 
 export const config = {
   model: {
-    name: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
+    name: process.env.ANTHROPIC_MODEL || 'claude-5-sonnet',
     maxTokens: parseInt(process.env.MODEL_MAX_TOKENS || '10000'),
     // Add model-specific max token limits to prevent errors
     tokenLimits: {
+      'claude-5-sonnet': 10000,
       'claude-sonnet-4-6': 10000,
       'claude-sonnet-4-5-20250929': 10000,
       'claude-haiku-4-5-20251001': 10000,

@@ -91,7 +91,7 @@ const TailwindMessageContainer: React.FC<MessageContainerProps> = ({
               {currentTopic.model && (
                 <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
                   {currentTopic.model.includes('opus') ? 'Claude 3 Opus' :
-                   currentTopic.model.includes('sonnet') ? 'Claude 3 Sonnet' :
+                   currentTopic.model.includes('sonnet') ? 'Claude 5 Sonnet' :
                    currentTopic.model.includes('haiku') ? 'Claude 3 Haiku' : 'Claude'}
                 </span>
               )}
