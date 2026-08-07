@@ -84,7 +84,7 @@ export const useTopicManagement = ({ userId }: UseTopicManagementProps): UseTopi
         userMessageCnt: 0,
         assistantMessageCnt: 0,
         totalTokens: 0,
-        model: 'claude-5-sonnet',
+        model: 'claude-sonnet-5',
         systemPrompt: systemPrompt || '',
         pinnedState: false
       });

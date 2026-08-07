@@ -1,5 +1,6 @@
 import { Anthropic } from "@anthropic-ai/sdk";
 import { config } from '../config';
+import { getResponseText } from '../utils/anthropicResponse';
 
 export interface ModerationResult {
   isSafe: boolean;
@@ -57,9 +58,10 @@ Format your response as JSON with the following structure:
         }]
       });
 
-      if (response.content[0]?.type === "text") {
+      const rawText = getResponseText(response);
+      if (rawText !== undefined) {
         try {
-          let responseText = response.content[0].text;
+          let responseText = rawText;
           
           // Handle markdown-formatted JSON (remove ```json and ``` delimiters)
           if (responseText.includes('```')) {
@@ -82,11 +84,11 @@ Format your response as JSON with the following structure:
           return result;
         } catch (parseError) {
           console.error("Error parsing moderation response:", parseError);
-          console.log("Raw response:", response.content[0]?.text);
-          
+          console.log("Raw response:", rawText);
+
           // Try to extract a valid JSON object using regex as a fallback
           try {
-            const jsonMatch = response.content[0]?.text.match(/\{[\s\S]*\}/);
+            const jsonMatch = rawText.match(/\{[\s\S]*\}/);
             if (jsonMatch && jsonMatch[0]) {
               const extractedJson = jsonMatch[0];
               console.log("Attempting to parse extracted JSON:", extractedJson);

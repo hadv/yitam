@@ -1,4 +1,5 @@
 import { ContentSafetyError } from '../utils/errors';
+import { getResponseText } from '../utils/anthropicResponse';
 import { SystemPrompts } from '../constants/SystemPrompts';
 import { Language } from '../types';
 import Anthropic from '@anthropic-ai/sdk';
@@ -293,8 +294,11 @@ export class ContentSafetyService {
     console.time('content-safety-check');
 
     const response = await this.aiClient.messages.create({
-      model: "claude-5-sonnet", // Use Sonnet for content safety
-      max_tokens: 100, // Reduced from 1024 to improve speed
+      model: "claude-sonnet-5", // Use Sonnet for content safety
+      // Sonnet 5 runs adaptive thinking by default, and max_tokens caps
+      // thinking + visible text together. The JSON verdict is ~50 tokens;
+      // the rest is headroom so thinking cannot truncate it.
+      max_tokens: 2000,
       system: SystemPrompts.CONTENT_SAFETY,
       messages: [
         { role: 'user', content }
@@ -305,9 +309,7 @@ export class ContentSafetyService {
 
     try {
       // Get the response text
-      const responseText = response.content[0].type === 'text'
-        ? response.content[0].text
-        : JSON.stringify(response.content[0]);
+      const responseText = getResponseText(response) ?? JSON.stringify(response.content);
 
       // Extract JSON from the response - AI might include extra text
       const aiResponse = this.extractJsonFromText(responseText);
@@ -332,7 +334,7 @@ export class ContentSafetyService {
       if (error instanceof ContentSafetyError) throw error;
 
       console.error('Error parsing AI content safety response:', error);
-      console.error('Raw response text:', response.content[0].type === 'text' ? response.content[0].text : 'non-text response');
+      console.error('Raw response text:', getResponseText(response) ?? 'non-text response');
       throw new ContentSafetyError(
         "Failed to validate content",
         "processing_error",

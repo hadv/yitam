@@ -1,5 +1,6 @@
 import { Anthropic } from "@anthropic-ai/sdk";
 import { config } from '../config';
+import { getResponseText } from '../utils/anthropicResponse';
 import { SystemPrompts } from '../constants/SystemPrompts';
 import { availableDomains } from '../constants/Domains';
 import { getPersonaSystemPrompt } from '../constants/Personas';
@@ -124,8 +125,9 @@ export class Query {
       console.timeEnd('search-query-extraction');
 
       let extractedText = query;
-      if (extractionResponse.content[0]?.type === "text") {
-        const text = extractionResponse.content[0].text.trim();
+      const extractionText = getResponseText(extractionResponse);
+      if (extractionText !== undefined) {
+        const text = extractionText.trim();
         if (text && text.length > 0) {
           console.log(`Original query: "${query.substring(0, 50)}..."`);
           console.log(`Extracted search query: "${text}"`);
@@ -354,8 +356,9 @@ export class Query {
           });
 
           if (followUpResponse.content && followUpResponse.content.length > 0) {
-            if (followUpResponse.content[0].type === "text") {
-              let followUpText = followUpResponse.content[0].text;
+            const followUpRaw = getResponseText(followUpResponse);
+            if (followUpRaw !== undefined) {
+              let followUpText = followUpRaw;
 
               // For non-default personas, ensure follow-up responses are properly formatted
               if (currentPersona.id !== 'yitam' && !followUpText.startsWith(currentPersona.displayName)) {
@@ -714,8 +717,9 @@ export class Query {
                         temperature: 1.0, // Increase temperature to encourage different response
                       });
 
-                      if (forceResponse.content[0]?.type === "text") {
-                        let forcedText = forceResponse.content[0].text.trim();
+                      const forcedRaw = getResponseText(forceResponse);
+                      if (forcedRaw !== undefined) {
+                        let forcedText = forcedRaw.trim();
 
                         // For non-default personas, add persona prefix if needed
                         if (currentPersona.id !== 'yitam' && !forcedText.startsWith(currentPersona.displayName)) {
@@ -854,8 +858,9 @@ Example responses:
 
       console.timeEnd('domain-detection');
 
-      if (domainResponse.content[0]?.type === "text") {
-        const domainsText = domainResponse.content[0].text.trim();
+      const domainRaw = getResponseText(domainResponse);
+      if (domainRaw !== undefined) {
+        const domainsText = domainRaw.trim();
         if (domainsText && domainsText.length > 0) {
           // Split on commas and clean up any extra spacing
           const domains = domainsText.split(',').map(d => d.trim()).filter(Boolean);

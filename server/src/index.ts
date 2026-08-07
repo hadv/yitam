@@ -5,6 +5,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import Anthropic from '@anthropic-ai/sdk';
+import { getResponseText } from './utils/anthropicResponse';
 import { MCPClient } from './MCPClient.js';
 import { config } from './config';
 import { sampleQuestions } from './data/SampleQuestions';
@@ -897,10 +898,7 @@ Tiêu đề:`;
         // Extract and clean up the generated title
         let title = "";
         if (response.content && response.content.length > 0) {
-          const contentBlock = response.content[0];
-          if (contentBlock.type === 'text') {
-            title = contentBlock.text.trim();
-          }
+          title = (getResponseText(response) ?? '').trim();
         }
         
         // Handle empty response
