@@ -295,12 +295,13 @@ export class ContentSafetyService {
 
     const response = await this.aiClient.messages.create({
       model: "claude-sonnet-5", // Use Sonnet for content safety
-      // Thinking off: this call blocks every user message, and Sonnet 4.6 ran
-      // this same check without thinking. Leaving it on (Sonnet 5's default)
-      // would add latency to the hot path and let thinking crowd out the
-      // verdict, since max_tokens caps thinking and visible text together.
-      thinking: { type: 'disabled' },
-      max_tokens: 500, // JSON verdict is ~50 tokens
+      // Whether to think is left to the model. On ordinary input it declines,
+      // so this costs nothing in the common case; on a genuinely hard one — an
+      // obfuscated injection, a borderline medical question — the reasoning is
+      // worth having in a safety verdict. max_tokens covers thinking and the
+      // verdict together, and measured verdicts run 78-248 tokens, so the rest
+      // is room for thinking. Unused headroom is not billed.
+      max_tokens: 4000,
       system: SystemPrompts.CONTENT_SAFETY,
       messages: [
         { role: 'user', content }
