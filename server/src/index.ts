@@ -888,7 +888,9 @@ Tiêu đề:`;
       try {
         console.log(`Sending title generation request to Claude API for topic ${data.topicId}`);
         const response = await anthropic.messages.create({
-          model: config.model.name,
+          // Haiku 4.5: titling is short and mechanical, and Haiku leaves
+          // thinking off by default, so the small token limit stays sufficient.
+          model: "claude-haiku-4-5",
           max_tokens: 100,
           messages: [
             { role: 'user', content: prompt }

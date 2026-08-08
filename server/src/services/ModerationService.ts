@@ -50,7 +50,10 @@ Format your response as JSON with the following structure:
     try {
       const response = await this.anthropic.messages.create({
         model: config.model.name,
-        max_tokens: 500,
+        // Kept on the main model: moderation is a safety decision, so it keeps
+        // full reasoning. That means thinking shares max_tokens with the JSON
+        // verdict, so this needs headroom the same way content safety does.
+        max_tokens: 2000,
         system: this.MODERATION_SYSTEM_PROMPT,
         messages: [{
           role: "user",

@@ -113,7 +113,9 @@ export class Query {
 
       // Extract search query in all cases
       const extractionResponse = await this.anthropic.messages.create({
-        model: config.model.name,
+        // Haiku 4.5: extraction is short and mechanical, and Haiku leaves
+        // thinking off by default, so the small token limit stays sufficient.
+        model: "claude-haiku-4-5",
         max_tokens: 150,  // Small token limit is sufficient for extraction
         system: SystemPrompts.SEARCH_EXTRACTION,
         messages: [{
