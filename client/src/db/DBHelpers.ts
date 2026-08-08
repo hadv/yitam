@@ -1,4 +1,5 @@
 import db from './ChatHistoryDB';
+import { config } from '../config';
 
 /**
  * Enhanced database helper functions for direct database access and emergency saves
@@ -44,7 +45,7 @@ export async function forceSaveMessage(
         userMessageCnt: 0,
         assistantMessageCnt: 0,
         totalTokens: 0,
-        model: 'claude-3',
+        model: config.model.default,
         systemPrompt: '',
         pinnedState: false
       });

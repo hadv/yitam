@@ -5,6 +5,7 @@ import { usePersona } from '../contexts/PersonaContext';
 import { AVAILABLE_PERSONAS } from '../components/tailwind/TailwindPersonaSelector';
 import db, { Message as DBMessage } from '../db/ChatHistoryDB';
 import { extractTitleFromBotText } from '../utils/titleExtraction';
+import { config } from '../config';
 
 export const useMessages = (socket: ChatSocket, user: any) => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -361,7 +362,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
               content: botMessage.text,
               type: 'text',
               tokens: Math.ceil(botMessage.text.length / 4),
-              modelVersion: 'claude-3'
+              modelVersion: config.model.default
             });
             
             console.log(`[TOPIC DEBUG] Added message to existing topic ${currentTopicRef.current} with database ID ${dbMessageId}`);
@@ -418,7 +419,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
         userMessageCnt: 1,
         assistantMessageCnt: 1,
         totalTokens: Math.ceil(lastUserMessage.text.length / 4) + Math.ceil(botMessage.text.length / 4),
-        model: 'claude-3',
+        model: config.model.default,
         systemPrompt: '',
         pinnedState: false,
         personaId: finalPersonaId // CRITICAL: Use the final verified persona ID
@@ -471,7 +472,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
         content: botMessage.text,
         type: 'text',
         tokens: Math.ceil(botMessage.text.length / 4),
-        modelVersion: 'claude-3'
+        modelVersion: config.model.default
       });
       
       // Update UI messages with database IDs
@@ -995,7 +996,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
         userMessageCnt: 0,
         assistantMessageCnt: 0,
         totalTokens: 0,
-        model: 'claude-3',
+        model: config.model.default,
         systemPrompt: '',
         pinnedState: false,
         personaId: currentPersonaId // Ensure we use the current persona
