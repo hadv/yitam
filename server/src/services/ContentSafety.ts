@@ -297,8 +297,10 @@ export class ContentSafetyService {
       model: "claude-sonnet-5", // Use Sonnet for content safety
       // Sonnet 5 runs adaptive thinking by default, and max_tokens caps
       // thinking + visible text together. The JSON verdict is ~50 tokens;
-      // the rest is headroom so thinking cannot truncate it.
-      max_tokens: 2000,
+      // the rest is headroom so thinking cannot truncate it. Unused headroom
+      // is not billed — max_tokens is a ceiling, and the model never sees it,
+      // so raising it does not make the model think longer.
+      max_tokens: 10000,
       system: SystemPrompts.CONTENT_SAFETY,
       messages: [
         { role: 'user', content }
