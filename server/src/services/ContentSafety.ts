@@ -1,4 +1,5 @@
 import { ContentSafetyError } from '../utils/errors';
+import { getResponseText } from '../utils/anthropicResponse';
 import { SystemPrompts } from '../constants/SystemPrompts';
 import { Language } from '../types';
 import Anthropic from '@anthropic-ai/sdk';
@@ -127,7 +128,7 @@ const defaultConfig: ContentSafetyConfig = {
   useAiContentSafety: false, // Default to false for backward compatibility
   language: 'vi',
   model: {
-    name: "claude-haiku-4-5-20251001",
+    name: "claude-haiku-4-5",
   },
 };
 
@@ -293,8 +294,14 @@ export class ContentSafetyService {
     console.time('content-safety-check');
 
     const response = await this.aiClient.messages.create({
-      model: "claude-sonnet-4-5-20250929", // Use Sonnet for content safety
-      max_tokens: 150, // Reduced from 1024 to improve speed
+      model: "claude-sonnet-5", // Use Sonnet for content safety
+      // Whether to think is left to the model. On ordinary input it declines,
+      // so this costs nothing in the common case; on a genuinely hard one — an
+      // obfuscated injection, a borderline medical question — the reasoning is
+      // worth having in a safety verdict. max_tokens covers thinking and the
+      // verdict together, and measured verdicts run 78-248 tokens, so the rest
+      // is room for thinking. Unused headroom is not billed.
+      max_tokens: 4000,
       system: SystemPrompts.CONTENT_SAFETY,
       messages: [
         { role: 'user', content }
@@ -305,20 +312,22 @@ export class ContentSafetyService {
 
     try {
       // Get the response text
-      const responseText = response.content[0].type === 'text'
-        ? response.content[0].text
-        : JSON.stringify(response.content[0]);
+      const responseText = getResponseText(response) ?? JSON.stringify(response.content);
 
       // Extract JSON from the response - AI might include extra text
       const aiResponse = this.extractJsonFromText(responseText);
 
-      if (!aiResponse) {
-        console.error('Failed to extract valid JSON from AI response:', responseText);
-        throw new ContentSafetyError(
-          "Failed to validate content - unable to parse AI response",
-          "processing_error",
-          this.config.language || 'en'
-        );
+      // Require a real verdict before trusting the parsed value. Two shapes get
+      // this far without being one: a response carrying no text block stringifies
+      // to valid JSON with no isSafe field, and text that parses to anything else
+      // does the same. Reading `!aiResponse.isSafe` off either treats a missing
+      // verdict as "unsafe" and rejects a legitimate message.
+      if (!aiResponse || typeof aiResponse.isSafe !== 'boolean') {
+        console.error('Failed to extract a verdict from AI response:', responseText);
+        // A plain Error, not a ContentSafetyError: the check failed to produce
+        // a verdict, which is not the same as a verdict of "unsafe". See the
+        // catch block below.
+        throw new Error('AI content safety check returned no usable verdict');
       }
 
       if (!aiResponse.isSafe) {
@@ -329,15 +338,17 @@ export class ContentSafetyService {
         );
       }
     } catch (error) {
-      if (error instanceof ContentSafetyError) throw error;
+      if (error instanceof ContentSafetyError) throw error; // a real verdict — propagate
 
+      // Everything else means the check itself failed rather than the content
+      // being unsafe. Rethrow as-is so validateContent() logs a warning and
+      // falls through to the regex prompt-injection check, which is what it
+      // already does for network errors and rate limits. Converting this into
+      // a ContentSafetyError would both reject a legitimate message and cache
+      // it as unsafe, so retries would keep failing without another API call.
       console.error('Error parsing AI content safety response:', error);
-      console.error('Raw response text:', response.content[0].type === 'text' ? response.content[0].text : 'non-text response');
-      throw new ContentSafetyError(
-        "Failed to validate content",
-        "processing_error",
-        this.config.language || 'en'
-      );
+      console.error('Raw response text:', getResponseText(response) ?? 'non-text response');
+      throw error;
     }
   }
 
@@ -395,8 +406,13 @@ export class ContentSafetyService {
       console.error('Error in JSON extraction fallback:', e);
     }
 
-    // If all extraction methods fail
-    return this.createFallbackResponse(text);
+    // If all extraction methods fail, fall back to scanning the text. That
+    // fallback defaults to "safe" whenever it finds nothing, which is a guess
+    // rather than a verdict — returning it would let an unparseable response
+    // clear content that was never actually checked. Keep it only when it
+    // positively identified something unsafe, and report no verdict otherwise.
+    const fallback = this.createFallbackResponse(text);
+    return fallback && fallback.isSafe === false ? fallback : null;
   }
 
   /**

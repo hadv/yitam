@@ -5,6 +5,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import Anthropic from '@anthropic-ai/sdk';
+import { getResponseText } from './utils/anthropicResponse';
 import { MCPClient } from './MCPClient.js';
 import { config } from './config';
 import { sampleQuestions } from './data/SampleQuestions';
@@ -887,7 +888,9 @@ Tiêu đề:`;
       try {
         console.log(`Sending title generation request to Claude API for topic ${data.topicId}`);
         const response = await anthropic.messages.create({
-          model: config.model.name,
+          // Haiku 4.5: titling is short and mechanical, and Haiku leaves
+          // thinking off by default, so the small token limit stays sufficient.
+          model: "claude-haiku-4-5",
           max_tokens: 100,
           messages: [
             { role: 'user', content: prompt }
@@ -897,10 +900,7 @@ Tiêu đề:`;
         // Extract and clean up the generated title
         let title = "";
         if (response.content && response.content.length > 0) {
-          const contentBlock = response.content[0];
-          if (contentBlock.type === 'text') {
-            title = contentBlock.text.trim();
-          }
+          title = (getResponseText(response) ?? '').trim();
         }
         
         // Handle empty response

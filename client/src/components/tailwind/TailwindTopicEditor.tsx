@@ -132,9 +132,9 @@ const TailwindTopicEditor: React.FC<TopicEditorProps> = ({
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#5D4A38]"
             >
               <option value="">Mặc định</option>
-              <option value="claude-3-opus-20240229">Claude 3 Opus</option>
-              <option value="claude-3-sonnet-20240229">Claude 3 Sonnet</option>
-              <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
+              <option value="claude-opus-5">Claude Opus 5</option>
+              <option value="claude-sonnet-5">Claude Sonnet 5</option>
+              <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
             </select>
           </div>
           

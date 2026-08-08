@@ -1,5 +1,6 @@
 import { Anthropic } from "@anthropic-ai/sdk";
 import { config } from '../config';
+import { getResponseText } from '../utils/anthropicResponse';
 import { SystemPrompts } from '../constants/SystemPrompts';
 import { availableDomains } from '../constants/Domains';
 import { getPersonaSystemPrompt } from '../constants/Personas';
@@ -112,7 +113,9 @@ export class Query {
 
       // Extract search query in all cases
       const extractionResponse = await this.anthropic.messages.create({
-        model: config.model.name,
+        // Haiku 4.5: extraction is short and mechanical, and Haiku leaves
+        // thinking off by default, so the small token limit stays sufficient.
+        model: "claude-haiku-4-5",
         max_tokens: 150,  // Small token limit is sufficient for extraction
         system: SystemPrompts.SEARCH_EXTRACTION,
         messages: [{
@@ -124,8 +127,9 @@ export class Query {
       console.timeEnd('search-query-extraction');
 
       let extractedText = query;
-      if (extractionResponse.content[0]?.type === "text") {
-        const text = extractionResponse.content[0].text.trim();
+      const extractionText = getResponseText(extractionResponse);
+      if (extractionText !== undefined) {
+        const text = extractionText.trim();
         if (text && text.length > 0) {
           console.log(`Original query: "${query.substring(0, 50)}..."`);
           console.log(`Extracted search query: "${text}"`);
@@ -354,8 +358,9 @@ export class Query {
           });
 
           if (followUpResponse.content && followUpResponse.content.length > 0) {
-            if (followUpResponse.content[0].type === "text") {
-              let followUpText = followUpResponse.content[0].text;
+            const followUpRaw = getResponseText(followUpResponse);
+            if (followUpRaw !== undefined) {
+              let followUpText = followUpRaw;
 
               // For non-default personas, ensure follow-up responses are properly formatted
               if (currentPersona.id !== 'yitam' && !followUpText.startsWith(currentPersona.displayName)) {
@@ -714,8 +719,9 @@ export class Query {
                         temperature: 1.0, // Increase temperature to encourage different response
                       });
 
-                      if (forceResponse.content[0]?.type === "text") {
-                        let forcedText = forceResponse.content[0].text.trim();
+                      const forcedRaw = getResponseText(forceResponse);
+                      if (forcedRaw !== undefined) {
+                        let forcedText = forcedRaw.trim();
 
                         // For non-default personas, add persona prefix if needed
                         if (currentPersona.id !== 'yitam' && !forcedText.startsWith(currentPersona.displayName)) {
@@ -835,7 +841,7 @@ export class Query {
       const domainOptions = availableDomains.map(domain => `- ${domain}`).join('\n');
 
       const domainResponse = await this.anthropic.messages.create({
-        model: "claude-haiku-4-5-20251001",  // Use a smaller, faster model
+        model: "claude-haiku-4-5",  // Use a smaller, faster model
         max_tokens: 50,  // Small token limit for domain extraction
         system: `You are a domain classification expert specialized in traditional Eastern medicine, philosophy, and spiritual practices. Your task is to identify the relevant knowledge domains that a query belongs to.
 Respond ONLY with a comma-separated list of domains (no explanation). Choose from these domains:
@@ -854,8 +860,9 @@ Example responses:
 
       console.timeEnd('domain-detection');
 
-      if (domainResponse.content[0]?.type === "text") {
-        const domainsText = domainResponse.content[0].text.trim();
+      const domainRaw = getResponseText(domainResponse);
+      if (domainRaw !== undefined) {
+        const domainsText = domainRaw.trim();
         if (domainsText && domainsText.length > 0) {
           // Split on commas and clean up any extra spacing
           const domains = domainsText.split(',').map(d => d.trim()).filter(Boolean);

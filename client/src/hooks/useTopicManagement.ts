@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import db, { Topic } from '../db/ChatHistoryDB';
 import { cleanupOldData } from '../db/ChatHistoryDBUtil';
 import { useChatHistory } from '../contexts/ChatHistoryContext';
+import { config } from '../config';
 
 interface UseTopicManagementProps {
   userId: string;
@@ -84,7 +85,7 @@ export const useTopicManagement = ({ userId }: UseTopicManagementProps): UseTopi
         userMessageCnt: 0,
         assistantMessageCnt: 0,
         totalTokens: 0,
-        model: 'claude-3-5-sonnet',
+        model: config.model.default,
         systemPrompt: systemPrompt || '',
         pinnedState: false
       });

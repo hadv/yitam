@@ -83,7 +83,7 @@ export class ContextAwareConversationHandler {
 
       // Use optimized context for Anthropic API call
       const stream = await this.anthropic.messages.stream({
-        model: process.env.MODEL_NAME || 'claude-3-5-sonnet-20241022',
+        model: process.env.MODEL_NAME || 'claude-sonnet-5',
         max_tokens: 4000,
         messages: contextWindow.messages.map(msg => ({
           role: msg.role,
@@ -133,7 +133,7 @@ export class ContextAwareConversationHandler {
       // Fallback to direct API call without context optimization
       console.log('Falling back to direct API call');
       return await this.anthropic.messages.stream({
-        model: process.env.MODEL_NAME || 'claude-3-5-sonnet-20241022',
+        model: process.env.MODEL_NAME || 'claude-sonnet-5',
         max_tokens: 4000,
         messages: conversationHistory
       });
@@ -164,7 +164,7 @@ ${relevantContent}
 Tiêu đề:`;
 
       const response = await this.anthropic.messages.create({
-        model: process.env.MODEL_NAME || 'claude-3-5-sonnet-20241022',
+        model: process.env.MODEL_NAME || 'claude-sonnet-5',
         max_tokens: 100,
         messages: [{ role: 'user', content: prompt }]
       });
