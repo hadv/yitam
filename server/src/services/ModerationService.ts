@@ -50,10 +50,11 @@ Format your response as JSON with the following structure:
     try {
       const response = await this.anthropic.messages.create({
         model: config.model.name,
-        // Kept on the main model: moderation is a safety decision, so it keeps
-        // full reasoning. That means thinking shares max_tokens with the JSON
-        // verdict, so this needs headroom the same way content safety does.
-        max_tokens: 10000,
+        // Thinking off, same reasoning as the content safety check: it blocks
+        // the request path, Sonnet 4.6 ran it without thinking, and thinking
+        // would share max_tokens with the JSON verdict.
+        thinking: { type: 'disabled' },
+        max_tokens: 500,
         system: this.MODERATION_SYSTEM_PROMPT,
         messages: [{
           role: "user",

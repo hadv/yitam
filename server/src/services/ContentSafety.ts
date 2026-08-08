@@ -295,12 +295,12 @@ export class ContentSafetyService {
 
     const response = await this.aiClient.messages.create({
       model: "claude-sonnet-5", // Use Sonnet for content safety
-      // Sonnet 5 runs adaptive thinking by default, and max_tokens caps
-      // thinking + visible text together. The JSON verdict is ~50 tokens;
-      // the rest is headroom so thinking cannot truncate it. Unused headroom
-      // is not billed — max_tokens is a ceiling, and the model never sees it,
-      // so raising it does not make the model think longer.
-      max_tokens: 10000,
+      // Thinking off: this call blocks every user message, and Sonnet 4.6 ran
+      // this same check without thinking. Leaving it on (Sonnet 5's default)
+      // would add latency to the hot path and let thinking crowd out the
+      // verdict, since max_tokens caps thinking and visible text together.
+      thinking: { type: 'disabled' },
+      max_tokens: 500, // JSON verdict is ~50 tokens
       system: SystemPrompts.CONTENT_SAFETY,
       messages: [
         { role: 'user', content }
@@ -318,11 +318,10 @@ export class ContentSafetyService {
 
       if (!aiResponse) {
         console.error('Failed to extract valid JSON from AI response:', responseText);
-        throw new ContentSafetyError(
-          "Failed to validate content - unable to parse AI response",
-          "processing_error",
-          this.config.language || 'en'
-        );
+        // A plain Error, not a ContentSafetyError: the check failed to produce
+        // a verdict, which is not the same as a verdict of "unsafe". See the
+        // catch block below.
+        throw new Error('Unable to parse AI content safety response');
       }
 
       if (!aiResponse.isSafe) {
@@ -333,15 +332,17 @@ export class ContentSafetyService {
         );
       }
     } catch (error) {
-      if (error instanceof ContentSafetyError) throw error;
+      if (error instanceof ContentSafetyError) throw error; // a real verdict — propagate
 
+      // Everything else means the check itself failed rather than the content
+      // being unsafe. Rethrow as-is so validateContent() logs a warning and
+      // falls through to the regex prompt-injection check, which is what it
+      // already does for network errors and rate limits. Converting this into
+      // a ContentSafetyError would both reject a legitimate message and cache
+      // it as unsafe, so retries would keep failing without another API call.
       console.error('Error parsing AI content safety response:', error);
       console.error('Raw response text:', getResponseText(response) ?? 'non-text response');
-      throw new ContentSafetyError(
-        "Failed to validate content",
-        "processing_error",
-        this.config.language || 'en'
-      );
+      throw error;
     }
   }
 
