@@ -128,7 +128,7 @@ const defaultConfig: ContentSafetyConfig = {
   useAiContentSafety: false, // Default to false for backward compatibility
   language: 'vi',
   model: {
-    name: "claude-haiku-4-5-20251001",
+    name: "claude-haiku-4-5",
   },
 };
 

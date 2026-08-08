@@ -841,7 +841,7 @@ export class Query {
       const domainOptions = availableDomains.map(domain => `- ${domain}`).join('\n');
 
       const domainResponse = await this.anthropic.messages.create({
-        model: "claude-haiku-4-5-20251001",  // Use a smaller, faster model
+        model: "claude-haiku-4-5",  // Use a smaller, faster model
         max_tokens: 50,  // Small token limit for domain extraction
         system: `You are a domain classification expert specialized in traditional Eastern medicine, philosophy, and spiritual practices. Your task is to identify the relevant knowledge domains that a query belongs to.
 Respond ONLY with a comma-separated list of domains (no explanation). Choose from these domains:
