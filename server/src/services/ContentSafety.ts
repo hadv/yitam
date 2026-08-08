@@ -316,12 +316,17 @@ export class ContentSafetyService {
       // Extract JSON from the response - AI might include extra text
       const aiResponse = this.extractJsonFromText(responseText);
 
-      if (!aiResponse) {
-        console.error('Failed to extract valid JSON from AI response:', responseText);
+      // Require a real verdict before trusting the parsed value. Two shapes get
+      // this far without being one: a response carrying no text block stringifies
+      // to valid JSON with no isSafe field, and text that parses to anything else
+      // does the same. Reading `!aiResponse.isSafe` off either treats a missing
+      // verdict as "unsafe" and rejects a legitimate message.
+      if (!aiResponse || typeof aiResponse.isSafe !== 'boolean') {
+        console.error('Failed to extract a verdict from AI response:', responseText);
         // A plain Error, not a ContentSafetyError: the check failed to produce
         // a verdict, which is not the same as a verdict of "unsafe". See the
         // catch block below.
-        throw new Error('Unable to parse AI content safety response');
+        throw new Error('AI content safety check returned no usable verdict');
       }
 
       if (!aiResponse.isSafe) {
@@ -400,8 +405,13 @@ export class ContentSafetyService {
       console.error('Error in JSON extraction fallback:', e);
     }
 
-    // If all extraction methods fail
-    return this.createFallbackResponse(text);
+    // If all extraction methods fail, fall back to scanning the text. That
+    // fallback defaults to "safe" whenever it finds nothing, which is a guess
+    // rather than a verdict — returning it would let an unparseable response
+    // clear content that was never actually checked. Keep it only when it
+    // positively identified something unsafe, and report no verdict otherwise.
+    const fallback = this.createFallbackResponse(text);
+    return fallback && fallback.isSafe === false ? fallback : null;
   }
 
   /**
