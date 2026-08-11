@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import db, { Topic } from '../../db/ChatHistoryDB';
+import type { Topic } from '../../db';
+import { useChatHistoryStore } from '../../contexts/ChatHistoryContext';
 import TailwindTopicCreateButton from './TailwindTopicCreateButton';
 import moment from 'moment';
 
@@ -34,6 +35,7 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
   currentTopicId,
   isEditing
 }) => {
+  const store = useChatHistoryStore();
   const [topics, setTopics] = useState<Topic[]>([]);
   const [sortOption, setSortOption] = useState<'lastActive' | 'createdAt' | 'title'>('createdAt');
   const [isLoading, setIsLoading] = useState(true);
@@ -56,10 +58,7 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
       console.log('[TOPIC LIST] Loading topics for user', userId);
       
       // Get all topics for this user
-      const userTopics = await db.topics
-        .where('userId')
-        .equals(userId)
-        .toArray();
+      const userTopics = await store.listTopics(userId);
         
       console.log(`[TOPIC LIST] Loaded ${userTopics.length} topics`);
       
@@ -71,7 +70,7 @@ const TailwindTopicList: React.FC<TopicListProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [userId]);
+  }, [userId, store]);
 
   // Initial load and storage event listener setup
   useEffect(() => {

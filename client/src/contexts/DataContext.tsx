@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import db, { Topic, Message } from '../db/ChatHistoryDB';
+import type { Topic, Message } from '../db';
+import { useChatHistoryStore } from './ChatHistoryContext';
 import { useLoading } from './LoadingContext';
 
 // Define our context type
@@ -32,6 +33,7 @@ export const useData = () => useContext(DataContext);
 
 // Provider component
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const store = useChatHistoryStore();
   const { startLoading, stopLoading, setError } = useLoading();
   
   // Cache for optimistic updates
@@ -64,7 +66,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }));
       
       // Create in database
-      const id = await db.topics.add(topic);
+      const id = await store.createTopic(topic);
       
       // Update cache with real ID
       if (id) {
@@ -90,7 +92,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       stopLoading(operationKey);
     }
-  }, [startLoading, stopLoading, setError, invalidateCache]);
+  }, [startLoading, stopLoading, setError, invalidateCache, store]);
   
   // Update a topic with optimistic updates
   const updateTopic = useCallback(async (id: number, data: Partial<Topic>): Promise<boolean> => {
@@ -99,7 +101,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     try {
       // Get the current topic
-      const topic = await db.topics.get(id);
+      const topic = await store.getTopic(id);
       if (!topic) {
         throw new Error('Topic not found');
       }
@@ -127,7 +129,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
       
       // Update in database
-      await db.topics.update(id, data);
+      await store.updateTopic(id, data);
       return true;
     } catch (error) {
       console.error(`Error updating topic ${id}:`, error);
@@ -135,7 +137,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       // Invalidate caches
       invalidateCache(`topic-${id}`);
-      const topic = await db.topics.get(id);
+      const topic = await store.getTopic(id);
       if (topic) {
         invalidateCache(`topic-list-${topic.userId}`);
       }
@@ -144,7 +146,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       stopLoading(operationKey);
     }
-  }, [startLoading, stopLoading, setError, invalidateCache, cache]);
+  }, [startLoading, stopLoading, setError, invalidateCache, cache, store]);
   
   // Delete a topic with optimistic updates
   const deleteTopic = useCallback(async (id: number): Promise<boolean> => {
@@ -153,7 +155,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     try {
       // Get the topic first so we can update the list cache
-      const topic = await db.topics.get(id);
+      const topic = await store.getTopic(id);
       if (!topic) {
         throw new Error('Topic not found');
       }
@@ -173,14 +175,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         });
       }
       
-      // Delete from database in a transaction
-      await db.transaction('rw', [db.topics, db.messages], async () => {
-        // Delete all messages for this topic
-        await db.messages.where('topicId').equals(id).delete();
-        
-        // Delete the topic
-        await db.topics.delete(id);
-      });
+      // Cascades to the topic's messages and word index entries
+      await store.deleteTopic(id);
       
       return true;
     } catch (error) {
@@ -188,7 +184,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setError(operationKey, 'Không thể xóa chủ đề.');
       
       // Invalidate caches to refresh from DB
-      const topic = await db.topics.get(id);
+      const topic = await store.getTopic(id);
       if (topic) {
         invalidateCache(`topic-list-${topic.userId}`);
       }
@@ -197,28 +193,29 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       stopLoading(operationKey);
     }
-  }, [startLoading, stopLoading, setError, invalidateCache, cache]);
+  }, [startLoading, stopLoading, setError, invalidateCache, cache, store]);
   
   // Add a message with optimistic updates
   const addMessage = useCallback(async (message: Omit<Message, 'id'>): Promise<number | undefined> => {
-    const operationKey = `add-message-${message.topicId}`;
+    const { topicId, ...rest } = message;
+    const operationKey = `add-message-${topicId}`;
     startLoading(operationKey);
-    
+
     try {
       // Optimistically add to cache with temporary ID
       const tempId = -Date.now(); // Temporary negative ID
       const newMessage = { ...message, id: tempId };
-      
+
       // Add to cache
-      const cacheKey = `messages-${message.topicId}`;
+      const cacheKey = `messages-${topicId}`;
       setCache(prev => ({
         ...prev,
         [cacheKey]: [...(prev[cacheKey] || []), newMessage]
       }));
-      
-      // Create in database
-      const id = await db.messages.add(message);
-      
+
+      // Create in database — the store rolls the topic's counters forward too
+      const id = await store.appendMessage(topicId, rest);
+
       // Update cache with real ID
       if (id) {
         setCache(prev => {
@@ -228,45 +225,24 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             [cacheKey]: messageList.map((m: Message) => m.id === tempId ? { ...m, id } : m)
           };
         });
-        
-        // Update topic stats
-        const topic = await db.topics.get(message.topicId);
-        if (topic) {
-          const updateData: Partial<Topic> = {
-            messageCnt: (topic.messageCnt || 0) + 1,
-            lastActive: message.timestamp // Update last active time
-          };
-          
-          if (message.role === 'user') {
-            updateData.userMessageCnt = (topic.userMessageCnt || 0) + 1;
-          } else {
-            updateData.assistantMessageCnt = (topic.assistantMessageCnt || 0) + 1;
-          }
-          
-          if (message.tokens) {
-            updateData.totalTokens = (topic.totalTokens || 0) + message.tokens;
-          }
-          
-          await db.topics.update(message.topicId, updateData);
-          
-          // Invalidate topic cache
-          invalidateCache(`topic-${message.topicId}`);
-        }
+
+        // The topic's counters just changed
+        invalidateCache(`topic-${topicId}`);
       }
-      
+
       return id;
     } catch (error) {
       console.error('Error adding message:', error);
       setError(operationKey, 'Không thể gửi tin nhắn.');
       
       // Revert optimistic update
-      invalidateCache(`messages-${message.topicId}`);
-      
+      invalidateCache(`messages-${topicId}`);
+
       return undefined;
     } finally {
       stopLoading(operationKey);
     }
-  }, [startLoading, stopLoading, setError, invalidateCache]);
+  }, [startLoading, stopLoading, setError, invalidateCache, store]);
   
   // Delete a message with optimistic updates
   const deleteMessage = useCallback(async (messageId: number, topicId: number): Promise<boolean> => {
@@ -275,7 +251,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     try {
       // Get the message first so we can update topic stats
-      const message = await db.messages.get(messageId);
+      const message = await store.getMessage(messageId);
       if (!message) {
         throw new Error('Message not found');
       }
@@ -293,10 +269,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
       
       // Delete from database
-      await db.messages.delete(messageId);
+      await store.deleteMessage(messageId);
       
       // Update topic stats
-      const topic = await db.topics.get(topicId);
+      const topic = await store.getTopic(topicId);
       if (topic) {
         const updateData: Partial<Topic> = {
           messageCnt: Math.max((topic.messageCnt || 0) - 1, 0),
@@ -313,7 +289,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           updateData.totalTokens = Math.max((topic.totalTokens || 0) - message.tokens, 0);
         }
 
-        await db.topics.update(topicId, updateData);
+        await store.updateTopic(topicId, updateData);
 
         // Invalidate topic cache
         invalidateCache(`topic-${topicId}`);
@@ -331,7 +307,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       stopLoading(operationKey);
     }
-  }, [startLoading, stopLoading, setError, invalidateCache, cache]);
+  }, [startLoading, stopLoading, setError, invalidateCache, cache, store]);
   
   // Context value
   const contextValue: DataContextType = {

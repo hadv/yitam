@@ -1,5 +1,5 @@
 import React from 'react';
-import { Topic } from '../../db/ChatHistoryDB';
+import type { Topic } from '../../db';
 
 interface TopicMetadataProps {
   topic: Topic;

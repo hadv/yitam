@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { advancedSearch, SearchFilters } from '../../db/ChatHistoryDBUtil';
-import db, { Message, Topic } from '../../db/ChatHistoryDB';
-import { reindexAllUserMessages, getSearchIndexStats } from '../../utils/searchUtils';
+import type { Message, SearchFilters, Topic } from '../../db';
+import { useChatHistoryStore } from '../../contexts/ChatHistoryContext';
 
 interface SearchResult {
   message: Message;
@@ -20,6 +19,7 @@ const TailwindTopicSearch: React.FC<TailwindTopicSearchProps> = ({
   onSelectTopic,
   currentTopicId
 }) => {
+  const store = useChatHistoryStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -34,71 +34,38 @@ const TailwindTopicSearch: React.FC<TailwindTopicSearchProps> = ({
       if (!userId) return;
       
       try {
-        // First check if wordIndex table exists and can be accessed
-        let hasWordIndex = true;
-        let wordIndexSupported = true;
-        
-        try {
-          // Try to access the wordIndex table
-          await db.wordIndex.count();
-        } catch (schemaError: any) {
-          console.error('[SEARCH] Error accessing wordIndex table, may not exist in schema:', schemaError);
-          hasWordIndex = false;
-          
-          if (schemaError?.name === 'SchemaError' && 
-              typeof schemaError?.message === 'string' &&
-              schemaError.message.includes('topicId on object store wordIndex is not indexed')) {
-            console.warn('[SEARCH] topicId field is not properly indexed in wordIndex table');
-            wordIndexSupported = false;
+        // Check if messages are already indexed
+        const stats = await store.getSearchIndexStats();
+        console.log('[SEARCH] Current index stats:', stats);
+
+        // If we have no indexed messages, start indexing
+        if (stats.messagesCovered === 0) {
+          console.log('[SEARCH] No messages indexed, starting indexing process...');
+          setIsIndexing(true);
+
+          const success = await store.reindexUser(userId);
+
+          if (success) {
+            console.log('[SEARCH] Indexing completed successfully');
+          } else {
+            console.warn('[SEARCH] Indexing completed with some errors');
           }
-        }
-        
-        // Only try to get stats and index if the table exists and schema is correct
-        if (hasWordIndex && wordIndexSupported) {
-          try {
-            // Check if messages are already indexed
-            const stats = await getSearchIndexStats();
-            console.log('[SEARCH] Current index stats:', stats);
-            
-            // If we have no indexed messages, start indexing
-            if (stats.messagesCovered === 0) {
-              console.log('[SEARCH] No messages indexed, starting indexing process...');
-              setIsIndexing(true);
-              
-              // Reindex all user messages
-              const success = await reindexAllUserMessages(userId);
-              
-              if (success) {
-                console.log('[SEARCH] Indexing completed successfully');
-                setIndexingComplete(true);
-              } else {
-                console.warn('[SEARCH] Indexing completed with some errors');
-              }
-              
-              setIsIndexing(false);
-            } else {
-              console.log(`[SEARCH] Found ${stats.messagesCovered} messages already indexed`);
-              setIndexingComplete(true);
-            }
-          } catch (error) {
-            console.error('[SEARCH] Error checking or triggering indexing:', error);
-            setIsIndexing(false);
-            setIndexingComplete(true); // Set to true anyway so search can proceed
-          }
+
+          setIsIndexing(false);
         } else {
-          // If wordIndex table doesn't exist or has schema issues, skip indexing and just use direct search
-          console.log('[SEARCH] wordIndex table not available or has schema issues, will use direct search instead');
-          setIndexingComplete(true);
+          console.log(`[SEARCH] Found ${stats.messagesCovered} messages already indexed`);
         }
       } catch (error) {
         console.error('[SEARCH] Error checking or triggering indexing:', error);
         setIsIndexing(false);
-        setIndexingComplete(true); // Set to true anyway so search can proceed
+      } finally {
+        // Search can proceed either way — the store falls back to a content scan
+        setIndexingComplete(true);
       }
     };
-    
+
     checkAndTriggerIndexing();
-  }, [userId]);
+  }, [userId, store]);
 
   // Highlight search terms in text
   const highlightText = (text: string, query: string): string => {
@@ -135,96 +102,25 @@ const TailwindTopicSearch: React.FC<TailwindTopicSearchProps> = ({
         filters.role = selectedRole;
       }
       
-      try {
-        // Call the search function
-        const results = await advancedSearch(
-          searchQuery,
-          userId,
-          filters,
-          20 // Limit to 20 results
-        );
-        
-        // Filter by current topic if needed
-        const filteredResults = searchInCurrentTopic && currentTopicId
-          ? results.filter(result => result.topic.id === currentTopicId)
-          : results;
-        
-        // Add highlighted content
-        const processedResults = filteredResults.map(result => ({
-          ...result,
-          highlightedContent: highlightText(result.message.content, searchQuery)
-        }));
-        
-        setSearchResults(processedResults);
-      } catch (searchError) {
-        console.error('Advanced search failed, trying direct search:', searchError);
-        
-        // If advanced search fails, try a direct search without using the word index
-        try {
-          // Get all topics for this user
-          const userTopics = await db.topics
-            .where('userId')
-            .equals(userId)
-            .toArray();
-          
-          const topicIds = userTopics
-            .map((topic: Topic) => topic.id)
-            .filter((id): id is number => id !== undefined);
-          
-          // Prepare topic map for later use
-          const topicMap = new Map(
-            userTopics
-              .filter((topic: Topic) => topic.id !== undefined)
-              .map((topic: Topic) => [topic.id as number, topic])
-          );
-          
-          // If searching in current topic only, filter topic ids
-          const searchTopicIds = searchInCurrentTopic && currentTopicId
-            ? [currentTopicId]
-            : topicIds;
-          
-          // Get messages from these topics
-          let messages = await db.messages
-            .where('topicId')
-            .anyOf(searchTopicIds)
-            .toArray();
-          
-          // Filter by role if needed
-          if (selectedRole !== 'all') {
-            messages = messages.filter((msg: Message) => msg.role === selectedRole);
-          }
-          
-          // Filter by content containing the search query - using exact match
-          const searchTermLower = searchQuery.toLowerCase();
-          const matchingMessages = messages.filter((message: Message) => 
-            message.content.toLowerCase().includes(searchTermLower)
-          );
-          
-          // Format results
-          const results = matchingMessages
-            .sort((a: Message, b: Message) => b.timestamp - a.timestamp)
-            .slice(0, 20)
-            .map((message: Message) => ({
-              message,
-              topic: topicMap.get(message.topicId) as Topic,
-              highlightedContent: highlightText(message.content, searchQuery)
-            }))
-            .filter(result => result.topic !== undefined);
-          
-          console.log(`Direct search found ${results.length} results with exact matching`);
-          setSearchResults(results);
-        } catch (directSearchError) {
-          console.error('Direct search also failed:', directSearchError);
-          setSearchResults([]);
-        }
-      }
+      const results = await store.searchMessages(userId, searchQuery, { filters, limit: 20 });
+
+      // Filter by current topic if needed
+      const filteredResults = searchInCurrentTopic && currentTopicId
+        ? results.filter(result => result.topic.id === currentTopicId)
+        : results;
+
+      // Add highlighted content
+      setSearchResults(filteredResults.map(result => ({
+        ...result,
+        highlightedContent: highlightText(result.message.content, searchQuery)
+      })));
     } catch (error) {
       console.error('Search error:', error);
       setSearchResults([]);
     } finally {
       setIsSearching(false);
     }
-  }, [searchQuery, userId, selectedRole, searchInCurrentTopic, currentTopicId]);
+  }, [searchQuery, userId, selectedRole, searchInCurrentTopic, currentTopicId, store]);
 
   // Handle search submission via Enter key
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

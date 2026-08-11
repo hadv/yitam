@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import db from '../db/ChatHistoryDB';
+import { useChatHistoryStore } from '../contexts/ChatHistoryContext';
 
 export interface StorageSettings {
   retentionPolicyDays: number;
@@ -37,6 +37,8 @@ export interface CleanupResult {
 }
 
 export const useStorageSettings = (userId: string) => {
+  const store = useChatHistoryStore();
+
   // Storage management state
   const [retentionPolicyDays, setRetentionPolicyDays] = useState<number>(() => {
     const saved = localStorage.getItem('retentionPolicyDays');
@@ -67,7 +69,7 @@ export const useStorageSettings = (userId: string) => {
   useEffect(() => {
     const fetchStorageUsage = async () => {
       try {
-        const estimate = await db.getStorageEstimate();
+        const estimate = await store.getStorageEstimate();
         setStorageUsage(estimate);
       } catch (error) {
         console.error('Error fetching storage usage:', error);
@@ -75,11 +77,11 @@ export const useStorageSettings = (userId: string) => {
     };
 
     fetchStorageUsage();
-    
+
     // Set up a timer to refresh storage usage every 5 minutes
     const intervalId = setInterval(fetchStorageUsage, 5 * 60 * 1000);
     return () => clearInterval(intervalId);
-  }, []);
+  }, [store]);
 
   // Save settings when they change
   useEffect(() => {
@@ -107,7 +109,7 @@ export const useStorageSettings = (userId: string) => {
       if (result.success) {
         setCleanupResult(result);
         // Refresh storage usage
-        const estimate = await db.getStorageEstimate();
+        const estimate = await store.getStorageEstimate();
         setStorageUsage(estimate);
         return result;
       } else {
@@ -140,7 +142,7 @@ export const useStorageSettings = (userId: string) => {
       if (result.success) {
         setCleanupResult(result);
         // Refresh storage usage
-        const estimate = await db.getStorageEstimate();
+        const estimate = await store.getStorageEstimate();
         setStorageUsage(estimate);
         return result;
       } else {
@@ -230,7 +232,7 @@ export const useStorageSettings = (userId: string) => {
         }
         
         // Refresh storage usage
-        const estimate = await db.getStorageEstimate();
+        const estimate = await store.getStorageEstimate();
         setStorageUsage(estimate);
         return result;
       } else {

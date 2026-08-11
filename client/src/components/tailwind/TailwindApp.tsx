@@ -9,7 +9,7 @@ import { config } from '../../config';
 
 // Contexts
 import { ConsentProvider } from '../../contexts/ConsentContext';
-import { ChatHistoryProvider, useChatHistory } from '../../contexts/ChatHistoryContext';
+import { ChatHistoryProvider, useChatHistory, useChatHistoryStore } from '../../contexts/ChatHistoryContext';
 import { usePersona } from '../../contexts/PersonaContext';
 
 // Custom Hooks
@@ -41,10 +41,9 @@ import CacheDebugPanel from '../debug/CacheDebugPanel';
 
 // Utilities
 import { decryptApiKey } from '../../utils/encryption';
-import { debugIndexedDB, reinitializeDatabase } from '../../db/ChatHistoryDBUtil';
+
 import { checkDatabaseVersionMismatch, updateStoredDatabaseVersion, getSystemInfo } from '../../utils/version';
 import { generateTestTopics } from '../../utils/devTestUtils';
-import db from '../../db/ChatHistoryDB';
 import { sharedConversationService } from '../../services/SharedConversationService';
 
 // Global type declarations
@@ -112,6 +111,7 @@ function TailwindApp() {
   
   // Get context hooks
   const { isDBReady, dbError, storageUsage, forceDBInit } = useChatHistory();
+  const store = useChatHistoryStore();
   const { 
     currentPersonaId,
     setCurrentPersonaId,
@@ -146,7 +146,7 @@ function TailwindApp() {
 
     try {
       // Get the current topic from database to get its title
-      const topic = await db.topics.get(topicId);
+      const topic = await store.getTopic(topicId);
       if (!topic) {
         setSharedConversationInfo(null);
         return;
@@ -172,7 +172,7 @@ function TailwindApp() {
       console.error('Error checking if conversation is shared:', error);
       setSharedConversationInfo(null);
     }
-  }, [user?.email]);
+  }, [user?.email, store]);
 
   // Copy shared link to clipboard
   const copySharedLink = async () => {
@@ -252,15 +252,15 @@ function TailwindApp() {
   // Component mount effect - debug IndexedDB
   useEffect(() => {
     const debugDB = async () => {
-      const isAvailable = await debugIndexedDB();
-      
+      const isAvailable = await store.checkConnection();
+
       if (!isAvailable) {
-        await reinitializeDatabase();
+        await store.reinitialize();
       }
     };
-    
+
     debugDB();
-  }, []);
+  }, [store]);
 
   // Component mount effect - check database version and reset if needed
   useEffect(() => {
@@ -269,7 +269,7 @@ function TailwindApp() {
       if (checkDatabaseVersionMismatch()) {
         // Show a loading message
         // Reset the database
-        const success = await reinitializeDatabase();
+        const success = await store.reinitialize();
         
         if (success) {
           // Update stored version
@@ -283,7 +283,7 @@ function TailwindApp() {
       // Perform database cleanup to ensure consistency
       try {
         console.log('[APP] Running database cleanup to ensure data consistency');
-        const cleanupResult = await db.cleanupOrphanedData();
+        const cleanupResult = await store.cleanupOrphanedData();
         console.log('[APP] Database cleanup results:', cleanupResult);
       } catch (cleanupError) {
         console.error('[APP] Error during database cleanup:', cleanupError);
@@ -291,7 +291,7 @@ function TailwindApp() {
     };
     
     checkDbVersion();
-  }, []);
+  }, [store]);
 
   // Initialize the database as early as possible
   useEffect(() => {
@@ -348,9 +348,9 @@ function TailwindApp() {
     
     // Run after a short delay to allow the app to initialize
     setTimeout(() => {
-      generateTestTopics(user.email);
+      generateTestTopics(store, user.email);
     }, 1000);
-  }, [user]);
+  }, [user, store]);
 
   // Handle topic edit mode
   const handleTopicEditStart = useCallback(() => {

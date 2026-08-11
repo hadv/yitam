@@ -2,7 +2,8 @@ import React, { useEffect } from 'react';
 import TailwindMessageThread from './TailwindMessageThread';
 import TailwindMessageSender from './TailwindMessageSender';
 import TailwindMessagePersistence from './TailwindMessagePersistence';
-import db, { Topic } from '../../db/ChatHistoryDB';
+import type { Topic } from '../../db';
+import { useChatHistoryStore } from '../../contexts/ChatHistoryContext';
 import { useLoading } from '../../contexts/LoadingContext';
 import LoadingState from './common/LoadingState';
 
@@ -21,6 +22,7 @@ const TailwindMessageContainer: React.FC<MessageContainerProps> = ({
   onShareConversation,
   className = ''
 }) => {
+  const store = useChatHistoryStore();
   const { startLoading, stopLoading, setError } = useLoading();
   const [currentTopic, setCurrentTopic] = React.useState<Topic | null>(null);
   
@@ -36,7 +38,7 @@ const TailwindMessageContainer: React.FC<MessageContainerProps> = ({
       startLoading(loadingKey);
       
       try {
-        const topic = await db.topics.get(topicId);
+        const topic = await store.getTopic(topicId);
         setCurrentTopic(topic || null);
         setError(loadingKey, null);
       } catch (error) {
@@ -48,7 +50,7 @@ const TailwindMessageContainer: React.FC<MessageContainerProps> = ({
     };
     
     loadTopic();
-  }, [topicId, startLoading, stopLoading, setError]);
+  }, [topicId, startLoading, stopLoading, setError, store]);
 
   // Generate a unique loading key for this topic
   const loadingKey = topicId ? `topic-load-${topicId}` : 'no-topic';

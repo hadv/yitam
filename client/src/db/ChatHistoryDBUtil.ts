@@ -1,4 +1,5 @@
 import db, { Topic, Message, WordIndex } from './ChatHistoryDB';
+import { tokenizeForIndex, tokenizeQuery } from './searchTokenizer';
 import Dexie from 'dexie';
 
 // Debug IndexedDB
@@ -45,142 +46,6 @@ export async function debugIndexedDB(): Promise<boolean> {
   }
 }
 
-// Direct database write function bypassing Dexie
-export async function enhancedDirectDBWrite(topicId: number, message: { role: 'user' | 'assistant'; content: string; timestamp: number }): Promise<boolean> {
-  try {
-    console.log(`[DB UTIL] Starting direct write for ${message.role} message in topic ${topicId}`);
-    
-    // First check if database is open
-    if (!db.isOpen()) {
-      console.log('[DB UTIL] Database not open, opening now');
-      await db.open();
-    }
-    
-    // Check if topic exists
-    const topic = await db.topics.get(topicId);
-    if (!topic) {
-      console.error(`[DB UTIL] Topic ${topicId} not found for direct write`);
-      return false;
-    }
-    
-    // Try both methods: direct IndexedDB and Dexie API
-    try {
-      // Method 1: Using Dexie API
-      // Create message record
-      const messageData = {
-        topicId,
-        timestamp: message.timestamp,
-        role: message.role,
-        content: message.content,
-        type: 'text',
-        tokens: Math.ceil(message.content.length / 4)
-      };
-      
-      // Add message directly
-      const messageId = await db.messages.add(messageData);
-      console.log(`[DB UTIL] Added ${message.role} message with ID ${messageId} using Dexie API`);
-      
-      // Update topic statistics
-      await db.topics.update(topicId, {
-        lastActive: message.timestamp,
-        messageCnt: (topic.messageCnt || 0) + 1,
-        ...(message.role === 'user' 
-          ? { userMessageCnt: (topic.userMessageCnt || 0) + 1 }
-          : { assistantMessageCnt: (topic.assistantMessageCnt || 0) + 1 }),
-        totalTokens: (topic.totalTokens || 0) + Math.ceil(message.content.length / 4)
-      });
-      
-      console.log(`[DB UTIL] Updated topic ${topicId} statistics for ${message.role} message`);
-      return true;
-    } catch (dexieError) {
-      console.error(`[DB UTIL] Dexie API error:`, dexieError);
-      
-      // Method 2: Fallback to direct IndexedDB
-      console.log(`[DB UTIL] Attempting direct IndexedDB write as fallback`);
-      
-      // Open the database directly
-      const dbName = "ChatHistoryDB";
-      const request = window.indexedDB.open(dbName);
-      
-      return new Promise((resolve) => {
-        request.onerror = (event) => {
-          console.error("[DB UTIL] Error opening IndexedDB directly:", event);
-          resolve(false);
-        };
-        
-        request.onsuccess = (event) => {
-          const directDb = (event.target as IDBOpenDBRequest).result;
-          try {
-            const tx = directDb.transaction("messages", "readwrite");
-            const store = tx.objectStore("messages");
-            
-            const messageToAdd = {
-              topicId,
-              role: message.role,
-              content: message.content,
-              timestamp: message.timestamp,
-              type: "text",
-              tokens: Math.ceil(message.content.length / 4)
-            };
-            
-            const addRequest = store.add(messageToAdd);
-            
-            addRequest.onsuccess = () => {
-              console.log(`[DB UTIL] Successfully wrote message directly to IndexedDB for topic ${topicId}`);
-              
-              // Try to update topic stats
-              try {
-                const topicTx = directDb.transaction("topics", "readwrite");
-                const topicStore = topicTx.objectStore("topics");
-                
-                // Get current topic
-                const getRequest = topicStore.get(topicId);
-                getRequest.onsuccess = () => {
-                  const currentTopic = getRequest.result;
-                  if (currentTopic) {
-                    // Update stats
-                    currentTopic.lastActive = message.timestamp;
-                    currentTopic.messageCnt = (currentTopic.messageCnt || 0) + 1;
-                    
-                    if (message.role === 'user') {
-                      currentTopic.userMessageCnt = (currentTopic.userMessageCnt || 0) + 1;
-                    } else {
-                      currentTopic.assistantMessageCnt = (currentTopic.assistantMessageCnt || 0) + 1;
-                    }
-                    
-                    currentTopic.totalTokens = (currentTopic.totalTokens || 0) + Math.ceil(message.content.length / 4);
-                    
-                    // Put updated topic
-                    topicStore.put(currentTopic);
-                  }
-                };
-              } catch (statsError) {
-                console.error("[DB UTIL] Error updating topic stats in direct mode:", statsError);
-              }
-              
-              directDb.close();
-              resolve(true);
-            };
-            
-            addRequest.onerror = (e) => {
-              console.error("[DB UTIL] Error adding message directly:", e);
-              directDb.close();
-              resolve(false);
-            };
-          } catch (error) {
-            console.error("[DB UTIL] Error in direct IndexedDB transaction:", error);
-            directDb.close();
-            resolve(false);
-          }
-        };
-      });
-    }
-  } catch (error) {
-    console.error(`[DB UTIL] Error in direct database write:`, error);
-    return false;
-  }
-}
-
 // Reinitialize database
 export async function reinitializeDatabase(): Promise<boolean> {
   try {
@@ -206,17 +71,6 @@ export async function reinitializeDatabase(): Promise<boolean> {
   }
 }
 
-// Stop words for search index filtering (Vietnamese)
-const STOP_WORDS = new Set([
-  // Common Vietnamese stop words
-  'và', 'hoặc', 'là', 'của', 'có', 'không', 'được', 'các', 'những', 'một', 'trong',
-  'để', 'từ', 'với', 'cho', 'bởi', 'tại', 'về', 'theo', 'trên', 'khi', 'như', 'nếu',
-  'này', 'đã', 'đó', 'vì', 'sẽ', 'đến', 'phải', 'còn', 'bị', 'thì', 'cũng', 'nên', 
-  'rằng', 'tôi', 'bạn', 'họ', 'chúng', 'ta', 'mình', 'ai', 'mà', 'nhưng', 'hay',
-  'làm', 'rất', 'thế', 'đang', 'lại', 'sau', 'trước', 'vậy', 'đây', 'kia', 'thật',
-  'quá', 'cần', 'chỉ', 'đều', 'mới', 'cứ', 'lên', 'xuống', 'ra', 'vào', 'ngoài', 'qua'
-]);
-
 /**
  * Index message content for search functionality
  */
@@ -226,20 +80,8 @@ export async function indexMessageContent(content: string, topicId: number, mess
   }
 
   try {
-    // Tokenize and filter the content - more permissive for Vietnamese
-    const words = content.toLowerCase()
-      .split(/\s+|[,.!?;:()"']/g) // Split by whitespace and punctuation
-      .map(word => word.trim())
-      .filter(word => 
-        word.length >= 2 && // Reduced from 3 to 2 to better handle Vietnamese words
-        word.length <= 40 && // Increased from 30 to 40 to handle longer compound words
-        !STOP_WORDS.has(word) &&
-        !/^\d+$/.test(word) // Not just digits
-      );
+    const uniqueWords = tokenizeForIndex(content);
 
-    // Store in word index
-    const uniqueWords = [...new Set(words)];
-    
     if (uniqueWords.length === 0) {
       return;
     }
@@ -786,12 +628,8 @@ export async function advancedSearch(
     
     console.log(`[SEARCH] Created topic map with ${topicMap.size} entries`);
     
-    // Tokenize query with more permissive rules for Vietnamese
-    let words = query.toLowerCase()
-      .split(/\s+|[,.!?;:()"']/g)
-      .map(word => word.trim())
-      .filter(word => word.length >= 2); // More permissive minimum length for Vietnamese
-    
+    const words = tokenizeQuery(query);
+
     if (words.length === 0) {
       return [];
     }
@@ -1175,67 +1013,3 @@ export async function verifyDatabaseFunctionality(): Promise<boolean> {
     return false;
   }
 }
-
-// Add back the original directDBWrite function declaration
-export async function directDBWrite(topicId: number, message: { role: 'user' | 'assistant'; content: string; timestamp: number }): Promise<boolean> {
-  try {
-    console.log(`Attempting direct IndexedDB write for topic ${topicId}`);
-    
-    // Open the database directly
-    const dbName = "ChatHistoryDB";
-    const request = window.indexedDB.open(dbName);
-    
-    return new Promise((resolve) => {
-      request.onerror = (event) => {
-        console.error("Error opening IndexedDB directly:", event);
-        resolve(false);
-      };
-      
-      request.onsuccess = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        try {
-          const tx = db.transaction("messages", "readwrite");
-          const store = tx.objectStore("messages");
-          
-          const messageToAdd = {
-            topicId,
-            role: message.role,
-            content: message.content,
-            timestamp: message.timestamp,
-            type: "text",
-            tokens: Math.ceil(message.content.length / 4)
-          };
-          
-          const addRequest = store.add(messageToAdd);
-          
-          addRequest.onsuccess = () => {
-            console.log(`Successfully wrote message directly to IndexedDB for topic ${topicId}`);
-            db.close();
-            resolve(true);
-          };
-          
-          addRequest.onerror = (e) => {
-            console.error("Error adding message directly:", e);
-            db.close();
-            resolve(false);
-          };
-          
-          tx.oncomplete = () => {
-            console.log("Transaction completed");
-          };
-          
-          tx.onerror = (e) => {
-            console.error("Transaction error:", e);
-          };
-        } catch (error) {
-          console.error("Error in direct IndexedDB transaction:", error);
-          db.close();
-          resolve(false);
-        }
-      };
-    });
-  } catch (error) {
-    console.error("Error in directDBWrite:", error);
-    return false;
-  }
-} 

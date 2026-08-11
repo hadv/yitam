@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { sharedConversationService } from '../../services/SharedConversationService';
-import db, { Topic, Message } from '../../db/ChatHistoryDB';
+import type { Message } from '../../db';
+import { useChatHistoryStore } from '../../contexts/ChatHistoryContext';
 import { useAuth } from '../../hooks/useAuth';
 import { calculateConversationSize, formatSize, getSizeReductionSuggestions } from '../../utils/conversationSize';
 
@@ -20,6 +21,7 @@ interface ConversationMessage {
 }
 
 const TailwindShareConversation: React.FC<ShareConversationProps> = ({ topicId, onClose, onManageShared, onConversationShared }) => {
+  const store = useChatHistoryStore();
   const [isSharing, setIsSharing] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -35,13 +37,10 @@ const TailwindShareConversation: React.FC<ShareConversationProps> = ({ topicId, 
   useEffect(() => {
     const calculateSize = async () => {
       try {
-        const topic = await db.topics.get(topicId);
+        const topic = await store.getTopic(topicId);
         if (!topic) return;
 
-        const messages = await db.messages
-          .where('topicId')
-          .equals(topicId)
-          .sortBy('timestamp');
+        const messages = await store.listMessages(topicId);
 
         const conversationMessages: ConversationMessage[] = messages.map((msg: Message) => ({
           id: msg.id?.toString() || Date.now().toString(),
@@ -70,7 +69,7 @@ const TailwindShareConversation: React.FC<ShareConversationProps> = ({ topicId, 
     };
 
     calculateSize();
-  }, [topicId, expirationDays]);
+  }, [topicId, expirationDays, store]);
 
   const handleShare = async () => {
     try {
@@ -78,15 +77,12 @@ const TailwindShareConversation: React.FC<ShareConversationProps> = ({ topicId, 
       setError(null);
 
       // Get topic and messages from local database
-      const topic = await db.topics.get(topicId);
+      const topic = await store.getTopic(topicId);
       if (!topic) {
         throw new Error('Conversation not found');
       }
 
-      const messages = await db.messages
-        .where('topicId')
-        .equals(topicId)
-        .sortBy('timestamp');
+      const messages = await store.listMessages(topicId);
 
       if (messages.length === 0) {
         throw new Error('No messages found in this conversation');
