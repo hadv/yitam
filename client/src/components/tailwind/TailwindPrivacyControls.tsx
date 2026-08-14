@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { clearUserData } from '../../db/ChatHistoryDBUtil';
+import { useChatHistoryStore } from '../../contexts/ChatHistoryContext';
 
 interface TailwindPrivacyControlsProps {
   userId: string;
@@ -10,6 +10,7 @@ const TailwindPrivacyControls: React.FC<TailwindPrivacyControlsProps> = ({
   userId,
   onDataDeleted
 }) => {
+  const store = useChatHistoryStore();
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteSuccess, setDeleteSuccess] = useState(false);
@@ -27,8 +28,7 @@ const TailwindPrivacyControls: React.FC<TailwindPrivacyControlsProps> = ({
       setErrorMessage(null);
       setDeleteSuccess(false);
 
-      // Call the clearUserData function from ChatHistoryDBUtil
-      const success = await clearUserData(userId);
+      const success = await store.clearUserData(userId);
 
       if (success) {
         setDeleteSuccess(true);

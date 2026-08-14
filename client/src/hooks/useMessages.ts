@@ -3,11 +3,13 @@ import * as ReactDOM from 'react-dom';
 import { Message, ChatSocket } from '../types/chat';
 import { usePersona } from '../contexts/PersonaContext';
 import { AVAILABLE_PERSONAS } from '../components/tailwind/TailwindPersonaSelector';
-import db, { Message as DBMessage } from '../db/ChatHistoryDB';
+import type { Message as DBMessage } from '../db';
+import { useChatHistoryStore } from '../contexts/ChatHistoryContext';
 import { extractTitleFromBotText } from '../utils/titleExtraction';
 import { config } from '../config';
 
 export const useMessages = (socket: ChatSocket, user: any) => {
+  const store = useChatHistoryStore();
   const [messages, setMessages] = useState<Message[]>([]);
   const [hasUserSentMessage, setHasUserSentMessage] = useState(false);
   const [currentTopicId, setCurrentTopicId] = useState<number | undefined>(undefined);
@@ -312,7 +314,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
       // Check if we have an existing topic
       if (currentTopicRef.current) {
         try {
-          const existingTopic = await db.topics.get(currentTopicRef.current);
+          const existingTopic = await store.getTopic(currentTopicRef.current);
           if (existingTopic && existingTopic.personaId) {
             // If topic already exists, use its persona
             personaIdForTopic = existingTopic.personaId;
@@ -336,7 +338,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
         
         try {
           // Get the existing topic
-          const existingTopic = await db.topics.get(currentTopicRef.current);
+          const existingTopic = await store.getTopic(currentTopicRef.current);
           
           if (existingTopic) {
             // CRITICAL: Use the topic's existing persona ID, NOT the current UI persona
@@ -346,7 +348,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
             console.log(`[TOPIC DEBUG] Existing topic has persona: ${topicPersona}`);
             
             // Update the existing topic with current values
-            await db.topics.update(currentTopicRef.current, {
+            await store.updateTopic(currentTopicRef.current, {
               lastActive: Date.now(),
               messageCnt: (existingTopic.messageCnt || 0) + 1,
               assistantMessageCnt: (existingTopic.assistantMessageCnt || 0) + 1,
@@ -354,7 +356,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
             });
             
             // Save the bot message to the existing topic
-            const dbMessageId = await db.messages.put({
+            const dbMessageId = await store.putMessage({
               id: Date.now(),
               topicId: currentTopicRef.current,
               timestamp: botMessage.timestamp || Date.now(),
@@ -409,7 +411,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
       console.log(`[TOPIC DEBUG] Creating new topic with persona: ${finalPersonaId}`);
       
       // Create topic with PUT instead of ADD
-      await db.topics.put({
+      await store.putTopic({
         id: timestamp,
         userId: user.email,
         title: extractedTitle,
@@ -429,13 +431,13 @@ export const useMessages = (socket: ChatSocket, user: any) => {
       console.log(`[TOPIC DEBUG] Successfully created topic with forced ID: ${topicId} and persona: ${finalPersonaId}`);
       
       // CRITICAL: Verify the topic was created with the correct persona
-      const createdTopic = await db.topics.get(topicId);
+      const createdTopic = await store.getTopic(topicId);
       if (createdTopic) {
         if (createdTopic.personaId !== finalPersonaId) {
           console.error(`[TOPIC DEBUG] PERSONA MISMATCH: Expected ${finalPersonaId}, got ${createdTopic.personaId}`);
           
           // Fix the persona ID if it doesn't match
-          await db.topics.update(topicId, { personaId: finalPersonaId });
+          await store.updateTopic(topicId, { personaId: finalPersonaId });
           console.log(`[TOPIC DEBUG] Forced persona update to: ${finalPersonaId}`);
         } else {
           console.log(`[TOPIC DEBUG] Verified topic ${topicId} created with correct persona: ${createdTopic.personaId}`);
@@ -453,7 +455,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
       });
       
       // Save user message with put
-      const userDbMessageId = await db.messages.put({
+      const userDbMessageId = await store.putMessage({
         id: timestamp + 1,
         topicId: topicId,
         timestamp: lastUserMessage.timestamp || timestamp - 1000,
@@ -464,7 +466,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
       });
       
       // Save bot message with put
-      const botDbMessageId = await db.messages.put({
+      const botDbMessageId = await store.putMessage({
         id: timestamp + 2,
         topicId: topicId,
         timestamp: botMessage.timestamp || timestamp,
@@ -499,7 +501,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
     } catch (error) {
       console.error('[TOPIC DEBUG] Error in DIRECT topic creation:', error);
     }
-  }, [user, currentPersonaId, absoluteForcePersona, setIsPersonaLocked]);
+  }, [user, currentPersonaId, absoluteForcePersona, setIsPersonaLocked, store]);
 
   // Send message function
   const sendMessage = useCallback((text: string) => {
@@ -596,7 +598,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
       (async () => {
         try {
           // Verify the topic exists and get its details
-          const topic = await db.topics.get(topicId);
+          const topic = await store.getTopic(topicId);
           
           if (!topic) {
             console.error(`[TOPIC DEBUG] Cannot save message - topic ${topicId} not found`);
@@ -607,7 +609,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
           if (!topic.personaId) {
             // Set the topic's persona to the current UI persona
             console.log(`[PERSONA DEBUG] Topic ${topicId} has no persona ID, setting to current: ${currentPersonaId}`);
-            await db.topics.update(topicId, { personaId: currentPersonaId });
+            await store.updateTopic(topicId, { personaId: currentPersonaId });
           } else if (topic.personaId !== currentPersonaId) {
             // CRITICAL FIX: If the topic's persona differs from the current UI persona,
             // update the UI to match the topic's persona
@@ -616,7 +618,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
           }
           
           // Save the user message
-          const userDbMessageId = await db.messages.put({
+          const userDbMessageId = await store.putMessage({
             id: timestamp,
             topicId: topicId,
             timestamp: timestamp,
@@ -639,7 +641,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
           console.log('[ID DEBUG] User message UI ID:', userMessageId, 'Database ID:', userDbMessageId);
           
           // Update topic statistics
-          await db.topics.update(topicId, {
+          await store.updateTopic(topicId, {
             lastActive: timestamp,
             messageCnt: (topic.messageCnt || 0) + 1,
             userMessageCnt: (topic.userMessageCnt || 0) + 1,
@@ -667,7 +669,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
     });
     
     console.log(`[PERSONA DEBUG] Message sent with persona: ${capturedPersonaId}`);
-  }, [socket, updateMessages, currentPersonaId, setIsPersonaLocked, absoluteForcePersona]);
+  }, [socket, updateMessages, currentPersonaId, setIsPersonaLocked, absoluteForcePersona, store]);
 
   // Start a new chat
   const startNewChat = useCallback(() => {
@@ -744,13 +746,13 @@ export const useMessages = (socket: ChatSocket, user: any) => {
       try {
         // Force database re-open to ensure fresh connection
         console.log('[TOPIC DEBUG] Ensuring fresh database connection');
-        if (db.isOpen()) {
-          await db.close();
+        if (store.isOpen()) {
+          await store.close();
         }
-        await db.open();
+        await store.open();
         
         // Verify topic exists and has correct message count
-        const topic = await db.topics.get(topicId);
+        const topic = await store.getTopic(topicId);
         
         if (!topic) {
           console.error(`[PERSONA DEBUG] Topic ${topicId} not found in database`);
@@ -767,10 +769,10 @@ export const useMessages = (socket: ChatSocket, user: any) => {
         
         // Update topic message count first to ensure it's accurate
         console.log(`[TOPIC DEBUG] Updating message count for topic ${topicId}`);
-        await db.updateTopicMessageCount(topicId);
+        await store.recountTopic(topicId);
         
         // Now count messages after updating to get accurate count
-        const messageCount = await db.messages.where('topicId').equals(topicId).count();
+        const messageCount = await store.countMessages(topicId);
         console.log(`[TOPIC DEBUG] Topic ${topicId} has ${messageCount} messages after count verification`);
         
         // If topic is empty (ONLY if it has exactly 0 messages)
@@ -779,7 +781,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
           
           try {
             // Delete the topic
-            await db.topics.delete(topicId);
+            await store.deleteTopic(topicId);
             
             console.log(`[TOPIC DEBUG] Empty topic ${topicId} has been deleted`);
             
@@ -801,12 +803,12 @@ export const useMessages = (socket: ChatSocket, user: any) => {
           console.warn(`[PERSONA DEBUG] Topic ${topicId} has no persona ID, will assign current UI persona: ${currentPersonaId}`);
 
           // Update the topic with the current persona (but don't update lastActive)
-          await db.topics.update(topicId, {
+          await store.updateTopic(topicId, {
             personaId: currentPersonaId
           });
 
           // Re-fetch the topic to ensure we have the updated version
-          const updatedTopic = await db.topics.get(topicId);
+          const updatedTopic = await store.getTopic(topicId);
           if (updatedTopic && updatedTopic.personaId) {
             console.log(`[PERSONA DEBUG] Topic ${topicId} now has persona ID: ${updatedTopic.personaId}`);
             topic.personaId = updatedTopic.personaId;
@@ -836,32 +838,22 @@ export const useMessages = (socket: ChatSocket, user: any) => {
         // Now load messages for this topic - CRITICAL: Ensure we're getting fresh data
         console.log(`[TOPIC DEBUG] Fetching messages for topic ${topicId} with forced database refresh`);
         
-        // Clear transaction cache to ensure fresh data
-        await db.transaction('r', db.messages, () => {});
-        
-        // Get messages with direct table access
         let topicMessages: DBMessage[] = [];
-        
+
         try {
-          topicMessages = await db.messages
-            .where('topicId')
-            .equals(topicId)
-            .sortBy('timestamp');
-          
+          topicMessages = await store.listMessages(topicId);
+
           console.log(`[TOPIC DEBUG] Successfully loaded ${topicMessages.length} messages for topic ${topicId}`);
         } catch (fetchError) {
           console.error(`[TOPIC DEBUG] Error fetching messages:`, fetchError);
-          
+
           // Try one more time with a clean connection
           try {
-            await db.close();
-            await db.open();
-            
-            topicMessages = await db.messages
-              .where('topicId')
-              .equals(topicId)
-              .sortBy('timestamp');
-            
+            await store.close();
+            await store.open();
+
+            topicMessages = await store.listMessages(topicId);
+
             console.log(`[TOPIC DEBUG] Successfully loaded ${topicMessages.length} messages on second attempt`);
           } catch (secondError) {
             console.error(`[TOPIC DEBUG] Failed to load messages on second attempt:`, secondError);
@@ -875,7 +867,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
           
           try {
             // Delete the topic
-            await db.topics.delete(topicId);
+            await store.deleteTopic(topicId);
             console.log(`[TOPIC DEBUG] Empty topic ${topicId} has been deleted after finding no messages`);
             
             // Start a new chat
@@ -930,13 +922,13 @@ export const useMessages = (socket: ChatSocket, user: any) => {
         setHasUserSentMessage(true);
         
         // Make one final check that message count matches database
-        const finalCount = await db.messages.where('topicId').equals(topicId).count();
+        const finalCount = await store.countMessages(topicId);
         console.log(`[TOPIC DEBUG] Final verification: Topic ${topicId} has ${finalCount} messages, UI shows ${uiMessages.length}`);
         
         // Update topic message count if there's a discrepancy
         if (finalCount !== topic.messageCnt) {
           console.log(`[TOPIC DEBUG] Updating topic message count from ${topic.messageCnt} to ${finalCount}`);
-          await db.updateTopicMessageCount(topicId);
+          await store.recountTopic(topicId);
           
           // Trigger refresh of topic list UI
           if (window.triggerTopicListRefresh) {
@@ -977,7 +969,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
       
       updateMessages([errorMessage]);
     }
-  }, [user, updateMessages, currentPersonaId, absoluteForcePersona, resetPersona, setIsPersonaLocked, startNewChat]);
+  }, [user, updateMessages, currentPersonaId, absoluteForcePersona, resetPersona, setIsPersonaLocked, startNewChat, store]);
 
   // Create a new topic
   const createNewTopic = useCallback(async (title: string) => {
@@ -987,7 +979,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
       console.log(`[TOPIC DEBUG] Creating new topic with persona: ${currentPersonaId}`);
       
       // Create a new topic
-      const topicId = await db.topics.add({
+      const topicId = await store.createTopic({
         userId: user.email,
         title,
         createdAt: Date.now(),
@@ -1022,7 +1014,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
       console.error('[TOPIC DEBUG] Error creating new topic:', error);
       return undefined;
     }
-  }, [user, updateMessages, currentPersonaId]);
+  }, [user, updateMessages, currentPersonaId, store]);
 
   // Initialize welcome message when component mounts
   useEffect(() => {

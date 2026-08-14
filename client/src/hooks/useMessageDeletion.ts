@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Message } from '../types/chat';
-import db from '../db/ChatHistoryDB';
+import { useChatHistoryStore } from '../contexts/ChatHistoryContext';
 
 export const useMessageDeletion = (
   messages: Message[],
@@ -10,6 +10,7 @@ export const useMessageDeletion = (
   setCurrentTopicId: (id: number | undefined) => void
 ) => {
   const [messageToDelete, setMessageToDelete] = useState<string | null>(null);
+  const store = useChatHistoryStore();
 
   // Handle message deletion request
   const handleDeleteMessage = useCallback((messageId: string) => {
@@ -43,66 +44,48 @@ export const useMessageDeletion = (
       if (messageObj.dbMessageId) {
         try {
           // First verify the message exists in the database
-          const messageInDb = await db.messages.get(messageObj.dbMessageId);
+          const messageInDb = await store.getMessage(messageObj.dbMessageId);
           if (!messageInDb) {
             console.warn(`[DELETE DEBUG] Message ${messageObj.dbMessageId} not found in database`);
             setMessageToDelete(null);
             return;
           }
-          
-          // Delete from database using direct database deletion for reliability
-          console.log(`[DELETE DEBUG] Forcefully deleting message ${messageObj.dbMessageId} from database`);
-          const deleteResult = await db.forceDeleteMessage(messageObj.dbMessageId);
-          
+
+          console.log(`[DELETE DEBUG] Deleting message ${messageObj.dbMessageId} from database`);
+          const deleteResult = await store.deleteMessage(messageObj.dbMessageId);
+
           if (!deleteResult) {
             console.error(`[DELETE DEBUG] Failed to delete message ${messageObj.dbMessageId} from database`);
             alert('Failed to delete message. Please try again later.');
             setMessageToDelete(null);
             return;
           }
-          
+
           console.log(`[DELETE DEBUG] Message ${messageObj.dbMessageId} deleted successfully from database`);
-          
-          // Double-check message was actually deleted
-          const verifyDeleted = await db.messages.get(messageObj.dbMessageId);
-          if (verifyDeleted) {
-            console.error(`[DELETE DEBUG] Critical error: Message ${messageObj.dbMessageId} still exists in database after deletion`);
-            // Try one more time with direct table access
-            await db.messages.where('id').equals(messageObj.dbMessageId).delete();
-            
-            // Check again
-            const secondCheck = await db.messages.get(messageObj.dbMessageId);
-            if (secondCheck) {
-              console.error(`[DELETE DEBUG] Fatal error: Message ${messageObj.dbMessageId} cannot be deleted`);
-              alert('Failed to delete message. Please try again later.');
-              setMessageToDelete(null);
-              return;
-            }
-          }
-          
+
           // Now check the message count for the topic
-          const remainingMessages = await db.messages.where('topicId').equals(topicToCheck).count();
+          const remainingMessages = await store.countMessages(topicToCheck);
           console.log(`[DELETE DEBUG] Topic ${topicToCheck} now has ${remainingMessages} messages`);
-          
+
           // If no messages remain, delete the topic
           if (remainingMessages === 0) {
             console.log(`[DELETE DEBUG] No messages left in topic ${topicToCheck}, deleting topic`);
-            await db.deleteTopic(topicToCheck);
+            await store.deleteTopic(topicToCheck);
             console.log(`[DELETE DEBUG] Topic ${topicToCheck} deleted successfully`);
-            
+
             // Update UI state
             setCurrentTopicId(undefined);
             startNewChat();
-            
+
             // Trigger topic list refresh
             if (window.triggerTopicListRefresh) {
               window.triggerTopicListRefresh();
             }
           } else {
             // Update topic count and lastActive in the database
-            const topic = await db.topics.get(topicToCheck);
+            const topic = await store.getTopic(topicToCheck);
             if (topic) {
-              await db.topics.update(topicToCheck, {
+              await store.updateTopic(topicToCheck, {
                 messageCnt: remainingMessages,
                 lastActive: Date.now() // Update lastActive - deleting messages is user activity
               });
@@ -126,7 +109,7 @@ export const useMessageDeletion = (
       // Clear the message to delete
       setMessageToDelete(null);
     }
-  }, [messageToDelete, messages, setMessages, currentTopicId, startNewChat, setCurrentTopicId]);
+  }, [messageToDelete, messages, setMessages, currentTopicId, startNewChat, setCurrentTopicId, store]);
 
   // Cancel message deletion
   const cancelDeleteMessage = useCallback(() => {

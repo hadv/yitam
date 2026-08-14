@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
-import db, { Topic } from '../db/ChatHistoryDB';
-import { cleanupOldData } from '../db/ChatHistoryDBUtil';
-import { useChatHistory } from '../contexts/ChatHistoryContext';
+import type { Topic } from '../db';
+import { useChatHistory, useChatHistoryStore } from '../contexts/ChatHistoryContext';
 import { config } from '../config';
 
 interface UseTopicManagementProps {
@@ -27,6 +26,7 @@ export const useTopicManagement = ({ userId }: UseTopicManagementProps): UseTopi
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const { isDBReady } = useChatHistory();
+  const store = useChatHistoryStore();
 
   /**
    * Load topics for the current user
@@ -42,21 +42,15 @@ export const useTopicManagement = ({ userId }: UseTopicManagementProps): UseTopi
     setError(null);
 
     try {
-      // Get topics sorted by last active time (newest first)
-      const userTopics = await db.topics
-        .where('userId')
-        .equals(userId)
-        .sortBy('lastActive');
-      
-      // Reverse to get newest first
-      setTopics(userTopics.reverse());
+      // Topics come back newest-active first
+      setTopics(await store.listTopics(userId));
     } catch (error) {
       console.error('Error loading topics:', error);
       setError('Failed to load chat topics');
     } finally {
       setIsLoading(false);
     }
-  }, [userId, isDBReady]);
+  }, [userId, isDBReady, store]);
 
   /**
    * Load topics when component mounts or userId changes
@@ -76,7 +70,7 @@ export const useTopicManagement = ({ userId }: UseTopicManagementProps): UseTopi
 
     try {
       const now = Date.now();
-      const topicId = await db.topics.add({
+      const topicId = await store.createTopic({
         userId,
         title,
         createdAt: now,
@@ -99,7 +93,7 @@ export const useTopicManagement = ({ userId }: UseTopicManagementProps): UseTopi
       setError('Failed to create new topic');
       return undefined;
     }
-  }, [userId, isDBReady, loadTopics]);
+  }, [userId, isDBReady, loadTopics, store]);
 
   /**
    * Update an existing topic
@@ -112,30 +106,30 @@ export const useTopicManagement = ({ userId }: UseTopicManagementProps): UseTopi
 
     try {
       // Get current topic
-      const topic = await db.topics.get(topicId);
-      
+      const topic = await store.getTopic(topicId);
+
       if (!topic) {
         throw new Error('Topic not found');
       }
-      
+
       // Check if this topic belongs to the current user
       if (topic.userId !== userId) {
         throw new Error('Unauthorized access to topic');
       }
-      
+
       // Update the topic
-      await db.topics.update(topicId, updates);
-      
+      await store.updateTopic(topicId, updates);
+
       // Reload topics to refresh the list
       await loadTopics();
-      
+
       return true;
     } catch (error) {
       console.error('Error updating topic:', error);
       setError('Failed to update topic');
       return false;
     }
-  }, [userId, isDBReady, loadTopics]);
+  }, [userId, isDBReady, loadTopics, store]);
 
   /**
    * Delete a topic and all associated messages
@@ -148,54 +142,30 @@ export const useTopicManagement = ({ userId }: UseTopicManagementProps): UseTopi
 
     try {
       // Get current topic
-      const topic = await db.topics.get(topicId);
-      
+      const topic = await store.getTopic(topicId);
+
       if (!topic) {
         throw new Error('Topic not found');
       }
-      
+
       // Check if this topic belongs to the current user
       if (topic.userId !== userId) {
         throw new Error('Unauthorized access to topic');
       }
-      
-      // Delete in a transaction
-      await db.transaction('rw', [db.topics, db.messages, db.wordIndex], async () => {
-        // Get message IDs for this topic
-        const messageIds = await db.messages
-          .where('topicId')
-          .equals(topicId)
-          .toArray()
-          .then(messages => messages.map(msg => msg.id).filter(id => id !== undefined) as number[]);
-        
-        // Delete word indices for these messages
-        await Promise.all(messageIds.map(async (messageId) => {
-          await db.wordIndex
-            .where('messageId')
-            .equals(messageId)
-            .delete();
-        }));
-        
-        // Delete messages
-        await db.messages
-          .where('topicId')
-          .equals(topicId)
-          .delete();
-        
-        // Delete topic
-        await db.topics.delete(topicId);
-      });
-      
+
+      // Cascades to the topic's messages and word index entries
+      await store.deleteTopic(topicId);
+
       // Reload topics to refresh the list
       await loadTopics();
-      
+
       return true;
     } catch (error) {
       console.error('Error deleting topic:', error);
       setError('Failed to delete topic');
       return false;
     }
-  }, [userId, isDBReady, loadTopics]);
+  }, [userId, isDBReady, loadTopics, store]);
 
   /**
    * Clean up old data if storage is approaching limits
@@ -206,14 +176,14 @@ export const useTopicManagement = ({ userId }: UseTopicManagementProps): UseTopi
     }
 
     try {
-      await cleanupOldData(userId);
+      await store.cleanupOldData(userId);
       // Reload topics to refresh the list
       await loadTopics();
     } catch (error) {
       console.error('Error cleaning up storage:', error);
       setError('Failed to clean up storage');
     }
-  }, [userId, isDBReady, loadTopics]);
+  }, [userId, isDBReady, loadTopics, store]);
 
   // Load topics on initial render
   useEffect(() => {

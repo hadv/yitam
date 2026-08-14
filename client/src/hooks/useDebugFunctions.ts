@@ -1,9 +1,7 @@
 import { useEffect } from 'react';
 import { setupWindowDebugFunctions } from '../utils/debugging';
 import { extractTitleFromBotText } from '../utils/titleExtraction';
-import { reindexAllUserMessages, getSearchIndexStats } from '../utils/searchUtils';
-import { advancedSearch } from '../db/ChatHistoryDBUtil';
-import db from '../db/ChatHistoryDB';
+import { useChatHistoryStore } from '../contexts/ChatHistoryContext';
 
 export const useDebugFunctions = (
   getCurrentPersonaId: () => string | undefined,
@@ -11,6 +9,8 @@ export const useDebugFunctions = (
   user: { email: string } | null,
   currentTopicId: number | undefined
 ) => {
+  const store = useChatHistoryStore();
+
   useEffect(() => {
     // Type cast getCurrentPersonaId to match expected signature in setupWindowDebugFunctions
     const getPersonaIdForDebug = (() => getCurrentPersonaId() || '') as () => string;
@@ -26,17 +26,14 @@ export const useDebugFunctions = (
           console.log(`[EXPORT DEBUG] Exporting topic ${topicId}`);
           
           // Get the topic
-          const topic = await db.topics.get(topicId);
+          const topic = await store.getTopic(topicId);
           if (!topic) {
             console.error(`[EXPORT DEBUG] Topic ${topicId} not found`);
             return { success: false, error: 'Topic not found' };
           }
-          
+
           // Get all messages for this topic
-          const messages = await db.messages
-            .where('topicId')
-            .equals(topicId)
-            .toArray();
+          const messages = await store.listMessages(topicId);
           
           // Create export data
           const exportData = {
@@ -91,7 +88,7 @@ export const useDebugFunctions = (
     // Add search-related debug functions
     window.reindexAllMessages = async (userId: string) => {
       console.log(`[SEARCH DEBUG] Reindexing all messages for user ${userId}`);
-      return await reindexAllUserMessages(userId);
+      return await store.reindexUser(userId);
     };
 
     window.reindexCurrentTopic = async () => {
@@ -100,14 +97,12 @@ export const useDebugFunctions = (
         return false;
       }
       console.log(`[SEARCH DEBUG] Reindexing current topic ${currentTopicId}`);
-      const { reindexTopic } = await import('../db/ChatHistoryDBUtil');
-      const success = await reindexTopic(currentTopicId);
-      return success;
+      return await store.reindexTopic(currentTopicId);
     };
 
     window.getSearchStats = async () => {
       console.log('[SEARCH DEBUG] Getting search index statistics');
-      return await getSearchIndexStats();
+      return await store.getSearchIndexStats();
     };
 
     window.searchMessages = async (query: string, filters = {}) => {
@@ -116,7 +111,7 @@ export const useDebugFunctions = (
         return [];
       }
       console.log(`[SEARCH DEBUG] Searching for "${query}" with filters:`, filters);
-      return await advancedSearch(query, user.email, filters);
+      return await store.searchMessages(user.email, query, { filters });
     };
     
     return () => {
@@ -127,7 +122,7 @@ export const useDebugFunctions = (
       delete window.getSearchStats;
       delete window.searchMessages;
     };
-  }, [getCurrentPersonaId, absoluteForcePersona, user, currentTopicId]);
+  }, [getCurrentPersonaId, absoluteForcePersona, user, currentTopicId, store]);
 };
 
 export default useDebugFunctions; 

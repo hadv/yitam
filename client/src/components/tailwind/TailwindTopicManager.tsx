@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import db, { Topic } from '../../db/ChatHistoryDB';
+import type { Topic } from '../../db';
+import { useChatHistoryStore } from '../../contexts/ChatHistoryContext';
 import TailwindTopicList from './TailwindTopicList';
 import TailwindTopicEditor from './TailwindTopicEditor';
 import TailwindTopicMetadata from './TailwindTopicMetadata';
@@ -24,6 +25,7 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
   onTopicEditEnd,
   isEditing
 }) => {
+  const store = useChatHistoryStore();
   const [topics, setTopics] = useState<Topic[]>([]);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [topicToEdit, setTopicToEdit] = useState<Topic | undefined>(undefined);
@@ -36,15 +38,12 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
   const loadTopics = async () => {
     try {
       setIsLoading(true);
-      const userTopics = await db.topics
-        .where('userId')
-        .equals(userId)
-        .toArray();
+      const userTopics = await store.listTopics(userId);
       setTopics(userTopics);
 
       // If we have a current topic ID, fetch its details
       if (currentTopicId) {
-        const currentTopic = await db.topics.get(currentTopicId);
+        const currentTopic = await store.getTopic(currentTopicId);
         if (currentTopic) {
           setSelectedTopicDetails(currentTopic);
         } else {
@@ -150,7 +149,7 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
       console.log(`[TOPIC MANAGER] Current topic ID changed to ${currentTopicId}, fetching details`);
       
       // Fetch the current topic's details
-      db.topics.get(currentTopicId)
+      store.getTopic(currentTopicId)
         .then(topic => {
           if (topic) {
             setSelectedTopicDetails(topic);
@@ -167,7 +166,7 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
       // No current topic ID, clear selected topic details
       setSelectedTopicDetails(null);
     }
-  }, [currentTopicId]);
+  }, [currentTopicId, store]);
   
   // Load topics on mount
   useEffect(() => {
@@ -197,11 +196,11 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
 
       if (topicData.id) {
         // Update existing topic
-        await db.topics.update(topicData.id, topicData);
+        await store.updateTopic(topicData.id, topicData);
         topicId = topicData.id;
       } else {
         // Add new topic
-        topicId = await db.topics.add(topicData);
+        topicId = await store.createTopic(topicData);
       }
 
       // Reload topics and switch to the saved topic
@@ -219,7 +218,7 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
       onSelectTopic(topicId);
       
       // Update local state
-      const savedTopic = await db.topics.get(topicId);
+      const savedTopic = await store.getTopic(topicId);
       if (savedTopic) {
         setSelectedTopicDetails(savedTopic);
       }
@@ -246,7 +245,7 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
         const deletedTopicId = showConfirmDelete;
         
         // Use the new topic deletion method that properly handles all related data
-        const result = await db.deleteTopic(deletedTopicId);
+        const result = await store.deleteTopic(deletedTopicId);
         
         if (!result.success) {
           console.error(`[TOPIC MANAGER] Failed to delete topic ${deletedTopicId}`);
@@ -342,7 +341,7 @@ const TailwindTopicManager: React.FC<TopicManagerProps> = ({
               onSelectTopic(topicId);
               
               // Also update local state for immediate display
-              db.topics.get(topicId).then(topic => {
+              store.getTopic(topicId).then(topic => {
                 if (topic) {
                   console.log(`[TOPIC MANAGER] Selected topic ${topicId} from search, updating local state`);
                   setSelectedTopicDetails(topic);

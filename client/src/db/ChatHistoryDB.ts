@@ -1,40 +1,9 @@
 import Dexie from 'dexie';
+import type { Topic, Message, WordIndex } from './ChatHistoryStore';
 
-// Define interfaces for database schema
-export interface Topic {
-  id?: number;
-  userId: string;
-  title: string;
-  createdAt: number;
-  lastActive: number;
-  messageCnt?: number;
-  userMessageCnt?: number;
-  assistantMessageCnt?: number;
-  totalTokens?: number;
-  model?: string;
-  systemPrompt?: string;
-  pinnedState?: boolean;
-  personaId?: string;
-}
-
-export interface Message {
-  id?: number;
-  topicId: number;
-  timestamp: number;
-  role: 'user' | 'assistant';
-  content: string;
-  type?: string;
-  metadata?: any;
-  tokens?: number;
-  modelVersion?: string;
-}
-
-export interface WordIndex {
-  id?: number;
-  word: string;
-  topicId: number;
-  messageId: number;
-}
+// The schema types live with the store interface, so they stay storage-agnostic.
+// Re-exported here for the modules inside this directory that still speak Dexie.
+export type { Topic, Message, WordIndex } from './ChatHistoryStore';
 
 // Database class definition
 class ChatHistoryDB extends Dexie {

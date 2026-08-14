@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import db, { Message } from '../../db/ChatHistoryDB';
+import type { Message } from '../../db';
+import { useChatHistoryStore } from '../../contexts/ChatHistoryContext';
 import TailwindMessageItem from './TailwindMessageItem';
 import { useLoading } from '../../contexts/LoadingContext';
 
@@ -16,6 +17,7 @@ const TailwindMessageThread: React.FC<MessageThreadProps> = ({
   pageSize = 20,
   className = ''
 }) => {
+  const store = useChatHistoryStore();
   const { startLoading, stopLoading, setError, isLoading } = useLoading();
   const [messages, setMessages] = useState<Message[]>([]);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
@@ -42,19 +44,11 @@ const TailwindMessageThread: React.FC<MessageThreadProps> = ({
       // Calculate offset for pagination
       const offset = currentPage * pageSize;
       
-      // Fetch messages for this topic with descending order by timestamp
-      const fetchedMessages = await db.messages
-        .where('topicId')
-        .equals(topicId)
-        .reverse() // Most recent first
-        .sortBy('timestamp')
-        .then(messages => messages.reverse().slice(offset, offset + pageSize));
-      
+      // Fetch a page of this topic's messages, oldest first
+      const fetchedMessages = await store.listMessages(topicId, { offset, limit: pageSize });
+
       // Check if there are more messages to load
-      const totalCount = await db.messages
-        .where('topicId')
-        .equals(topicId)
-        .count();
+      const totalCount = await store.countMessages(topicId);
       
       const hasMore = offset + fetchedMessages.length < totalCount;
       
@@ -76,7 +70,7 @@ const TailwindMessageThread: React.FC<MessageThreadProps> = ({
     } finally {
       stopLoading(loadingKey);
     }
-  }, [topicId, isLoading, hasMoreMessages, page, pageSize, startLoading, stopLoading, setError, messagesLoadingKey, loadMoreKey]);
+  }, [topicId, isLoading, hasMoreMessages, page, pageSize, startLoading, stopLoading, setError, messagesLoadingKey, loadMoreKey, store]);
 
   // Effect to load initial messages when topicId changes
   useEffect(() => {
@@ -136,11 +130,11 @@ const TailwindMessageThread: React.FC<MessageThreadProps> = ({
         setMessages(prev => prev.filter(m => m.id !== showDeleteModal));
         
         // Delete the message from database
-        await db.messages.delete(showDeleteModal);
-        
+        await store.deleteMessage(showDeleteModal);
+
         // Update topic message counts (update lastActive - deletion is user activity)
         if (topicId) {
-          const topic = await db.topics.get(topicId);
+          const topic = await store.getTopic(topicId);
           if (topic) {
             const updateData: Partial<typeof topic> = {
               messageCnt: (topic.messageCnt || 0) - 1,
@@ -157,7 +151,7 @@ const TailwindMessageThread: React.FC<MessageThreadProps> = ({
               updateData.totalTokens = (topic.totalTokens || 0) - messageToDelete.tokens;
             }
 
-            await db.topics.update(topicId, updateData);
+            await store.updateTopic(topicId, updateData);
           }
         }
         

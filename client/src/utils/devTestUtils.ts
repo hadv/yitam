@@ -1,4 +1,4 @@
-import db from '../db/ChatHistoryDB';
+import type { ChatHistoryStore } from '../db';
 
 /**
  * Generates test topics with diverse timestamps for development purposes
@@ -12,15 +12,14 @@ import db from '../db/ChatHistoryDB';
  * - 10 from last month (30-60 days ago)
  * - 10 older than 60 days
  * 
+ * @param store The chat history store to write the test data into
  * @param userEmail The email of the user to generate topics for
  * @returns Promise that resolves when generation is complete
  */
-export const generateTestTopics = async (userEmail: string): Promise<void> => {
+export const generateTestTopics = async (store: ChatHistoryStore, userEmail: string): Promise<void> => {
   try {
     // Check if user has any topics
-    const topicCount = await db.topics
-      .where('userId').equals(userEmail)
-      .count();
+    const topicCount = await store.countTopics(userEmail);
     
     if (topicCount > 0) {
       console.log(`[DEV] User already has ${topicCount} topics, skipping test data generation`);
@@ -100,7 +99,7 @@ export const generateTestTopics = async (userEmail: string): Promise<void> => {
       }
       
       // Create topic
-      const topicId = await db.topics.add({
+      const topicId = await store.createTopic({
         userId: userEmail,
         title: title,
         createdAt: timestamp,
@@ -113,7 +112,7 @@ export const generateTestTopics = async (userEmail: string): Promise<void> => {
       });
       
       // Add user message
-      await db.messages.add({
+      await store.putMessage({
         topicId: topicId as number,
         timestamp: timestamp,
         role: 'user',
@@ -121,7 +120,7 @@ export const generateTestTopics = async (userEmail: string): Promise<void> => {
       });
       
       // Add bot response
-      await db.messages.add({
+      await store.putMessage({
         topicId: topicId as number,
         timestamp: timestamp + 5000,
         role: 'assistant',

@@ -1,141 +1,89 @@
-# Data Schema & Basic Operations Implementation
+# Chat history persistence
 
-This directory contains the implementation of the data schema and basic operations for the YITAM chat application (Issue #73).
+Everything the app persists about conversations lives behind one interface:
+`ChatHistoryStore`. This directory owns the implementation; the rest of the client
+knows only the interface.
 
-## Overview
+## The boundary
 
-We've built a comprehensive local database system using Dexie.js to manage chat history, providing persistent storage and advanced query capabilities in the browser. The system includes:
-
-1. Core schema definitions (ChatHistoryDB.ts)
-2. Utility functions for data operations (ChatHistoryDBUtil.ts)
-3. React integration with contexts and hooks
-4. Comprehensive documentation (SCHEMA.md, DBSchema.md)
-
-## Advanced Query Features
-
-We've implemented several advanced query capabilities:
-
-### 1. User Activity Statistics
-
-`getUserActivityStats()` provides insights into:
-- Message activity by day
-- Topic creation patterns
-- Active usage hours
-
-```typescript
-const stats = await getUserActivityStats(userId, 30); // Last 30 days
-console.log(stats.messagesPerDay); // Activity by day
-console.log(stats.activeHours); // Most active hours
+```
+client/src/db/
+├── ChatHistoryStore.ts          the interface + domain types (no Dexie anywhere)
+├── DexieChatHistoryStore.ts     the implementation the app ships
+├── InMemoryChatHistoryStore.ts  the implementation tests use
+├── searchTokenizer.ts           shared tokenisation, so both search alike
+├── index.ts                     the barrel — the only entry point from outside
+├── ChatHistoryDB.ts             Dexie schema (private)
+└── ChatHistoryDBUtil.ts         Dexie helpers (private)
 ```
 
-### 2. Message Distribution Analysis
-
-`getMessageDistribution()` provides conversation metrics:
-- User vs. assistant message counts
-- Average message lengths
-- Token usage distribution
+**Nothing outside this directory imports `ChatHistoryDB` or any other module in
+here.** Import the barrel instead:
 
 ```typescript
-const metrics = await getMessageDistribution(topicId);
-console.log(`User messages: ${metrics.userMessageCount}`);
-console.log(`Average user message length: ${metrics.averageUserMessageLength}`);
+import type { Topic, Message } from '../db';
 ```
 
-### 3. Related Topics Discovery
+`scripts/check-db-boundary.sh` enforces this in CI. If it fails, the fix is to add
+what you need to `ChatHistoryStore`, not to reach past the barrel.
 
-`findRelatedTopics()` identifies related conversations:
-- Uses word occurrence similarity
-- Helps users discover connected topics
-- Prioritizes highest similarity matches
+## Getting a store
+
+In React, take it from the context:
 
 ```typescript
-const related = await findRelatedTopics(currentTopicId, userId, 5);
-// Returns top 5 most related topics
+import { useChatHistoryStore } from '../contexts/ChatHistoryContext';
+
+const store = useChatHistoryStore();
+const topics = await store.listTopics(userId);
 ```
 
-### 4. Advanced Search
+Outside React, accept a `ChatHistoryStore` as an argument — that keeps the caller
+testable. `chatHistoryStore` (the Dexie-backed singleton) is exported from the
+barrel for the rare case that has nowhere to inject one.
 
-`advancedSearch()` provides fine-grained search capabilities:
-- Filter by time range
-- Filter by message role
-- Exact phrase matching
-- Word-based indexing
+`ChatHistoryProvider` takes an optional `store` prop, which is how a test or a
+future storage engine swaps the implementation for the whole tree.
 
-```typescript
-const results = await advancedSearch(query, userId, {
-  startDate: oneWeekAgo,
-  endDate: now,
-  role: 'assistant',
-  exact: true
-});
+## What the store does for you
+
+The defensive machinery that used to be spread across call sites now lives in one
+place, so callers get it without asking:
+
+- `appendMessage()` writes the message, rolls the topic's counters forward, and
+  indexes the content for search. If the Dexie write fails it retries through a raw
+  IndexedDB transaction rather than losing the message.
+- `deleteMessage()` tries several deletion strategies and verifies the message is
+  actually gone before reporting success.
+- `deleteTopic()` cascades to the topic's messages and word index entries.
+- `searchMessages()` uses the word index and falls back to a content scan when the
+  index cannot answer — callers do not need their own fallback.
+- `recountTopic()` rebuilds a topic's cached counters from the messages actually
+  stored, and drops the topic if there are none.
+
+## Search
+
+The word index is a hand-rolled inverted index over `wordIndex`. Tokenisation lives
+in `searchTokenizer.ts` and is tuned for Vietnamese: a two-character minimum, a
+forty-character maximum for compound words, and a Vietnamese stop-word list.
+
+`searchMessages(userId, query, { filters, limit })` supports date ranges, a role
+filter, and `exact: true` for literal phrase matching.
+
+## Tests
+
+`__tests__/chatHistoryStoreContract.ts` holds the behaviour every implementation
+must exhibit. Both `DexieChatHistoryStore` (against `fake-indexeddb`) and
+`InMemoryChatHistoryStore` run it:
+
+```bash
+cd client && npm test
 ```
 
-### 5. Index Management
+A new implementation is finished when it passes that suite. If it cannot, either
+the implementation is wrong or the contract needs renegotiating — deciding which is
+the point of having the file.
 
-`reindexTopic()` allows for maintenance of the search index:
-- Rebuilds indices for any topic
-- Fixes search issues
-- Updates indices after schema changes
+## Schema
 
-```typescript
-await reindexTopic(topicId); // Rebuilds search indices
-```
-
-## Storage Management
-
-We've implemented robust storage management:
-
-1. **Quota Detection**: Monitors browser storage limits
-2. **Automatic Cleanup**: Removes oldest conversations when storage is critical
-3. **Export/Import**: Allows users to backup and restore conversations
-
-## Error Handling
-
-The implementation includes comprehensive error handling:
-
-1. **Connection Recovery**: Attempts to recover from database errors
-2. **Transaction Safety**: Ensures data consistency across operations
-3. **Graceful Degradation**: Provides fallbacks when storage is limited
-
-## Usage Examples
-
-### Managing Topics
-
-```typescript
-// In a React component
-const { topics, createTopic, deleteTopic } = useTopicManagement({ userId });
-
-// Create a new topic
-const newTopicId = await createTopic("New Conversation", "System prompt here");
-
-// Delete a topic
-await deleteTopic(topicId);
-```
-
-### Managing Messages
-
-```typescript
-// In a React component
-const { messages, addMessage, searchMessages } = useMessageManagement({ topicId });
-
-// Add a new message
-await addMessage({
-  role: 'user',
-  content: 'Hello, world!',
-  tokens: 5
-});
-
-// Search within current topic
-const matches = await searchMessages('world');
-```
-
-## Next Steps
-
-The implementation fulfills all requirements for issue #73 and provides a foundation for upcoming issues:
-
-- Topic & Conversation UI Components (#74)
-- Message Threading & History Display (#75)
-- Word Indexing Implementation (#77)
-- Search UI & Functionality (#78)
-
-For detailed schema information, see [SCHEMA.md](./SCHEMA.md). 
+For table definitions, indices, and migration history, see [SCHEMA.md](./SCHEMA.md).

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import db, { Topic } from '../../db/ChatHistoryDB';
+import type { Topic } from '../../db';
+import { useChatHistoryStore } from '../../contexts/ChatHistoryContext';
 
 interface TopicSwitcherProps {
   userId: string;
@@ -16,6 +17,7 @@ const TailwindTopicSwitcher: React.FC<TopicSwitcherProps> = ({
   onCreateTopic,
   onEditTopic
 }) => {
+  const store = useChatHistoryStore();
   const [isOpen, setIsOpen] = useState(false);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -28,11 +30,8 @@ const TailwindTopicSwitcher: React.FC<TopicSwitcherProps> = ({
     const loadTopics = async () => {
       try {
         // Get all topics for this user
-        const userTopics = await db.topics
-          .where('userId')
-          .equals(userId)
-          .toArray();
-          
+        const userTopics = await store.listTopics(userId);
+
         setTopics(userTopics);
 
         // Find current topic
@@ -48,7 +47,7 @@ const TailwindTopicSwitcher: React.FC<TopicSwitcherProps> = ({
     };
 
     loadTopics();
-  }, [userId, currentTopicId]);
+  }, [userId, currentTopicId, store]);
 
   // Click outside to close dropdown
   useEffect(() => {

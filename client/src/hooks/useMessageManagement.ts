@@ -1,8 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
-import Dexie from 'dexie';
-import db, { Message } from '../db/ChatHistoryDB';
-import { indexMessageContent } from '../db/ChatHistoryDBUtil';
-import { useChatHistory } from '../contexts/ChatHistoryContext';
+import type { Message } from '../db';
+import { useChatHistory, useChatHistoryStore } from '../contexts/ChatHistoryContext';
 
 interface UseMessageManagementProps {
   topicId: number | null;
@@ -12,7 +10,7 @@ interface UseMessageManagementResult {
   messages: Message[];
   isLoading: boolean;
   error: string | null;
-  addMessage: (message: Omit<Message, 'id' | 'timestamp'>) => Promise<number | undefined>;
+  addMessage: (message: Omit<Message, 'id' | 'timestamp' | 'topicId'>) => Promise<number | undefined>;
   getMessages: (limit?: number, offset?: number) => Promise<Message[]>;
   searchMessages: (query: string) => Promise<Message[]>;
   clearMessages: () => Promise<boolean>;
@@ -27,7 +25,8 @@ export const useMessageManagement = ({ topicId }: UseMessageManagementProps): Us
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const { isDBReady } = useChatHistory();
-  
+  const store = useChatHistoryStore();
+
   /**
    * Load messages for the current topic
    */
@@ -37,19 +36,14 @@ export const useMessageManagement = ({ topicId }: UseMessageManagementProps): Us
       setIsLoading(false);
       return [];
     }
-    
+
     setIsLoading(true);
     setError(null);
-    
+
     try {
       // Get messages sorted by timestamp (oldest first)
-      const topicMessages = await db.messages
-        .where('[topicId+timestamp]')
-        .between([topicId, -Infinity], [topicId, Infinity])
-        .offset(offset)
-        .limit(limit)
-        .toArray();
-      
+      const topicMessages = await store.listMessages(topicId, { offset, limit });
+
       setMessages(topicMessages);
       return topicMessages;
     } catch (error) {
@@ -59,7 +53,7 @@ export const useMessageManagement = ({ topicId }: UseMessageManagementProps): Us
     } finally {
       setIsLoading(false);
     }
-  }, [topicId, isDBReady]);
+  }, [topicId, isDBReady, store]);
   
   /**
    * Reload messages when component mounts or topicId changes
@@ -71,63 +65,29 @@ export const useMessageManagement = ({ topicId }: UseMessageManagementProps): Us
   /**
    * Add a new message to the current topic
    */
-  const addMessage = useCallback(async (message: Omit<Message, 'id' | 'timestamp'>): Promise<number | undefined> => {
+  const addMessage = useCallback(async (message: Omit<Message, 'id' | 'timestamp' | 'topicId'>): Promise<number | undefined> => {
     if (!isDBReady || !topicId) {
       setError('Database not ready or no topic selected');
       return undefined;
     }
     
     try {
-      // Add timestamp if not provided
-      const timestamp = Date.now();
-      const fullMessage: Message = {
+      // appendMessage rolls the topic's counters forward and indexes the content
+      const messageId = await store.appendMessage(topicId, {
         ...message,
-        topicId,
-        timestamp
-      };
-      
-      // Transaction to add message and update topic metadata
-      const messageId = await db.transaction('rw', [db.topics, db.messages, db.wordIndex], async () => {
-        // Save message
-        const id = await db.messages.add(fullMessage);
-        
-        // Update topic metadata
-        const topic = await db.topics.get(topicId);
-        if (topic) {
-          topic.lastActive = timestamp;
-          topic.messageCnt = (topic.messageCnt || 0) + 1;
-          
-          if (message.role === 'user') {
-            topic.userMessageCnt = (topic.userMessageCnt || 0) + 1;
-          } else {
-            topic.assistantMessageCnt = (topic.assistantMessageCnt || 0) + 1;
-          }
-          
-          if (message.tokens) {
-            topic.totalTokens = (topic.totalTokens || 0) + message.tokens;
-          }
-          
-          await db.topics.put(topic);
-        }
-        
-        // Index words for search
-        if (message.content) {
-          await indexMessageContent(message.content, topicId, id);
-        }
-        
-        return id;
+        timestamp: Date.now()
       });
-      
+
       // Reload messages to refresh the list
       await loadMessages();
-      
+
       return messageId;
     } catch (error) {
       console.error('Error adding message:', error);
       setError('Failed to add message');
       return undefined;
     }
-  }, [topicId, isDBReady, loadMessages]);
+  }, [topicId, isDBReady, loadMessages, store]);
   
   /**
    * Get messages from the current topic with pagination
@@ -145,48 +105,14 @@ export const useMessageManagement = ({ topicId }: UseMessageManagementProps): Us
     }
     
     try {
-      const words = query.toLowerCase()
-        .split(/\W+/)
-        .filter(word => word.length >= 3);
-      
-      if (words.length === 0) {
-        return [];
-      }
-      
-      // First find matching messageIds from word index
-      let matchingMessages: Message[] = [];
-      
-      await db.transaction('r', [db.wordIndex, db.messages], async () => {
-        const messageIds = new Set<number>();
-        
-        // For each search word, find matching messages
-        for (const word of words) {
-          const entries = await db.wordIndex
-            .where('[word+topicId]')
-            .equals([word, topicId])
-            .toArray();
-          
-          entries.forEach(entry => messageIds.add(entry.messageId));
-        }
-        
-        // Fetch the actual messages
-        if (messageIds.size > 0) {
-          matchingMessages = await db.messages
-            .where('id')
-            .anyOf([...messageIds])
-            .toArray();
-        }
-      });
-      
-      // Sort by timestamp (newest first)
-      return matchingMessages.sort((a, b) => b.timestamp - a.timestamp);
+      return await store.searchMessagesInTopic(topicId, query);
     } catch (error) {
       console.error('Error searching messages:', error);
       setError('Search failed');
       return [];
     }
-  }, [topicId, isDBReady]);
-  
+  }, [topicId, isDBReady, store]);
+
   /**
    * Clear all messages from the current topic
    */
@@ -195,52 +121,20 @@ export const useMessageManagement = ({ topicId }: UseMessageManagementProps): Us
       setError('Database not ready or no topic selected');
       return false;
     }
-    
+
     try {
-      await db.transaction('rw', [db.topics, db.messages, db.wordIndex], async () => {
-        // Get message IDs for this topic
-        const messageIds = await db.messages
-          .where('topicId')
-          .equals(topicId)
-          .toArray()
-          .then(messages => messages.map(msg => msg.id).filter(id => id !== undefined) as number[]);
-        
-        // Delete word indices for these messages
-        await Promise.all(messageIds.map(async (messageId) => {
-          await db.wordIndex
-            .where('messageId')
-            .equals(messageId)
-            .delete();
-        }));
-        
-        // Delete messages
-        await db.messages
-          .where('topicId')
-          .equals(topicId)
-          .delete();
-        
-        // Update topic metadata
-        const topic = await db.topics.get(topicId);
-        if (topic) {
-          topic.messageCnt = 0;
-          topic.userMessageCnt = 0;
-          topic.assistantMessageCnt = 0;
-          topic.totalTokens = 0;
-          
-          await db.topics.put(topic);
-        }
-      });
-      
+      await store.clearTopicMessages(topicId);
+
       // Reload messages to refresh the list
       setMessages([]);
-      
+
       return true;
     } catch (error) {
       console.error('Error clearing messages:', error);
       setError('Failed to clear messages');
       return false;
     }
-  }, [topicId, isDBReady]);
+  }, [topicId, isDBReady, store]);
   
   // Load messages on initial render
   useEffect(() => {

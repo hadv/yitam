@@ -4,11 +4,17 @@
 
 This document describes the implementation of the chat history database for the YITAM application. The database is designed to store and efficiently query chat conversations, including topics and individual messages, using Dexie.js as a wrapper for the browser's IndexedDB.
 
+> **Note:** the files below are private to `client/src/db/`. Application code
+> reaches chat history through the `ChatHistoryStore` interface — see
+> [README.md](./README.md) for the boundary and how to get a store.
+
 ## Core Files
 
+- `ChatHistoryStore.ts`: The storage-agnostic interface and domain types
+- `DexieChatHistoryStore.ts`: The Dexie implementation of that interface
 - `ChatHistoryDB.ts`: Defines the database schema, tables, indices, and core database functions
 - `ChatHistoryDBUtil.ts`: Implements utility functions for database operations
-- `ChatHistoryContext.tsx`: Provides a React context for database access
+- `ChatHistoryContext.tsx`: Owns the store instance and exposes `useChatHistoryStore()`
 - `useTopicManagement.ts`: Custom hook for topic CRUD operations
 - `useMessageManagement.ts`: Custom hook for message CRUD operations
 

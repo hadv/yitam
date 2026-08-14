@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { exportUserData, importUserData } from '../../db/ChatHistoryDBUtil';
-import db from '../../db/ChatHistoryDB';
+import { useChatHistoryStore } from '../../contexts/ChatHistoryContext';
 
 interface TailwindDataExportImportProps {
   userId: string;
@@ -13,6 +12,7 @@ const TailwindDataExportImport: React.FC<TailwindDataExportImportProps> = ({
   currentTopicId,
   onClose
 }) => {
+  const store = useChatHistoryStore();
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -29,7 +29,7 @@ const TailwindDataExportImport: React.FC<TailwindDataExportImportProps> = ({
       setSuccessMessage(null);
 
       // Get user data
-      const userData = await exportUserData(userId);
+      const userData = await store.exportUserData(userId);
       setProgress(50);
 
       // Create a download link
@@ -84,18 +84,15 @@ const TailwindDataExportImport: React.FC<TailwindDataExportImportProps> = ({
       setSuccessMessage(null);
 
       // Get the current topic
-      const topic = await db.topics.get(currentTopicId);
+      const topic = await store.getTopic(currentTopicId);
       if (!topic) {
         throw new Error('Không tìm thấy cuộc trò chuyện.');
       }
-      
+
       setProgress(30);
 
       // Get all messages for this topic
-      const messages = await db.messages
-        .where('topicId')
-        .equals(currentTopicId)
-        .toArray();
+      const messages = await store.listMessages(currentTopicId);
       
       setProgress(60);
 
@@ -184,7 +181,7 @@ const TailwindDataExportImport: React.FC<TailwindDataExportImportProps> = ({
           setProgress(50);
           
           // Import the data
-          const success = await importUserData(data, userId);
+          const success = await store.importUserData(data, userId);
           
           if (!success) {
             throw new Error('Không thể nhập dữ liệu. Vui lòng kiểm tra lại tệp.');

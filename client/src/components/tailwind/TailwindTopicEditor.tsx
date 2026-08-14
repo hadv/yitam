@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import db, { Topic } from '../../db/ChatHistoryDB';
+import type { Topic } from '../../db';
 
 interface TopicEditorProps {
   userId: string;

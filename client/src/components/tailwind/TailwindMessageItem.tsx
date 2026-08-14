@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Message } from '../../db/ChatHistoryDB';
+import type { Message } from '../../db';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 

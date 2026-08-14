@@ -3,7 +3,8 @@ import TailwindTopicManager from './TailwindTopicManager';
 import TailwindTopicSwitcher from './TailwindTopicSwitcher';
 import TailwindTopicEditor from './TailwindTopicEditor';
 import TailwindTopicCreateButton from './TailwindTopicCreateButton';
-import db, { Topic } from '../../db/ChatHistoryDB';
+import type { Topic } from '../../db';
+import { useChatHistoryStore } from '../../contexts/ChatHistoryContext';
 
 interface TopicPageProps {
   userId: string;
@@ -18,6 +19,7 @@ const TailwindTopicPage: React.FC<TopicPageProps> = ({
   onSelectTopic,
   onBackToChat
 }) => {
+  const store = useChatHistoryStore();
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [topicToEdit, setTopicToEdit] = useState<Topic | undefined>(undefined);
   const [topicsCount, setTopicsCount] = useState(0);
@@ -28,30 +30,14 @@ const TailwindTopicPage: React.FC<TopicPageProps> = ({
     const loadStats = async () => {
       try {
         // Count topics
-        const topics = await db.topics
-          .where('userId')
-          .equals(userId)
-          .count();
-        
+        const topics = await store.countTopics(userId);
+
         setTopicsCount(topics);
-        
+
         // Count total messages across all topics
         if (topics > 0) {
-          const userTopics = await db.topics
-            .where('userId')
-            .equals(userId)
-            .toArray();
-            
-          const topicIds = userTopics.map(t => t.id).filter(id => id !== undefined) as number[];
-          
-          if (topicIds.length > 0) {
-            const messages = await db.messages
-              .where('topicId')
-              .anyOf(topicIds)
-              .count();
-              
-            setMessageCount(messages);
-          }
+          const messages = await store.listUserMessages(userId);
+          setMessageCount(messages.length);
         }
       } catch (error) {
         console.error('Error loading stats:', error);
@@ -59,7 +45,7 @@ const TailwindTopicPage: React.FC<TopicPageProps> = ({
     };
     
     loadStats();
-  }, [userId]);
+  }, [userId, store]);
   
   // Handle creating a new topic
   const handleCreateTopic = () => {
@@ -80,11 +66,11 @@ const TailwindTopicPage: React.FC<TopicPageProps> = ({
       
       if (topicData.id) {
         // Update existing topic
-        await db.topics.update(topicData.id, topicData);
+        await store.updateTopic(topicData.id, topicData);
         topicId = topicData.id;
       } else {
         // Add new topic
-        topicId = await db.topics.add(topicData);
+        topicId = await store.createTopic(topicData);
       }
       
       // Switch to the saved topic

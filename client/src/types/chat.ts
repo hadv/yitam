@@ -61,7 +61,7 @@ export interface UserData {
 }
 
 // Type for any kind of message object (union type)
-export type AnyMessage = Message | import('./../db/ChatHistoryDB').Message | Record<string, any>;
+export type AnyMessage = Message | import('./../db').Message | Record<string, any>;
 
 // Type for socket
 export type ChatSocket = Socket<DefaultEventsMap, DefaultEventsMap> | null;
@@ -71,6 +71,6 @@ export const isUIMessage = (msg: any): msg is Message => {
   return msg && typeof msg.isBot === 'boolean' && typeof msg.text === 'string';
 };
 
-export const isDBMessage = (msg: any): msg is import('./../db/ChatHistoryDB').Message => {
+export const isDBMessage = (msg: any): msg is import('./../db').Message => {
   return msg && typeof msg.role === 'string' && typeof msg.content === 'string';
 }; 
