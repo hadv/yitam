@@ -152,20 +152,45 @@ describe('opening a topic whose persona differs from the selected one', () => {
   });
 });
 
-describe('the welcome greeting', () => {
-  it('still follows the persona while no topic is open', async () => {
+describe('loading a topic', () => {
+  it('does not close the store out from under the rest of the app', async () => {
+    const topicId = await seedTopic('yitam');
+    const close = vi.spyOn(store, 'close');
     await mount();
-    expect(harness.messages.map(m => m.text)).toEqual(['Xin chào Tester! Yitam đang lắng nghe!']);
+
+    await act(async () => {
+      await harness.handleTopicSelect(topicId);
+    });
+    await settle();
+
+    // The history modal that triggered this is querying the same handle.
+    expect(close).not.toHaveBeenCalled();
+    expect(store.isOpen()).toBe(true);
+    expect(harness.messages.map(m => m.text)).toEqual(['Xin chào', 'Chào bạn']);
+  });
+});
+
+describe('a conversation with nothing in it', () => {
+  // The greeting is not a message. It is drawn from the persona where it is shown
+  // (see TailwindMessageDisplay), so the list stays empty and nothing has to keep
+  // a fake message in step with the persona.
+  it('holds no messages at all', async () => {
+    await mount();
+    expect(harness.messages).toEqual([]);
+  });
+
+  it('stays empty when the persona changes', async () => {
+    await mount();
 
     await act(async () => {
       harness.setCurrentPersonaId('lao-tu');
     });
     await settle();
 
-    expect(harness.messages.map(m => m.text)).toEqual(['Xin chào Tester! Lão Tử đang lắng nghe!']);
+    expect(harness.messages).toEqual([]);
   });
 
-  it('does not rewrite itself on every render', async () => {
+  it('does not churn on every render', async () => {
     await mount();
     const settledRenders = renderCount;
     await settle(500);

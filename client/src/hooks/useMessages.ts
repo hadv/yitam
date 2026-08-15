@@ -679,29 +679,17 @@ export const useMessages = (socket: ChatSocket, user: any) => {
     
     // Reset the persona state - this will load the default from localStorage
     resetPersona();
-    
-    // Find selected persona using the now-reset persona ID
-    const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0];
-    
-    // Create welcome message
-    const welcomeMessage: Message = {
-      id: 'welcome',
-      text: user 
-        ? `Xin chào ${user.name}! ${selectedPersona.displayName} đang lắng nghe!`
-        : `Xin chào! ${selectedPersona.displayName} đang lắng nghe!`,
-      isBot: true,
-      timestamp: Date.now()
-    };
-    
-    // Reset message state
+
+    // An empty conversation is an empty list. The greeting the user sees is drawn
+    // from the persona at render time, so there is nothing to put here.
     lastMessageRef.current = null;
     lastUserMessageIdRef.current = null; // Reset the last user message ID reference
-    pendingMessagesRef.current = [welcomeMessage];
-    setMessages([welcomeMessage]);
+    pendingMessagesRef.current = [];
+    setMessages([]);
     setHasUserSentMessage(false);
-    
+
     console.log(`[PERSONA DEBUG] New chat started with default persona: ${currentPersonaId}`);
-  }, [currentPersonaId, resetPersona, user]);
+  }, [currentPersonaId, resetPersona]);
 
   // Handle topic selection
   const handleTopicSelect = useCallback(async (topicId: number) => {
@@ -718,17 +706,8 @@ export const useMessages = (socket: ChatSocket, user: any) => {
         
         // Reset user message ID tracking
         lastUserMessageIdRef.current = null;
-        
-        const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0];
-        const welcomeMessage = {
-          id: 'welcome',
-          text: user ? `Xin chào ${user.name}! ${selectedPersona.displayName} đang lắng nghe!` : 
-                    `Xin chào! ${selectedPersona.displayName} đang lắng nghe!`,
-          isBot: true,
-          timestamp: Date.now()
-        };
-        
-        updateMessages([welcomeMessage]);
+
+        updateMessages([]);
         setHasUserSentMessage(false);
         return;
       }
@@ -744,13 +723,12 @@ export const useMessages = (socket: ChatSocket, user: any) => {
       }]);
       
       try {
-        // Force database re-open to ensure fresh connection
-        console.log('[TOPIC DEBUG] Ensuring fresh database connection');
-        if (store.isOpen()) {
-          await store.close();
-        }
+        // No close/open dance here. Reading a topic does not need a fresh
+        // connection, and the handle is shared: closing it aborts whatever the
+        // topic list in the history modal — the very thing that got us here — has
+        // in flight. `store.open()` is idempotent and the provider already opened it.
         await store.open();
-        
+
         // Verify topic exists and has correct message count
         const topic = await store.getTopic(topicId);
         
@@ -835,31 +813,10 @@ export const useMessages = (socket: ChatSocket, user: any) => {
         // Set the lock AFTER setting the persona
         setIsPersonaLocked(true);
         
-        // Now load messages for this topic - CRITICAL: Ensure we're getting fresh data
-        console.log(`[TOPIC DEBUG] Fetching messages for topic ${topicId} with forced database refresh`);
-        
-        let topicMessages: DBMessage[] = [];
+        // Now load messages for this topic
+        const topicMessages: DBMessage[] = await store.listMessages(topicId);
+        console.log(`[TOPIC DEBUG] Loaded ${topicMessages.length} messages for topic ${topicId}`);
 
-        try {
-          topicMessages = await store.listMessages(topicId);
-
-          console.log(`[TOPIC DEBUG] Successfully loaded ${topicMessages.length} messages for topic ${topicId}`);
-        } catch (fetchError) {
-          console.error(`[TOPIC DEBUG] Error fetching messages:`, fetchError);
-
-          // Try one more time with a clean connection
-          try {
-            await store.close();
-            await store.open();
-
-            topicMessages = await store.listMessages(topicId);
-
-            console.log(`[TOPIC DEBUG] Successfully loaded ${topicMessages.length} messages on second attempt`);
-          } catch (secondError) {
-            console.error(`[TOPIC DEBUG] Failed to load messages on second attempt:`, secondError);
-            throw secondError;
-          }
-        }
         
         // If we still have no messages, delete the topic and start new chat
         if (topicMessages.length === 0) {
@@ -902,18 +859,6 @@ export const useMessages = (socket: ChatSocket, user: any) => {
             isBot: msg.isBot
           }))
         );
-        
-        // If there are no messages, add a welcome message
-        if (uiMessages.length === 0) {
-          uiMessages.push({
-            id: 'welcome',
-            text: user ? `Xin chào ${user.name}! ${persona.displayName} đang lắng nghe!` : 
-                        `Xin chào! ${persona.displayName} đang lắng nghe!`,
-            isBot: true,
-            timestamp: Date.now(),
-            dbMessageId: undefined // Add the dbMessageId property, even though it's undefined for welcome messages
-          });
-        }
         
         // Update the UI with the messages
         updateMessages(uiMessages);
@@ -998,17 +943,9 @@ export const useMessages = (socket: ChatSocket, user: any) => {
       setCurrentTopicId(topicId);
       currentTopicRef.current = topicId;
       
-      // Reset message state with welcome message
-      const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0];
-      const welcomeMessage = {
-        id: 'welcome',
-        text: user ? `Xin chào ${user.name}! ${selectedPersona.displayName} đang lắng nghe!` : 
-                    `Xin chào! ${selectedPersona.displayName} đang lắng nghe!`,
-        isBot: true
-      };
-      
-      updateMessages([welcomeMessage]);
-      
+      // A brand new topic has no messages; the greeting comes from the persona.
+      updateMessages([]);
+
       return topicId;
     } catch (error) {
       console.error('[TOPIC DEBUG] Error creating new topic:', error);
@@ -1016,60 +953,12 @@ export const useMessages = (socket: ChatSocket, user: any) => {
     }
   }, [user, updateMessages, currentPersonaId, store]);
 
-  // Initialize welcome message when component mounts
-  useEffect(() => {
-    if (messages.length === 0 && user) {
-      console.log('Initializing welcome message without creating topic...');
-      
-      // Create welcome message only (no topic creation)
-      const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0];
-      const welcomeMessage: Message = {
-        id: 'welcome',
-        text: `Xin chào ${user.name}! ${selectedPersona.displayName} đang lắng nghe!`,
-        isBot: true,
-        timestamp: Date.now()
-      };
-      
-      // Update messages without creating a topic
-      lastMessageRef.current = null;
-      pendingMessagesRef.current = [welcomeMessage];
-      setMessages([welcomeMessage]);
-      
-      // Reset states
-      setHasUserSentMessage(false);
-      setIsPersonaLocked(false);
-      
-      console.log(`[PERSONA DEBUG] Initialized with persona: ${currentPersonaId}, display name: ${selectedPersona.displayName}`);
-    }
-  }, [messages.length, user, currentPersonaId]);
-
-  // Update welcome message when persona changes
-  useEffect(() => {
-    // Decide from `pendingMessagesRef`, not from `messages`. `updateMessages` is
-    // debounced, so the rendered state lags the buffer the UI is about to show by
-    // up to one window. Loading a topic whose persona differs from the active one
-    // changes the persona while that buffer already holds the conversation, and
-    // deciding from the stale state would overwrite it with a welcome message —
-    // the conversation would silently never appear.
-    const pending = pendingMessagesRef.current;
-    if (pending.length !== 1 || pending[0].id !== 'welcome') return;
-
-    const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0];
-    const text = user
-      ? `Xin chào ${user.name}! ${selectedPersona.displayName} đang lắng nghe!`
-      : `Xin chào! ${selectedPersona.displayName} đang lắng nghe!`;
-
-    // Rewriting an identical greeting would only feed the debounce a new array and
-    // re-trigger this effect on the next render.
-    if (pending[0].text === text) return;
-
-    updateMessages([{
-      id: 'welcome',
-      text,
-      isBot: true,
-      timestamp: pending[0].timestamp
-    }]);
-  }, [currentPersonaId, user, messages, updateMessages]);
+  // Two effects used to live here: one seeding a welcome message whenever the list
+  // was empty, one rewriting it whenever the persona changed. Both wrote a piece of
+  // derived state into the message list, and the second one raced the topic loader
+  // for the same buffer — a conversation loaded while the persona changed could be
+  // overwritten by a greeting. The greeting is now drawn where it is shown, from
+  // the persona of the moment, and an empty conversation is simply empty.
 
   // Cleanup function
   useEffect(() => {

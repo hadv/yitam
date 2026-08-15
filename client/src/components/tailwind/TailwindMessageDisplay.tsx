@@ -6,6 +6,8 @@ import MessageBubble from './common/MessageBubble';
 interface TailwindMessageDisplayProps {
   messages: Message[];
   currentPersonaId: string;
+  /** Greets the user by name when the conversation is empty. */
+  userName?: string;
   onDeleteMessage?: (messageId: string) => void;
   pageSize?: number; // Number of messages to display per page
 }
@@ -13,6 +15,7 @@ interface TailwindMessageDisplayProps {
 const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({ 
   messages, 
   currentPersonaId,
+  userName,
   onDeleteMessage,
   pageSize = 30 // Default to 30 messages per page
 }) => {
@@ -29,10 +32,6 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
   // Sort messages by timestamp - memoized to prevent unnecessary re-sorting
   const sortedMessages = useMemo(() => {
     return [...messages].sort((a, b) => {
-      // Welcome message always first
-      if (a.id === 'welcome') return -1;
-      if (b.id === 'welcome') return 1;
-      
       // Use timestamp for sorting if available
       if (a.timestamp && b.timestamp) {
         return a.timestamp - b.timestamp;
@@ -154,11 +153,16 @@ const TailwindMessageDisplay: React.FC<TailwindMessageDisplayProps> = ({
     }
   }, [messages.length, handleScroll]);
 
+  // The greeting for an empty conversation. It is drawn from the persona of the
+  // moment rather than stored as a message, so switching persona changes it with
+  // the render and nothing has to keep a fake message in step.
   if (messages.length === 0) {
     const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0];
     return (
       <div className="flex items-center justify-center h-[200px] text-[#3A2E22] opacity-60 text-[1.1rem]">
-        Xin chào! {selectedPersona.displayName} đang lắng nghe!
+        {userName
+          ? `Xin chào ${userName}! ${selectedPersona.displayName} đang lắng nghe!`
+          : `Xin chào! ${selectedPersona.displayName} đang lắng nghe!`}
       </div>
     );
   }
