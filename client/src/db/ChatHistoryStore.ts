@@ -42,7 +42,13 @@ export interface Message {
   modelVersion?: string;
 }
 
-/** A single term → message posting in the search index. */
+/**
+ * A single term → message posting in the search index.
+ *
+ * An engine detail, not part of the store's public face: it is shared between the
+ * implementations in this directory and deliberately absent from `./index.ts`, so
+ * an engine with its own full-text search owes nothing to this shape.
+ */
 export interface WordIndex {
   id?: number;
   word: string;
@@ -221,20 +227,13 @@ export interface ChatHistoryStore {
 
   // --- search --------------------------------------------------------------
 
-  searchTopics(userId: string, query: string): Promise<Topic[]>;
   searchMessages(userId: string, query: string, opts?: SearchMessagesOptions): Promise<MessageHit[]>;
   /** Search within a single topic, newest match first. */
   searchMessagesInTopic(topicId: number, query: string): Promise<Message[]>;
-  /** Add a message's content to the search index. */
-  indexMessage(topicId: number, messageId: number, content: string): Promise<void>;
   /** Rebuild the index for every message in a topic. */
   reindexTopic(topicId: number): Promise<boolean>;
-  /** Rebuild the index for a single message. */
-  reindexMessage(messageId: number): Promise<boolean>;
   /** Rebuild the index for every topic belonging to a user. */
   reindexUser(userId: string): Promise<boolean>;
-  /** Whether a topic's messages have at least one index entry. Empty topics count as indexed. */
-  isTopicIndexed(topicId: number): Promise<boolean>;
   getSearchIndexStats(): Promise<SearchIndexStats>;
 
   // --- maintenance ---------------------------------------------------------

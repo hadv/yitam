@@ -317,14 +317,6 @@ export class InMemoryChatHistoryStore implements ChatHistoryStore {
 
   // --- search --------------------------------------------------------------
 
-  async searchTopics(userId: string, query: string): Promise<Topic[]> {
-    const trimmed = query.trim().toLowerCase();
-    if (!trimmed) return [];
-
-    const topics = await this.listTopics(userId);
-    return topics.filter(topic => topic.title.toLowerCase().includes(trimmed));
-  }
-
   async searchMessages(
     userId: string,
     query: string,
@@ -389,7 +381,8 @@ export class InMemoryChatHistoryStore implements ChatHistoryStore {
       .map(clone);
   }
 
-  async indexMessage(topicId: number, messageId: number, content: string): Promise<void> {
+  /** Engine-private: the interface no longer exposes indexing. */
+  private async indexMessage(topicId: number, messageId: number, content: string): Promise<void> {
     if (!content || content.trim() === '') return;
 
     for (const word of tokenizeForIndex(content)) {
@@ -415,15 +408,6 @@ export class InMemoryChatHistoryStore implements ChatHistoryStore {
     return true;
   }
 
-  async reindexMessage(messageId: number): Promise<boolean> {
-    const message = this.messages.get(messageId);
-    if (!message || !message.content || !message.topicId) return false;
-
-    this.index = this.index.filter(entry => entry.messageId !== messageId);
-    await this.indexMessage(message.topicId, messageId, message.content);
-    return true;
-  }
-
   async reindexUser(userId: string): Promise<boolean> {
     const topicIds = [...this.topics.values()]
       .filter(topic => topic.userId === userId)
@@ -434,16 +418,6 @@ export class InMemoryChatHistoryStore implements ChatHistoryStore {
       await this.reindexTopic(topicId);
     }
     return true;
-  }
-
-  async isTopicIndexed(topicId: number): Promise<boolean> {
-    const messageIds = [...this.messages.values()]
-      .filter(msg => msg.topicId === topicId)
-      .map(msg => msg.id)
-      .filter(isDefined);
-
-    if (messageIds.length === 0) return true;
-    return this.index.some(entry => messageIds.includes(entry.messageId));
   }
 
   async getSearchIndexStats(): Promise<SearchIndexStats> {

@@ -337,14 +337,6 @@ export function describeChatHistoryStoreContract(
         expect(found[0].topicId).toBe(topicId);
       });
 
-      it('matches topics by title', async () => {
-        await store.createTopic(topicInput({ title: 'Bấm huyệt' }));
-
-        const found = await store.searchTopics(USER, 'châm');
-
-        expect(found.map(t => t.title)).toEqual(['Châm cứu cơ bản']);
-      });
-
       it('reports index coverage', async () => {
         await store.appendMessage(topicId, { timestamp: 10, role: 'user', content: 'huyệt đạo kinh lạc' });
 
@@ -353,11 +345,6 @@ export function describeChatHistoryStoreContract(
         expect(stats.messagesCovered).toBe(1);
         expect(stats.topicsCovered).toBe(1);
         expect(stats.uniqueWords).toBeGreaterThan(0);
-        expect(await store.isTopicIndexed(topicId)).toBe(true);
-      });
-
-      it('treats a topic with no messages as indexed', async () => {
-        expect(await store.isTopicIndexed(topicId)).toBe(true);
       });
 
       it('rebuilds a topic\'s index without duplicating entries', async () => {
@@ -367,13 +354,6 @@ export function describeChatHistoryStoreContract(
         expect(await store.reindexTopic(topicId)).toBe(true);
 
         expect(await store.getSearchIndexStats()).toEqual(before);
-      });
-
-      it('rebuilds the index for a single message', async () => {
-        const id = await store.appendMessage(topicId, { timestamp: 10, role: 'user', content: 'huyệt đạo' });
-
-        expect(await store.reindexMessage(id)).toBe(true);
-        expect(await store.reindexMessage(9999)).toBe(false);
       });
 
       it('rebuilds the index for a whole user', async () => {

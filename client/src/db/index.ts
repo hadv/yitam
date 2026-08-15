@@ -29,7 +29,6 @@ export type {
   StoreStatus,
   Topic,
   Unsubscribe,
-  WordIndex,
 } from './ChatHistoryStore';
 
 export { DexieChatHistoryStore, chatHistoryStore } from './DexieChatHistoryStore';

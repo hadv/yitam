@@ -290,16 +290,6 @@ export class DexieChatHistoryStore implements ChatHistoryStore {
 
   // --- search --------------------------------------------------------------
 
-  async searchTopics(userId: string, query: string): Promise<Topic[]> {
-    const trimmed = query.trim().toLowerCase();
-    if (!trimmed) {
-      return [];
-    }
-
-    const topics = await this.listTopics(userId);
-    return topics.filter(topic => topic.title.toLowerCase().includes(trimmed));
-  }
-
   async searchMessages(
     userId: string,
     query: string,
@@ -336,30 +326,8 @@ export class DexieChatHistoryStore implements ChatHistoryStore {
     return matches.sort((a, b) => b.timestamp - a.timestamp);
   }
 
-  async indexMessage(topicId: number, messageId: number, content: string): Promise<void> {
-    await indexMessageContent(content, topicId, messageId);
-  }
-
   async reindexTopic(topicId: number): Promise<boolean> {
     return reindexTopic(topicId);
-  }
-
-  async reindexMessage(messageId: number): Promise<boolean> {
-    try {
-      const message = await db.messages.get(messageId);
-      if (!message || !message.content || !message.topicId) {
-        console.warn(`[STORE] Message ${messageId} not found or missing content/topicId`);
-        return false;
-      }
-
-      await db.wordIndex.where('messageId').equals(messageId).delete();
-      await indexMessageContent(message.content, message.topicId, messageId);
-
-      return true;
-    } catch (error) {
-      console.error(`[STORE] Error reindexing message ${messageId}:`, error);
-      return false;
-    }
   }
 
   async reindexUser(userId: string): Promise<boolean> {
@@ -384,24 +352,6 @@ export class DexieChatHistoryStore implements ChatHistoryStore {
       return successCount === topics.length;
     } catch (error) {
       console.error('[STORE] Error reindexing user messages:', error);
-      return false;
-    }
-  }
-
-  async isTopicIndexed(topicId: number): Promise<boolean> {
-    try {
-      const messageIds = (await db.messages.where('topicId').equals(topicId).toArray())
-        .map(msg => msg.id)
-        .filter(isDefined);
-
-      if (messageIds.length === 0) {
-        return true; // nothing to index
-      }
-
-      const firstEntry = await db.wordIndex.where('messageId').anyOf(messageIds).first();
-      return !!firstEntry;
-    } catch (error) {
-      console.error(`[STORE] Error checking if topic ${topicId} is indexed:`, error);
       return false;
     }
   }
