@@ -1045,21 +1045,30 @@ export const useMessages = (socket: ChatSocket, user: any) => {
 
   // Update welcome message when persona changes
   useEffect(() => {
-    // Only update if there's a welcome message and the current message list only has one message
-    if (messages.length === 1 && messages[0].id === 'welcome') {
-      const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0];
-      
-      const updatedWelcomeMessage: Message = {
-        id: 'welcome',
-        text: user 
-          ? `Xin chào ${user.name}! ${selectedPersona.displayName} đang lắng nghe!`
-          : `Xin chào! ${selectedPersona.displayName} đang lắng nghe!`,
-        isBot: true,
-        timestamp: Date.now()
-      };
-      
-      updateMessages([updatedWelcomeMessage]);
-    }
+    // Decide from `pendingMessagesRef`, not from `messages`. `updateMessages` is
+    // debounced, so the rendered state lags the buffer the UI is about to show by
+    // up to one window. Loading a topic whose persona differs from the active one
+    // changes the persona while that buffer already holds the conversation, and
+    // deciding from the stale state would overwrite it with a welcome message —
+    // the conversation would silently never appear.
+    const pending = pendingMessagesRef.current;
+    if (pending.length !== 1 || pending[0].id !== 'welcome') return;
+
+    const selectedPersona = AVAILABLE_PERSONAS.find(p => p.id === currentPersonaId) || AVAILABLE_PERSONAS[0];
+    const text = user
+      ? `Xin chào ${user.name}! ${selectedPersona.displayName} đang lắng nghe!`
+      : `Xin chào! ${selectedPersona.displayName} đang lắng nghe!`;
+
+    // Rewriting an identical greeting would only feed the debounce a new array and
+    // re-trigger this effect on the next render.
+    if (pending[0].text === text) return;
+
+    updateMessages([{
+      id: 'welcome',
+      text,
+      isBot: true,
+      timestamp: pending[0].timestamp
+    }]);
   }, [currentPersonaId, user, messages, updateMessages]);
 
   // Cleanup function

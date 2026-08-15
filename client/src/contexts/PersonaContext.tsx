@@ -161,24 +161,12 @@ export const PersonaProvider: React.FC<PersonaProviderProps> = ({ children }) =>
     }
     
     console.log(`[PERSONA CONTEXT] ABSOLUTE FORCE: Setting persona to ${id} regardless of lock state`);
-    
-    // Directly set state with React.useState setter to ensure it updates
+
+    // The caller is following a topic, not expressing a preference: showing an old
+    // conversation must not replace the persona the user picked for new chats.
+    setIsTopicChange(true);
     setCurrentPersonaId(id);
-    
-    // Log the change
-    console.log(`[PERSONA CONTEXT] ABSOLUTE FORCE: Changed from ${currentPersonaId} to ${id}`);
-    
-    // Set a verification timeout
-    setTimeout(() => {
-      if (currentPersonaId !== id) {
-        console.error(`[PERSONA CONTEXT] CRITICAL ERROR: Persona not updated correctly`);
-        // Try one more time
-        setCurrentPersonaId(id);
-      } else {
-        console.log(`[PERSONA CONTEXT] ABSOLUTE FORCE: Verification successful - persona is now ${id}`);
-      }
-    }, 50);
-  }, [currentPersonaId]);
+  }, []);
 
   // Function to explicitly save a persona as the default
   const saveDefaultPersona = useCallback((id: string) => {
