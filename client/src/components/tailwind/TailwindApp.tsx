@@ -203,7 +203,7 @@ function TailwindApp() {
 
   // Check if conversation is shared when topic changes
   useEffect(() => {
-    if (currentTopicId && messages.length > 1) {
+    if (currentTopicId && messages.length > 0) {
       checkIfConversationIsShared(currentTopicId);
     } else {
       setSharedConversationInfo(null);
@@ -432,12 +432,12 @@ function TailwindApp() {
                 </div>
 
                 {/* Sticky conversation header with share/unshare buttons */}
-                {messages.length > 1 && currentTopicId && (
+                {messages.length > 0 && currentTopicId && (
                   <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm">
                     <div className="flex-1">
                       <h3 className="text-lg font-medium text-[#3A2E22]">Cuộc trò chuyện</h3>
                       <p className="text-sm text-[#5D4A38]">
-                        {messages.length - 1} tin nhắn
+                        {messages.length} tin nhắn
                         {sharedConversationInfo && (
                           <span className="ml-2 text-green-600">• Đã chia sẻ</span>
                         )}
@@ -501,6 +501,7 @@ function TailwindApp() {
                     <TailwindMessageDisplay
                       messages={messages}
                       currentPersonaId={currentPersonaId}
+                      userName={user?.name}
                       onDeleteMessage={(messageId) => {
                         handleDeleteMessage(messageId);
                         openMessageDelete(messageId);
@@ -510,7 +511,7 @@ function TailwindApp() {
                   </div>
                   
                   {/* Show sample questions when appropriate */}
-                  {messages.length === 1 && messages[0].id === 'welcome' && !hasUserSentMessage && (
+                  {messages.length === 0 && !hasUserSentMessage && (
                     <TailwindSampleQuestions 
                       onQuestionClick={(question) => {
                         console.log('Sample question clicked:', question);
@@ -538,7 +539,7 @@ function TailwindApp() {
                   {/* Footer */}
                   <TailwindFooter 
                     isConnected={isConnected}
-                    hasMessages={messages.length > 1}
+                    hasMessages={messages.length > 0}
                     isBotResponding={isBotResponding}
                     onStartNewChat={startNewChat}
                   />
