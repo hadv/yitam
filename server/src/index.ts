@@ -10,7 +10,6 @@ import { MCPClient } from './MCPClient.js';
 import { config } from './config';
 import { sampleQuestions } from './data/SampleQuestions';
 import { contentSafetyService } from './services/ContentSafety';
-import { ContentSafetyError } from './utils/errors';
 import { LegalService } from './services/LegalService';
 import { handleLegalDocumentRequest } from './routes/legal';
 import { validateAccessCode } from './middleware/AccessControl';
@@ -21,6 +20,11 @@ import conversationRoutes from './routes/conversations';
 import adminRoutes from './routes/admin';
 import CacheFactory from './cache/CacheFactory';
 import { ContextEngine } from './services/ContextEngine';
+import { ChatTurnOrchestrator, ContextMessage } from './services/ChatTurnOrchestrator';
+import { ChatTurnDispatcher } from './services/ChatTurnDispatcher';
+import { ContentSafetyPolicy } from './services/ContentSafetyPolicy';
+import { DirectAnthropicAdapter } from './services/DirectAnthropicAdapter';
+import { MCPTransportAdapter } from './services/MCPTransportAdapter';
 import { getContextConfig } from './config/contextEngine';
 
 // Load environment variables
@@ -221,6 +225,66 @@ const legalService = LegalService.getInstance();
 
 // Initialize Context Engine
 let contextEngine: ContextEngine | null = null;
+const chatTurnOrchestrator = new ChatTurnOrchestrator();
+
+/**
+ * The transcript for one turn.
+ *
+ * With a context engine, the turn is recorded and the engine answers with a window
+ * around it: recent messages, relevant history, and whatever it has summarised —
+ * carried as `system` entries, which the direct transport turns into a system
+ * prompt and the MCP transport drops. Without an engine, the transcript is the
+ * message on its own.
+ */
+async function buildTurnContext(
+  chatId: string,
+  userEmail: string,
+  sanitizedInput: string
+): Promise<ContextMessage[]> {
+  const asked: ContextMessage[] = [{ role: 'user', content: sanitizedInput }];
+
+  if (!contextEngine) {
+    return asked;
+  }
+
+  await contextEngine.createConversation(chatId, userEmail);
+  await contextEngine.addMessage(chatId, Date.now(), { role: 'user', content: sanitizedInput });
+
+  const window = await contextEngine.getOptimizedContext(chatId, sanitizedInput);
+
+  const transcript: ContextMessage[] = [...window.recentMessages, ...window.relevantHistory]
+    .filter(message => message.role === 'user' || message.role === 'assistant')
+    .filter(message => typeof message.content === 'string' && message.content.trim())
+    .map(message => ({
+      role: message.role as 'user' | 'assistant',
+      content: message.content as string
+    }));
+
+  const preamble: ContextMessage[] = [];
+  if (window.summaries.length > 0) {
+    preamble.push({
+      role: 'system',
+      content: `Previous conversation context:\n${window.summaries.map(s => s.summary).join('\n')}`
+    });
+  }
+  if (window.keyFacts.length > 0) {
+    preamble.push({
+      role: 'system',
+      content: `Key facts from conversation:\n${window.keyFacts.map(f => f.factText).join('\n')}`
+    });
+  }
+  if (preamble.length > 0) {
+    preamble.push({ role: 'system', content: 'Please respond naturally while being aware of this context.' });
+  }
+
+  console.log(
+    `Context optimization: ${transcript.length} messages, ${window.totalTokens} tokens, ` +
+    `${(window.compressionRatio * 100).toFixed(1)}% compression`
+  );
+
+  // An empty window means this is the first thing said.
+  return [...preamble, ...(transcript.length > 0 ? transcript : asked)];
+}
 const initializeContextEngine = async (): Promise<void> => {
   if (process.env.CONTEXT_ENGINE_ENABLED === 'true') {
     try {
@@ -351,6 +415,8 @@ io.on('connection', (socket: Socket) => {
 
   // Handle chat messages
   socket.on('chat-message', async (data: { message: string; personaId?: string; chatId?: string }) => {
+    const messageId = Date.now().toString();
+
     try {
       const userMessage = data.message;
       const personaId = data.personaId;
@@ -378,12 +444,10 @@ io.on('connection', (socket: Socket) => {
           apiKey: socket.data.user.apiKey,
         });
       }
-      
-      const startTime = Date.now();
-      
+
       // Only enable AI safety if explicitly turned on in environment
       const enableAiSafety = process.env.ENABLE_AI_CONTENT_SAFETY === 'true';
-      
+
       // Initialize content safety service with client's API key
       if (enableAiSafety) {
         contentSafetyService.initializeAiClient(socket.data.user.apiKey);
@@ -394,459 +458,49 @@ io.on('connection', (socket: Socket) => {
         console.log('AI-based content safety check disabled');
       }
 
-      // Validate and sanitize incoming message
-      let sanitizedMessage = userMessage;
-      try {
-        await contentSafetyService.validateContent(userMessage);
-        sanitizedMessage = contentSafetyService.sanitizeContent(userMessage);
-      } catch (error) {
-        if (error instanceof Error) {
-          if (error.message.includes('credit balance is too low')) {
-            socket.emit('error', {
-              type: 'credit_balance',
-              message: ERROR_MESSAGES.credit_balance.vi
-            });
-            return;
-          }
-          if (error instanceof ContentSafetyError) {
-            console.log(`Content safety error detected in user input: ${error.message}, code: ${error.code}`);
-            
-            // Get appropriate error message based on the error code
-            let errorMessage = ERROR_MESSAGES.invalid_content[error.language];
-            
-            // Use more specific error messages when available
-            if (error.code === 'medical_advice' || error.code === 'financial_advice' || 
-                error.code === 'legal_advice' || error.code === 'product_marketing') {
-              errorMessage = ERROR_MESSAGES.restricted_content[error.language];
-            } else if (error.code === 'prompt_injection') {
-              errorMessage = ERROR_MESSAGES.prompt_injection[error.language];
-            }
-            
-            socket.emit('bot-response', {
-              text: errorMessage,
-              id: Date.now().toString(),
-            });
-            return;
-          }
-        }
-        throw error;
-      }
-      
-      // Generate a unique message ID for this response
-      const messageId = Date.now().toString();
-      
-      // Let the client know we're starting a response
-      socket.emit('bot-response-start', { id: messageId });
+      const transport = mcpClient && mcpConnected
+        ? new MCPTransportAdapter(mcpClient, chatId)
+        : new DirectAnthropicAdapter(anthropic, {
+            model: config.model.name,
+            maxTokens: Math.min(
+              config.model.maxTokens,
+              config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000
+            ),
+          });
 
-      // Set a timeout for the MCP tool call
-      const toolCallTimeout = setTimeout(() => {
-        if (!socket.disconnected) {
-          console.log('Tool call taking too long, sending timeout notification to client');
-          socket.emit('tool-call-timeout', { id: messageId });
-        }
-      }, 60000); // 60 second timeout (increased from 30 seconds)
+      // Deferred: the context store records this turn, and what it records has to
+      // be the message as the safety policy left it, not as it arrived.
+      const context = (sanitized: string) => buildTurnContext(chatId, socket.data.user.email, sanitized);
 
-      let responseBuffer = '';
-      // Flag to track if a content safety error occurred
-      let safetyErrorOccurred = false;
-      
-      // Check if MCP client is connected and use it if available
-      if (mcpClient && mcpConnected) {
-        try {
-          // Get optimized context from context engine if available
-          let optimizedContext: Array<{ role: 'user' | 'assistant'; content: string }> | undefined;
-          if (contextEngine) {
-            await contextEngine.createConversation(chatId, socket.data.user.email);
-            await contextEngine.addMessage(chatId, Date.now(), {
-              role: 'user',
-              content: sanitizedMessage
-            });
-
-            // Get optimized context window
-            const contextWindow = await contextEngine.getOptimizedContext(chatId, sanitizedMessage);
-
-            // Convert context window to message format for MCP client
-            optimizedContext = [
-              ...contextWindow.recentMessages
-                .filter(msg => msg.content && typeof msg.content === 'string' && msg.content.trim())
-                .map(msg => ({
-                  role: msg.role as 'user' | 'assistant',
-                  content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
-                })),
-              ...contextWindow.relevantHistory
-                .filter(msg => msg.content && typeof msg.content === 'string' && msg.content.trim())
-                .map(msg => ({
-                  role: msg.role as 'user' | 'assistant',
-                  content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
-                }))
-            ];
-
-            // If no context messages exist (first message), add the current user message
-            if (optimizedContext.length === 0) {
-              optimizedContext.push({
-                role: 'user',
-                content: sanitizedMessage
-              });
-            }
-
-            console.log(`Context Engine: Providing ${optimizedContext.length} optimized messages to MCP client (${contextWindow.totalTokens} tokens, ${(contextWindow.compressionRatio * 100).toFixed(1)}% compression)`);
-          }
-
-          // Process message using MCP client with optimized context
-          await mcpClient.processQueryWithStreaming(
-            sanitizedMessage,
-            async (chunk) => {
-              try {
-                // Use different validation based on whether AI safety is enabled
-                if (enableAiSafety) {
-                  // Full AI-based validation
-                  await contentSafetyService.validateResponse(responseBuffer + chunk, 'vi');
-                } else {
-                  // Fast prompt injection check only
-                  const isSafe = contentSafetyService.checkPromptInjectionOnly(responseBuffer + chunk, 'vi');
-                  if (!isSafe) {
-                    console.log(`Content safety error detected in AI response - prompt injection attempt`);
-                    safetyErrorOccurred = true;
-                    socket.emit('bot-response-end', { 
-                      id: messageId,
-                      error: true, 
-                      errorMessage: ERROR_MESSAGES.prompt_injection['vi']
-                    });
-                    return false; // Stop streaming
-                  }
-                }
-                
-                // Update the buffer with this chunk
-                responseBuffer += chunk;
-                
-                // Emit the response chunk to the client
-                socket.emit('bot-response-chunk', {
-                  id: messageId,
-                  text: chunk,
-                });
-                
-                return true; // Continue streaming
-              } catch (error) {
-                if (error instanceof ContentSafetyError) {
-                  console.log(`Content safety error detected in AI response: ${error.message}, code: ${error.code}`);
-                  safetyErrorOccurred = true;
-                  
-                  // Get appropriate error message based on the error code
-                  let errorMessage = ERROR_MESSAGES.invalid_content[error.language];
-                  
-                  // Use more specific error messages when available
-                  if (error.code === 'medical_advice' || error.code === 'financial_advice' || 
-                      error.code === 'legal_advice' || error.code === 'product_marketing') {
-                    errorMessage = ERROR_MESSAGES.restricted_content[error.language];
-                  } else if (error.code === 'prompt_injection') {
-                    errorMessage = ERROR_MESSAGES.prompt_injection[error.language];
-                  }
-                  
-                  socket.emit('bot-response-end', { 
-                    id: messageId,
-                    error: true, 
-                    errorMessage
-                  });
-                  
-                  return false; // Stop streaming
-                } else {
-                  console.error('Error validating content during streaming response:', error);
-                  throw error;
-                }
-              }
-            },
-            chatId, // Pass the actual chat ID
-            personaId, // Pass persona ID if provided
-            optimizedContext // Pass optimized context from context engine
-          );
-          
-          // Clear the timeout since we got a response
-          clearTimeout(toolCallTimeout);
-          
-          // If no safety error occurred, finalize the response
-          if (!safetyErrorOccurred) {
-            // Store assistant response in context engine if available
-            if (contextEngine && responseBuffer) {
-              try {
-                await contextEngine.addMessage(chatId, Date.now() + 1, {
-                  role: 'assistant',
-                  content: responseBuffer
-                });
-              } catch (error) {
-                console.error('Error storing MCP assistant response in context engine:', error);
-              }
-            }
-
-            socket.emit('bot-response-end', {
-              id: messageId,
-              text: responseBuffer,
-              responseTime: Date.now() - startTime
-            });
-          }
-        } catch (err) {
-          console.error('Error with MCP client:', err);
-          clearTimeout(toolCallTimeout);
-          
-          // Check for rate limit errors
-          const isRateLimitError = err instanceof Error && 
-            (err.message.includes('rate limit') || 
-             (err as any)?.type === 'rate_limit_error' ||
-             err.message.includes('429'));
-          
-          if (isRateLimitError) {
-            // For rate limit errors, emit the specific error event
-            socket.emit('bot-response-error', { 
-              id: messageId,
-              error: {
-                type: 'rate_limit_error',
-                message: 'Rate limit exceeded'
-              }
-            });
-          } else {
-            // Send appropriate error message to client
-            let errorMessage = ERROR_MESSAGES.general_error.vi;
-            if (err instanceof Error && err.message.includes('overloaded')) {
-              errorMessage = ERROR_MESSAGES.overloaded.vi;
-            }
-            
-            socket.emit('bot-response-end', { 
-              id: messageId,
-              error: true, 
-              errorMessage
+      const dispatcher = new ChatTurnDispatcher({
+        orchestrator: chatTurnOrchestrator,
+        safetyPolicy: new ContentSafetyPolicy(contentSafetyService),
+        errorMessages: ERROR_MESSAGES,
+        enableAiSafety,
+        language: 'vi',
+        onCompleted: async fullResponse => {
+          if (contextEngine && fullResponse) {
+            await contextEngine.addMessage(chatId, Date.now() + 1, {
+              role: 'assistant',
+              content: fullResponse
             });
           }
         }
-      } else {
-        try {
-          // Use Context Engine if available, otherwise fall back to direct Anthropic API
-          let stream;
+      });
 
-          if (contextEngine) {
-            // Use context-aware processing
-            console.log('Using Context Engine for enhanced conversation processing');
-
-            // Create conversation if it doesn't exist
-            await contextEngine.createConversation(chatId, socket.data.user.email);
-
-            // Store the user message in context engine
-            await contextEngine.addMessage(chatId, Date.now(), {
-              role: 'user',
-              content: sanitizedMessage
-            });
-
-            // Get optimized context
-            const contextWindow = await contextEngine.getOptimizedContext(chatId, sanitizedMessage);
-
-            // Combine all context messages and ensure current user message is included
-            const allContextMessages = [
-              ...contextWindow.recentMessages,
-              ...contextWindow.relevantHistory
-            ];
-
-            // If no context messages exist (first message), add the current user message
-            if (allContextMessages.length === 0) {
-              allContextMessages.push({
-                role: 'user',
-                content: sanitizedMessage
-              });
-            }
-
-            console.log(`Context optimization: Using ${allContextMessages.length} messages with ${contextWindow.totalTokens} tokens`);
-
-            // Create system message from summaries and key facts
-            let systemMessage = '';
-            if (contextWindow.summaries.length > 0) {
-              systemMessage += 'Previous conversation context:\n';
-              systemMessage += contextWindow.summaries.map(s => s.summary).join('\n');
-              systemMessage += '\n\n';
-            }
-            if (contextWindow.keyFacts.length > 0) {
-              systemMessage += 'Key facts from conversation:\n';
-              systemMessage += contextWindow.keyFacts.map(f => f.factText).join('\n');
-              systemMessage += '\n\n';
-            }
-            if (systemMessage) {
-              systemMessage += 'Please respond naturally while being aware of this context.';
-            }
-
-            // Filter and validate messages before sending to Anthropic API
-            const validMessages = allContextMessages
-              .filter(msg => msg.role === 'user' || msg.role === 'assistant') // Filter out system messages
-              .filter(msg => msg.content && typeof msg.content === 'string' && msg.content.trim()) // Filter out empty content
-              .map(msg => ({
-                role: msg.role as 'user' | 'assistant',
-                content: msg.content
-              }));
-
-            // Ensure we have at least one valid message
-            if (validMessages.length === 0) {
-              console.error('No valid messages to send to Anthropic API');
-              socket.emit('bot-response-end', {
-                id: messageId,
-                error: true,
-                errorMessage: 'Không có tin nhắn hợp lệ để xử lý.'
-              });
-              return;
-            }
-
-            console.log(`Sending ${validMessages.length} valid messages to Anthropic API`);
-
-            // Use optimized context for Anthropic API call
-            stream = await anthropic.messages.stream({
-              model: config.model.name,
-              max_tokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000),
-              messages: validMessages,
-              // Include context summary if available
-              system: systemMessage || undefined
-            });
-          } else {
-            // Fall back to direct Anthropic API
-            console.log('Using direct Anthropic API (Context Engine not available)');
-            stream = await anthropic.messages.stream({
-              model: config.model.name,
-              max_tokens: Math.min(config.model.maxTokens, config.model.tokenLimits?.[config.model.name] || config.model.tokenLimits?.default || 4000),
-              messages: [
-                { role: 'user', content: sanitizedMessage }
-              ],
-            });
-          }
-          
-          for await (const chunk of stream) {
-            if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-              try {
-                // Use different validation based on whether AI safety is enabled
-                if (enableAiSafety) {
-                  // Full AI-based validation
-                  await contentSafetyService.validateResponse(responseBuffer + chunk.delta.text, 'vi');
-                } else {
-                  // Fast prompt injection check only
-                  const isSafe = contentSafetyService.checkPromptInjectionOnly(responseBuffer + chunk.delta.text, 'vi');
-                  if (!isSafe) {
-                    console.log(`Content safety error detected in AI response - prompt injection attempt`);
-                    safetyErrorOccurred = true;
-                    socket.emit('bot-response-end', { 
-                      id: messageId,
-                      error: true, 
-                      errorMessage: ERROR_MESSAGES.prompt_injection['vi']
-                    });
-                    break; // Stop processing
-                  }
-                }
-                
-                // Update the buffer with this chunk
-                responseBuffer += chunk.delta.text;
-                
-                // Emit the response chunk to the client
-                socket.emit('bot-response-chunk', {
-                  id: messageId,
-                  text: chunk.delta.text,
-                });
-              } catch (error) {
-                if (error instanceof ContentSafetyError) {
-                  console.log(`Content safety error detected in AI response: ${error.message}, code: ${error.code}`);
-                  safetyErrorOccurred = true;
-                  
-                  // Get appropriate error message based on the error code
-                  let errorMessage = ERROR_MESSAGES.invalid_content[error.language];
-                  
-                  // Use more specific error messages when available
-                  if (error.code === 'medical_advice' || error.code === 'financial_advice' || 
-                      error.code === 'legal_advice' || error.code === 'product_marketing') {
-                    errorMessage = ERROR_MESSAGES.restricted_content[error.language];
-                  } else if (error.code === 'prompt_injection') {
-                    errorMessage = ERROR_MESSAGES.prompt_injection[error.language];
-                  }
-                  
-                  socket.emit('bot-response-end', { 
-                    id: messageId,
-                    error: true, 
-                    errorMessage
-                  });
-                  
-                  break; // Stop processing
-                } else {
-                  console.error('Error validating content during streaming response:', error);
-                  throw error;
-                }
-              }
-            }
-          }
-          
-          // If no safety error occurred, signal that the streaming has completed
-          if (!safetyErrorOccurred) {
-            // Store assistant response in context engine if available
-            if (contextEngine && responseBuffer) {
-              try {
-                await contextEngine.addMessage(chatId, Date.now() + 1, {
-                  role: 'assistant',
-                  content: responseBuffer
-                });
-              } catch (error) {
-                console.error('Error storing assistant response in context engine:', error);
-              }
-            }
-
-            socket.emit('bot-response-end', {
-              id: messageId,
-              text: responseBuffer,
-              responseTime: Date.now() - startTime
-            });
-          }
-          
-          clearTimeout(toolCallTimeout);
-        } catch (error) {
-          console.error('Error processing stream through Anthropic API:', error);
-          clearTimeout(toolCallTimeout);
-          
-          // Check for rate limit errors
-          const isRateLimitError = error instanceof Error && 
-            (error.message.includes('rate limit') || 
-             (error as any)?.type === 'rate_limit_error' ||
-             error.message.includes('429'));
-          
-          if (isRateLimitError) {
-            // For rate limit errors, emit the specific error event
-            socket.emit('bot-response-error', { 
-              id: messageId,
-              error: {
-                type: 'rate_limit_error',
-                message: 'Rate limit exceeded'
-              }
-            });
-          } else {
-            // General error handling
-            socket.emit('bot-response-end', { 
-              id: messageId,
-              error: true, 
-              errorMessage: ERROR_MESSAGES.general_error.vi
-            });
-          }
-        }
-      }
+      await dispatcher.run(socket, { input: userMessage, chatId, personaId, messageId, context }, transport);
     } catch (error: any) {
+      // Anything that got past the dispatcher: building the context, or the
+      // context engine falling over. The turn has already been announced, so the
+      // failure belongs on the pending reply rather than in a message of its own.
       console.error('Error processing message:', error);
-      
-      // Generate a unique message ID for the error response
-      const errorId = Date.now().toString();
-      
-      const language = error instanceof ContentSafetyError ? error.language : 'en';
-      let errorMessage = ERROR_MESSAGES.general_error[language];
-      
-      // Check for specific Claude API errors
-      if (error?.status === 529 || (error?.error?.type === "overloaded_error")) {
-        errorMessage = ERROR_MESSAGES.overloaded[language];
-      } else if (error?.status === 400) {
-        errorMessage = ERROR_MESSAGES.bad_request[language];
-      } else if (error?.status === 401) {
-        errorMessage = ERROR_MESSAGES.auth_error[language];
-      } else if (error?.status === 429) {
-        errorMessage = ERROR_MESSAGES.rate_limit[language];
-      }
-      
-      // Send error response directly (not streaming)
-      socket.emit('bot-response', {
-        text: errorMessage,
-        id: errorId,
+
+      socket.emit('bot-response-error', {
+        id: messageId,
+        error: {
+          type: 'general',
+          error: { message: ERROR_MESSAGES.general_error.vi }
+        }
       });
     }
   });

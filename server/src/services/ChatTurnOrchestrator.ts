@@ -1,6 +1,6 @@
 export type ChatError = 
-  | { type: 'restricted_content'; code: string }
-  | { type: 'prompt_injection' }
+  | { type: 'restricted_content'; code: string; language?: string }
+  | { type: 'prompt_injection'; language?: string }
   | { type: 'rate_limit' }
   | { type: 'overloaded' }
   | { type: 'credit_balance' }
@@ -33,16 +33,38 @@ export type StreamEvent =
   | { type: 'error'; error: ChatError }
   | { type: 'end'; fullResponse: string; responseTimeMs: number };
 
+/**
+ * Builds the transcript for a turn, given the input as the safety policy left it.
+ *
+ * A function rather than an array when the context depends on the sanitized text:
+ * the caller's context store records the turn and answers with a window around it,
+ * and recording the raw input would both store what sanitizing removed and feed it
+ * back to the model on the next turn.
+ */
+export type ContextProvider = (sanitizedInput: string) => Promise<ContextMessage[]> | ContextMessage[];
+
 export interface StreamChatTurnOptions {
   input: string;
   chatId: string;
   personaId?: string;
-  context: ContextMessage[];
+  context: ContextMessage[] | ContextProvider;
   safetyPolicy: SafetyPolicy;
   transport: TransportAdapter;
   enableAiSafety: boolean;
   language?: string; // e.g. 'vi' or 'en'
 }
+
+/**
+ * A safety verdict, as opposed to something that merely went wrong.
+ *
+ * `ContentSafetyError` carries both a `code` and the `language` it was judged in.
+ * Insisting on both keeps an unrelated error that happens to have a `code` — an
+ * SDK or filesystem error — from being reported to the user as unsafe content.
+ */
+const asSafetyVerdict = (error: any): { code: string; language?: string } | null =>
+  typeof error?.code === 'string' && typeof error?.language === 'string'
+    ? { code: error.code, language: error.language }
+    : null;
 
 export class ChatTurnOrchestrator {
   async *streamTurn(options: StreamChatTurnOptions): AsyncIterableIterator<StreamEvent> {
@@ -59,45 +81,52 @@ export class ChatTurnOrchestrator {
         yield { type: 'error', error: { type: 'credit_balance' } };
         return;
       }
-      if (error?.code) { // Assuming ContentSafetyError has a code
-        if (['medical_advice', 'financial_advice', 'legal_advice', 'product_marketing'].includes(error.code)) {
-          yield { type: 'error', error: { type: 'restricted_content', code: error.code } };
-          return;
-        } else if (error.code === 'prompt_injection') {
-          yield { type: 'error', error: { type: 'prompt_injection' } };
-          return;
-        }
+      const verdict = asSafetyVerdict(error);
+      if (verdict) {
+        yield verdict.code === 'prompt_injection'
+          ? { type: 'error', error: { type: 'prompt_injection', language: verdict.language } }
+          : { type: 'error', error: { type: 'restricted_content', code: verdict.code, language: verdict.language } };
+        return;
       }
       yield { type: 'error', error: { type: 'general', originalError: error } };
       return;
     }
 
-    // 2. Stream from Transport Adapter
+    // 2. Build the context, now that the input is in its final form
+    let context: ContextMessage[];
+    try {
+      context = typeof options.context === 'function'
+        ? await options.context(sanitizedMessage)
+        : options.context;
+    } catch (error: any) {
+      yield { type: 'error', error: { type: 'general', originalError: error } };
+      return;
+    }
+
+    // 3. Stream from Transport Adapter
     let responseBuffer = '';
     let stream: AsyncIterableIterator<string>;
-    
+
     try {
-      stream = options.transport.streamResponse(sanitizedMessage, options.context, options.personaId);
+      stream = options.transport.streamResponse(sanitizedMessage, context, options.personaId);
     } catch (error: any) {
       yield this.mapTransportError(error);
       return;
     }
 
-    // 3. Process Stream and Apply Output Safety Checks
+    // 4. Process Stream and Apply Output Safety Checks
     try {
       for await (const chunk of stream) {
         if (options.enableAiSafety) {
           try {
             await options.safetyPolicy.validateResponse(responseBuffer + chunk, language);
           } catch (error: any) {
-             if (error?.code) {
-               if (['medical_advice', 'financial_advice', 'legal_advice', 'product_marketing'].includes(error.code)) {
-                 yield { type: 'error', error: { type: 'restricted_content', code: error.code } };
-                 return;
-               } else if (error.code === 'prompt_injection') {
-                 yield { type: 'error', error: { type: 'prompt_injection' } };
-                 return;
-               }
+             const verdict = asSafetyVerdict(error);
+             if (verdict) {
+               yield verdict.code === 'prompt_injection'
+                 ? { type: 'error', error: { type: 'prompt_injection', language: verdict.language } }
+                 : { type: 'error', error: { type: 'restricted_content', code: verdict.code, language: verdict.language } };
+               return;
              }
              yield { type: 'error', error: { type: 'general', originalError: error } };
              return;

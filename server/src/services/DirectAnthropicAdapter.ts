@@ -4,8 +4,6 @@ import { ContextMessage, TransportAdapter } from './ChatTurnOrchestrator';
 export interface DirectAnthropicOptions {
   model: string;
   maxTokens: number;
-  /** Prepended context — summaries and key facts the context engine produced. */
-  system?: string;
 }
 
 /**
@@ -27,13 +25,11 @@ export class DirectAnthropicAdapter implements TransportAdapter {
     context: ContextMessage[],
     _personaId?: string
   ): AsyncIterableIterator<string> {
-    const messages = this.toApiMessages(message, context);
-
     const stream = await this.anthropic.messages.stream({
       model: this.options.model,
       max_tokens: this.options.maxTokens,
-      messages,
-      system: this.options.system || undefined,
+      messages: this.toApiMessages(message, context),
+      system: this.toSystemPrompt(context),
     });
 
     for await (const event of stream as AsyncIterable<any>) {
@@ -41,6 +37,19 @@ export class DirectAnthropicAdapter implements TransportAdapter {
         yield event.delta.text as string;
       }
     }
+  }
+
+  /**
+   * Whatever the context marked as `system` — conversation summaries, key facts —
+   * becomes the system prompt.
+   */
+  private toSystemPrompt(context: ContextMessage[]): string | undefined {
+    const parts = context
+      .filter(entry => entry.role === 'system')
+      .map(entry => entry.content)
+      .filter(content => typeof content === 'string' && content.trim());
+
+    return parts.length > 0 ? parts.join('\n\n') : undefined;
   }
 
   /**

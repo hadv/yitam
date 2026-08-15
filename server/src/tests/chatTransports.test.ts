@@ -42,15 +42,11 @@ describe('DirectAnthropicAdapter', () => {
     expect(await collect(adapter.streamResponse('Hỏi', []))).toEqual(['Huyệt ', 'đạo']);
   });
 
-  it('sends the context as the transcript', async () => {
+  it('sends the context as the transcript, and its system entries as the prompt', async () => {
     const anthropic = streamOf([textDelta('ừ')]);
-    const adapter = new DirectAnthropicAdapter(anthropic as any, {
-      model: 'm',
-      maxTokens: 100,
-      system: 'bối cảnh',
-    });
+    const adapter = new DirectAnthropicAdapter(anthropic as any, { model: 'm', maxTokens: 100 });
     const context: ContextMessage[] = [
-      { role: 'system', content: 'bỏ qua' },
+      { role: 'system', content: 'bối cảnh' },
       { role: 'user', content: 'câu trước' },
       { role: 'assistant', content: '   ' },
       { role: 'assistant', content: 'trả lời trước' },
