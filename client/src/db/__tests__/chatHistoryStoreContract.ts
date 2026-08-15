@@ -250,6 +250,19 @@ export function describeChatHistoryStoreContract(
         expect(contents).toEqual(['a', 'b']);
       });
 
+      it('counts every message when several are appended at once', async () => {
+        // Nothing stops two turns of a conversation from being saved concurrently.
+        // A counter computed from a topic read before the write loses increments.
+        await Promise.all(
+          ['một', 'hai', 'ba', 'bốn', 'năm'].map((content, i) =>
+            store.appendMessage(topicId, { timestamp: 10 + i, role: 'user', content })
+          )
+        );
+
+        expect(await store.countMessages(topicId)).toBe(5);
+        expect(await store.getTopic(topicId)).toMatchObject({ messageCnt: 5, userMessageCnt: 5 });
+      });
+
       it('recomputes stale counters from the messages actually stored', async () => {
         await store.appendMessage(topicId, { timestamp: 10, role: 'user', content: 'a' });
         await store.updateTopic(topicId, { messageCnt: 99, userMessageCnt: 99 });

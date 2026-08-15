@@ -227,7 +227,7 @@ export class DexieChatHistoryStore implements ChatHistoryStore {
     // Counters are the one thing the raw path already handled, in its own
     // transaction. Applying them again would double-count.
     if (!viaRawFallback) {
-      await this.applyMessageToTopicCounters(topic, record);
+      await this.applyMessageToTopicCounters(topicId, record);
     }
 
     // Indexing is not: a message the raw path wrote is exactly as invisible to
@@ -483,26 +483,37 @@ export class DexieChatHistoryStore implements ChatHistoryStore {
   // --- internals -----------------------------------------------------------
 
   /** Roll a topic's cached counters forward by one message. Never throws. */
-  private async applyMessageToTopicCounters(topic: Topic, message: Message): Promise<void> {
-    if (topic.id === undefined) return;
-
+  /**
+   * Roll a topic's counters forward by one message.
+   *
+   * The read and the write share one transaction, so the increment is applied to
+   * the row as stored. Computing it from a topic read earlier — before the message
+   * itself was written — drops an increment whenever two messages are saved at
+   * once, and a conversation turn saves two.
+   */
+  private async applyMessageToTopicCounters(topicId: number, message: Message): Promise<void> {
     try {
-      const patch: Partial<Topic> = {
-        lastActive: message.timestamp,
-        messageCnt: (topic.messageCnt || 0) + 1,
-        ...(message.role === 'user'
-          ? { userMessageCnt: (topic.userMessageCnt || 0) + 1 }
-          : { assistantMessageCnt: (topic.assistantMessageCnt || 0) + 1 }),
-      };
+      await db.transaction('rw', db.topics, async () => {
+        const topic = await db.topics.get(topicId);
+        if (!topic) return;
 
-      if (message.tokens) {
-        patch.totalTokens = (topic.totalTokens || 0) + message.tokens;
-      }
+        const patch: Partial<Topic> = {
+          lastActive: message.timestamp,
+          messageCnt: (topic.messageCnt || 0) + 1,
+          ...(message.role === 'user'
+            ? { userMessageCnt: (topic.userMessageCnt || 0) + 1 }
+            : { assistantMessageCnt: (topic.assistantMessageCnt || 0) + 1 }),
+        };
 
-      await db.topics.update(topic.id, patch);
+        if (message.tokens) {
+          patch.totalTokens = (topic.totalTokens || 0) + message.tokens;
+        }
+
+        await db.topics.update(topicId, patch);
+      });
     } catch (error) {
       // Counters are a cache; recountTopic() can rebuild them from the messages.
-      console.error(`[STORE] Failed to update counters for topic ${topic.id}:`, error);
+      console.error(`[STORE] Failed to update counters for topic ${topicId}:`, error);
     }
   }
 
