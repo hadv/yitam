@@ -422,9 +422,13 @@ io.on('connection', (socket: Socket) => {
               errorMessage = ERROR_MESSAGES.prompt_injection[error.language];
             }
             
-            socket.emit('bot-response', {
-              text: errorMessage,
-              id: Date.now().toString(),
+            // Over `error`, not `bot-response`: the client has no listener for
+            // `bot-response`, so this verdict used to reach the user as silence.
+            // `bot-response-error` would not do either — nothing has been
+            // announced yet, so there is no pending reply for it to attach to.
+            socket.emit('error', {
+              type: error.code === 'prompt_injection' ? 'prompt_injection' : 'restricted_content',
+              message: errorMessage
             });
             return;
           }
@@ -814,20 +818,24 @@ io.on('connection', (socket: Socket) => {
               }
             });
           } else {
-            // General error handling
+            // Same mapping the MCP branch has always had. Without it the two
+            // branches answered an overloaded API differently, and which message
+            // the user saw depended on whether MCP happened to be connected.
+            let errorMessage = ERROR_MESSAGES.general_error.vi;
+            if (error instanceof Error && error.message.includes('overloaded')) {
+              errorMessage = ERROR_MESSAGES.overloaded.vi;
+            }
+
             socket.emit('bot-response-end', { 
               id: messageId,
               error: true, 
-              errorMessage: ERROR_MESSAGES.general_error.vi
+              errorMessage
             });
           }
         }
       }
     } catch (error: any) {
       console.error('Error processing message:', error);
-      
-      // Generate a unique message ID for the error response
-      const errorId = Date.now().toString();
       
       const language = error instanceof ContentSafetyError ? error.language : 'en';
       let errorMessage = ERROR_MESSAGES.general_error[language];
@@ -843,10 +851,10 @@ io.on('connection', (socket: Socket) => {
         errorMessage = ERROR_MESSAGES.rate_limit[language];
       }
       
-      // Send error response directly (not streaming)
-      socket.emit('bot-response', {
-        text: errorMessage,
-        id: errorId,
+      // See above: `bot-response` is not a listened-for event.
+      socket.emit('error', {
+        type: 'general_error',
+        message: errorMessage
       });
     }
   });
