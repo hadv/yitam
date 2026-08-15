@@ -744,13 +744,12 @@ export const useMessages = (socket: ChatSocket, user: any) => {
       }]);
       
       try {
-        // Force database re-open to ensure fresh connection
-        console.log('[TOPIC DEBUG] Ensuring fresh database connection');
-        if (store.isOpen()) {
-          await store.close();
-        }
+        // No close/open dance here. Reading a topic does not need a fresh
+        // connection, and the handle is shared: closing it aborts whatever the
+        // topic list in the history modal — the very thing that got us here — has
+        // in flight. `store.open()` is idempotent and the provider already opened it.
         await store.open();
-        
+
         // Verify topic exists and has correct message count
         const topic = await store.getTopic(topicId);
         
@@ -835,31 +834,10 @@ export const useMessages = (socket: ChatSocket, user: any) => {
         // Set the lock AFTER setting the persona
         setIsPersonaLocked(true);
         
-        // Now load messages for this topic - CRITICAL: Ensure we're getting fresh data
-        console.log(`[TOPIC DEBUG] Fetching messages for topic ${topicId} with forced database refresh`);
-        
-        let topicMessages: DBMessage[] = [];
+        // Now load messages for this topic
+        const topicMessages: DBMessage[] = await store.listMessages(topicId);
+        console.log(`[TOPIC DEBUG] Loaded ${topicMessages.length} messages for topic ${topicId}`);
 
-        try {
-          topicMessages = await store.listMessages(topicId);
-
-          console.log(`[TOPIC DEBUG] Successfully loaded ${topicMessages.length} messages for topic ${topicId}`);
-        } catch (fetchError) {
-          console.error(`[TOPIC DEBUG] Error fetching messages:`, fetchError);
-
-          // Try one more time with a clean connection
-          try {
-            await store.close();
-            await store.open();
-
-            topicMessages = await store.listMessages(topicId);
-
-            console.log(`[TOPIC DEBUG] Successfully loaded ${topicMessages.length} messages on second attempt`);
-          } catch (secondError) {
-            console.error(`[TOPIC DEBUG] Failed to load messages on second attempt:`, secondError);
-            throw secondError;
-          }
-        }
         
         // If we still have no messages, delete the topic and start new chat
         if (topicMessages.length === 0) {

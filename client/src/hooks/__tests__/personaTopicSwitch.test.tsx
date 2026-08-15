@@ -152,6 +152,24 @@ describe('opening a topic whose persona differs from the selected one', () => {
   });
 });
 
+describe('loading a topic', () => {
+  it('does not close the store out from under the rest of the app', async () => {
+    const topicId = await seedTopic('yitam');
+    const close = vi.spyOn(store, 'close');
+    await mount();
+
+    await act(async () => {
+      await harness.handleTopicSelect(topicId);
+    });
+    await settle();
+
+    // The history modal that triggered this is querying the same handle.
+    expect(close).not.toHaveBeenCalled();
+    expect(store.isOpen()).toBe(true);
+    expect(harness.messages.map(m => m.text)).toEqual(['Xin chào', 'Chào bạn']);
+  });
+});
+
 describe('the welcome greeting', () => {
   it('still follows the persona while no topic is open', async () => {
     await mount();
