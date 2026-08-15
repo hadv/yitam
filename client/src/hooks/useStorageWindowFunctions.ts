@@ -222,7 +222,6 @@ export const useStorageWindowFunctions = (userId: string | undefined) => {
         const results = {
           read: { small: 0, medium: 0, large: 0 },
           write: { small: 0, medium: 0, large: 0 },
-          index: { time: 0 },
         };
 
         // Benchmark read operations
@@ -237,15 +236,6 @@ export const useStorageWindowFunctions = (userId: string | undefined) => {
         const startLargeRead = performance.now();
         await store.sampleMessages(100);
         results.read.large = performance.now() - startLargeRead;
-
-        // Benchmark indexing operations
-        const startIndex = performance.now();
-        const [firstTopic] = await store.listTopics(userId, { limit: 1 });
-
-        if (firstTopic?.id) {
-          await store.reindexTopic(firstTopic.id);
-        }
-        results.index.time = performance.now() - startIndex;
 
         console.log('[PERFORMANCE] Benchmark results:', results);
         return results;

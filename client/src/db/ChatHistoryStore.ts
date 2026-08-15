@@ -134,13 +134,6 @@ export interface DatabaseStats {
   storage: StorageEstimate;
 }
 
-export interface SearchIndexStats {
-  totalWords: number;
-  uniqueWords: number;
-  topicsCovered: number;
-  messagesCovered: number;
-}
-
 /** A portable dump of one user's chat history. */
 export interface ExportBundle {
   topics: Topic[];
@@ -227,14 +220,15 @@ export interface ChatHistoryStore {
 
   // --- search --------------------------------------------------------------
 
+  /**
+   * Search a user's messages, newest match first.
+   *
+   * Whatever the engine needs to answer this — a word index, FTS, a scan — it
+   * builds and repairs on its own. A caller never has to prepare it.
+   */
   searchMessages(userId: string, query: string, opts?: SearchMessagesOptions): Promise<MessageHit[]>;
   /** Search within a single topic, newest match first. */
   searchMessagesInTopic(topicId: number, query: string): Promise<Message[]>;
-  /** Rebuild the index for every message in a topic. */
-  reindexTopic(topicId: number): Promise<boolean>;
-  /** Rebuild the index for every topic belonging to a user. */
-  reindexUser(userId: string): Promise<boolean>;
-  getSearchIndexStats(): Promise<SearchIndexStats>;
 
   // --- maintenance ---------------------------------------------------------
 

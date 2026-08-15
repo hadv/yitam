@@ -116,7 +116,7 @@ export function describeChatHistoryStoreContract(
         expect(result.deletedMessages).toBe(2);
         expect(await store.getTopic(id)).toBeUndefined();
         expect(await store.countMessages(id)).toBe(0);
-        expect((await store.getSearchIndexStats()).totalWords).toBe(0);
+        expect(await store.searchMessages(USER, 'châm cứu')).toEqual([]);
       });
 
       it('reports failure when deleting a topic that does not exist', async () => {
@@ -337,30 +337,16 @@ export function describeChatHistoryStoreContract(
         expect(found[0].topicId).toBe(topicId);
       });
 
-      it('reports index coverage', async () => {
+      it('finds a message the same way however many times it is asked', async () => {
         await store.appendMessage(topicId, { timestamp: 10, role: 'user', content: 'huyệt đạo kinh lạc' });
 
-        const stats = await store.getSearchIndexStats();
+        // Whatever an engine repairs on the first search must not change the answer
+        // on the second, and must not accumulate duplicate hits.
+        const first = await store.searchMessages(USER, 'huyệt đạo');
+        const second = await store.searchMessages(USER, 'huyệt đạo');
 
-        expect(stats.messagesCovered).toBe(1);
-        expect(stats.topicsCovered).toBe(1);
-        expect(stats.uniqueWords).toBeGreaterThan(0);
-      });
-
-      it('rebuilds a topic\'s index without duplicating entries', async () => {
-        await store.appendMessage(topicId, { timestamp: 10, role: 'user', content: 'huyệt đạo kinh lạc' });
-        const before = await store.getSearchIndexStats();
-
-        expect(await store.reindexTopic(topicId)).toBe(true);
-
-        expect(await store.getSearchIndexStats()).toEqual(before);
-      });
-
-      it('rebuilds the index for a whole user', async () => {
-        await store.appendMessage(topicId, { timestamp: 10, role: 'user', content: 'huyệt đạo' });
-
-        expect(await store.reindexUser(USER)).toBe(true);
-        expect((await store.getSearchIndexStats()).messagesCovered).toBe(1);
+        expect(first).toHaveLength(1);
+        expect(second).toEqual(first);
       });
     });
 

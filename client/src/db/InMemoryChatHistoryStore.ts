@@ -12,7 +12,6 @@ import type {
   MessageHit,
   NewMessage,
   NewTopic,
-  SearchIndexStats,
   SearchMessagesOptions,
   StorageEstimate,
   StoreStatus,
@@ -42,6 +41,8 @@ export class InMemoryChatHistoryStore implements ChatHistoryStore {
   private topics = new Map<number, Topic>();
   private messages = new Map<number, Message>();
   private index: WordIndex[] = [];
+  /** Users whose index this instance has already checked. See `ensureUserIndexed`. */
+  private readonly indexedUsers = new Set<string>();
 
   private nextTopicId = 1;
   private nextMessageId = 1;
@@ -324,6 +325,8 @@ export class InMemoryChatHistoryStore implements ChatHistoryStore {
   ): Promise<MessageHit[]> {
     if (!query || query.trim() === '') return [];
 
+    await this.ensureUserIndexed(userId);
+
     const { filters = {}, limit = 20 } = opts;
 
     const userTopics = [...this.topics.values()].filter(topic => topic.userId === userId);
@@ -368,6 +371,8 @@ export class InMemoryChatHistoryStore implements ChatHistoryStore {
 
     if (words.length === 0) return [];
 
+    await this.ensureTopicIndexed(topicId);
+
     const messageIds = new Set(
       this.index
         .filter(entry => entry.topicId === topicId && words.includes(entry.word))
@@ -395,7 +400,8 @@ export class InMemoryChatHistoryStore implements ChatHistoryStore {
     }
   }
 
-  async reindexTopic(topicId: number): Promise<boolean> {
+  /** Rebuild one topic's postings from the messages actually held. */
+  private async reindexTopic(topicId: number): Promise<void> {
     this.index = this.index.filter(entry => entry.topicId !== topicId);
 
     const messages = [...this.messages.values()].filter(msg => msg.topicId === topicId);
@@ -404,29 +410,36 @@ export class InMemoryChatHistoryStore implements ChatHistoryStore {
         await this.indexMessage(topicId, message.id, message.content);
       }
     }
-
-    return true;
   }
 
-  async reindexUser(userId: string): Promise<boolean> {
+  /** See `DexieChatHistoryStore.ensureUserIndexed`; the contract is the store's, not the engine's. */
+  private async ensureUserIndexed(userId: string): Promise<void> {
+    if (this.indexedUsers.has(userId)) return;
+    this.indexedUsers.add(userId);
+
     const topicIds = [...this.topics.values()]
       .filter(topic => topic.userId === userId)
       .map(topic => topic.id)
       .filter(isDefined);
 
+    if (topicIds.length === 0) return;
+    if (this.index.some(entry => topicIds.includes(entry.topicId))) return;
+
     for (const topicId of topicIds) {
       await this.reindexTopic(topicId);
     }
-    return true;
   }
 
-  async getSearchIndexStats(): Promise<SearchIndexStats> {
-    return {
-      totalWords: this.index.length,
-      uniqueWords: new Set(this.index.map(e => e.word)).size,
-      topicsCovered: new Set(this.index.map(e => e.topicId)).size,
-      messagesCovered: new Set(this.index.map(e => e.messageId)).size,
-    };
+  private async ensureTopicIndexed(topicId: number): Promise<void> {
+    const messageIds = [...this.messages.values()]
+      .filter(msg => msg.topicId === topicId)
+      .map(msg => msg.id)
+      .filter(isDefined);
+
+    if (messageIds.length === 0) return;
+    if (this.index.some(entry => messageIds.includes(entry.messageId))) return;
+
+    await this.reindexTopic(topicId);
   }
 
   // --- maintenance ---------------------------------------------------------

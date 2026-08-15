@@ -23,7 +23,6 @@ export type {
   NewTopic,
   Page,
   SearchFilters,
-  SearchIndexStats,
   SearchMessagesOptions,
   StorageEstimate,
   StoreStatus,
