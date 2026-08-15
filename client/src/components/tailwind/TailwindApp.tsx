@@ -43,7 +43,6 @@ import CacheDebugPanel from '../debug/CacheDebugPanel';
 import { decryptApiKey } from '../../utils/encryption';
 
 import { checkDatabaseVersionMismatch, updateStoredDatabaseVersion, getSystemInfo } from '../../utils/version';
-import { generateTestTopics } from '../../utils/devTestUtils';
 import { sharedConversationService } from '../../services/SharedConversationService';
 
 // Global type declarations
@@ -341,16 +340,6 @@ function TailwindApp() {
       window.triggerTopicListRefresh();
     }
   }, [startNewChat, setCurrentTopicId, closeModal, notifications.dataDeleted]);
-
-  // Auto-generate test topics in development mode
-  useEffect(() => {
-    if (!user || import.meta.env.MODE !== 'development') return;
-    
-    // Run after a short delay to allow the app to initialize
-    setTimeout(() => {
-      generateTestTopics(store, user.email);
-    }, 1000);
-  }, [user, store]);
 
   // Handle topic edit mode
   const handleTopicEditStart = useCallback(() => {
