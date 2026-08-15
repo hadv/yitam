@@ -37,26 +37,40 @@ export const useMessages = (socket: ChatSocket, user: any) => {
     currentTopicRef.current = currentTopicId;
   }, [currentTopicId]);
 
-  // Stable update function that doesn't depend on state
-  const updateMessages = useCallback((messages: Message[]) => {
-    pendingMessagesRef.current = messages;
-    if (!isUpdatingRef.current) {
-      isUpdatingRef.current = true;
-      if (messageUpdaterTimeoutRef.current) {
-        clearTimeout(messageUpdaterTimeoutRef.current);
-      }
-      messageUpdaterTimeoutRef.current = setTimeout(() => {
-        ReactDOM.unstable_batchedUpdates(() => {
-          // CRITICAL FIX: Ensure the state is always consistent with pendingMessagesRef
-          if (JSON.stringify(pendingMessagesRef.current.map(m => m.id)) !== 
-              JSON.stringify(messages.map(m => m.id))) {
-            console.log('[STATE DEBUG] State sync inconsistency detected, using most current reference');
-          }
-          setMessages([...pendingMessagesRef.current]);
-          isUpdatingRef.current = false;
-        });
-      }, 50);
+  /**
+   * The one way to change what the chat shows.
+   *
+   * `pendingMessagesRef` is the buffer the UI is about to render; `messages` is the
+   * last flush of it, and can lag by up to one 50ms window. That window exists for
+   * streaming, where a reply arrives in many small chunks and rendering each one is
+   * wasted work.
+   *
+   * Prefer the function form. Passing a plain array means deciding what the list
+   * should become from something read earlier — and if that something was the
+   * `messages` state, the decision was made against a stale list. That is exactly
+   * how a loaded conversation once got overwritten by a greeting. The function form
+   * is handed the live buffer and cannot read anything else.
+   */
+  const updateMessages = useCallback((update: Message[] | ((current: Message[]) => Message[])) => {
+    pendingMessagesRef.current =
+      typeof update === 'function' ? update(pendingMessagesRef.current) : update;
+
+    if (isUpdatingRef.current) {
+      // A flush is already scheduled and will pick up whatever the buffer holds by
+      // the time it runs. This is what coalesces a burst of chunks into one render.
+      return;
     }
+
+    isUpdatingRef.current = true;
+    if (messageUpdaterTimeoutRef.current) {
+      clearTimeout(messageUpdaterTimeoutRef.current);
+    }
+    messageUpdaterTimeoutRef.current = setTimeout(() => {
+      ReactDOM.unstable_batchedUpdates(() => {
+        setMessages([...pendingMessagesRef.current]);
+        isUpdatingRef.current = false;
+      });
+    }, 50);
   }, []);
 
   // Socket event setup - make sure to clean up all event listeners
@@ -67,41 +81,32 @@ export const useMessages = (socket: ChatSocket, user: any) => {
     const handleBotResponseStart = (response: { id: string }) => {
       const botTimestamp = Date.now() + 100;
       const botId = `bot-${botTimestamp}-${response.id}`;
-      const currentMessages = pendingMessagesRef.current;
-      
-      // CRITICAL FIX: Log the current state of user message tracking before bot response starts
+
       console.log('[ID DEBUG] Current lastUserMessageId when bot response starts:', lastUserMessageIdRef.current);
-      console.log('[ID DEBUG] Current messages before bot response:', 
-        currentMessages.map(m => ({ id: m.id, isBot: m.isBot }))
-      );
-      
-      updateMessages([
-        ...currentMessages,
-        { 
-          id: botId, 
-          text: '', 
-          isBot: true, 
+
+      updateMessages(current => [
+        ...current,
+        {
+          id: botId,
+          text: '',
+          isBot: true,
           isStreaming: true,
-          timestamp: botTimestamp 
+          timestamp: botTimestamp
         }
       ]);
     };
 
     const handleBotResponseChunk = (response: { text: string, id: string }) => {
-      const currentMessages = pendingMessagesRef.current;
-      const updatedMessages = currentMessages.map(msg => 
+      updateMessages(current => current.map(msg =>
         msg.id.includes(`-${response.id}`)
           ? { ...msg, text: msg.text + response.text }
           : msg
-      );
-      updateMessages(updatedMessages);
+      ));
     };
 
     const handleBotResponseError = (error: { id: string, error: any }) => {
-      const currentMessages = pendingMessagesRef.current;
-      
       // Find the message that was being streamed
-      const updatedMessages = currentMessages.map(msg => {
+      updateMessages(current => current.map(msg => {
         if (msg.id.includes(`-${error.id}`)) {
           // Check for credit balance error in the error message
           const isCreditBalanceError = error.error?.error?.message?.toLowerCase().includes('credit balance') ||
@@ -119,48 +124,38 @@ export const useMessages = (socket: ChatSocket, user: any) => {
           };
         }
         return msg;
-      });
-      
-      updateMessages(updatedMessages);
+      }));
     };
 
     const handleSocketBotResponseEnd = async (response: { id: string, error?: boolean, errorMessage?: string }) => {
       try {
-        const currentMessages = pendingMessagesRef.current;
-        let botMessage: Message | null = null;
-        
-        // Find the bot message that was streaming
-        for (const msg of currentMessages) {
-          if (msg.id.includes(`-${response.id}`)) {
-            botMessage = msg;
-            break;
-          }
-        }
-        
-        if (!botMessage) {
+        const streamed = pendingMessagesRef.current.find(msg => msg.id.includes(`-${response.id}`));
+
+        if (!streamed) {
           return;
         }
-        
-        // Stop streaming
-        botMessage.isStreaming = false;
-        
-        // Update the UI
-        const updatedMessages = currentMessages.map(msg => 
-          msg.id === botMessage?.id ? { ...botMessage } : msg
-        );
-        updateMessages(updatedMessages);
-        
-        // Handle error case
-        if (response.error && response.errorMessage) {
-          botMessage.error = {
-            type: 'other',
-            message: response.errorMessage
-          };
+
+        const failed = Boolean(response.error && response.errorMessage);
+
+        // Build the finished message, then put it in the buffer. This used to set
+        // `isStreaming` and `error` on the streaming message in place — and because
+        // the copy handed to the buffer was taken before the error was assigned, an
+        // error reported here was written to an object nothing rendered any more.
+        const finished: Message = {
+          ...streamed,
+          isStreaming: false,
+          ...(failed ? { error: { type: 'other' as const, message: response.errorMessage! } } : {}),
+        };
+
+        updateMessages(current => current.map(msg => (msg.id === finished.id ? finished : msg)));
+
+        if (failed) {
+          // A failed reply is not a conversation turn worth storing or titling.
           return;
         }
-        
+
         // Handle topic creation (add to queue if DB not ready)
-        handleBotResponseEnd(botMessage);
+        handleBotResponseEnd(finished);
       } catch (error) {
         console.error('Error in bot response end handling:', error);
       }
@@ -204,8 +199,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
         error: errorObj
       };
       
-      const currentMessages = pendingMessagesRef.current;
-      updateMessages([...currentMessages, errorMessageObj]);
+      updateMessages(current => [...current, errorMessageObj]);
     };
 
     // Clean up previous listeners first
@@ -370,21 +364,11 @@ export const useMessages = (socket: ChatSocket, user: any) => {
             console.log(`[TOPIC DEBUG] Added message to existing topic ${currentTopicRef.current} with database ID ${dbMessageId}`);
             
             // Update the UI message to include the database ID for future reference
-            const updatedMessages = pendingMessagesRef.current.map(msg => 
-              msg.id === botMessage.id 
+            updateMessages(current => current.map(msg =>
+              msg.id === botMessage.id
                 ? { ...msg, dbMessageId }
                 : msg
-            );
-            updateMessages(updatedMessages);
-            
-            // Log all message IDs and database IDs for debugging
-            console.log('[ID DEBUG] Current messages with database IDs:', 
-              updatedMessages.map(msg => ({
-                uiId: msg.id,
-                dbId: msg.dbMessageId,
-                isBot: msg.isBot
-              }))
-            );
+            ));
             
             // CRITICAL: Make sure the UI shows the correct persona for this topic
             absoluteForcePersona(topicPersona);
@@ -478,24 +462,14 @@ export const useMessages = (socket: ChatSocket, user: any) => {
       });
       
       // Update UI messages with database IDs
-      const updatedMessages = pendingMessagesRef.current.map(msg => {
+      updateMessages(current => current.map(msg => {
         if (msg.id === lastUserMessage.id) {
           return { ...msg, dbMessageId: userDbMessageId };
         } else if (msg.id === botMessage.id) {
           return { ...msg, dbMessageId: botDbMessageId };
         }
         return msg;
-      });
-      updateMessages(updatedMessages);
-      
-      // Log all message IDs for debugging
-      console.log('[ID DEBUG] Messages with database IDs after topic creation:', 
-        updatedMessages.map(msg => ({
-          uiId: msg.id,
-          dbId: msg.dbMessageId,
-          isBot: msg.isBot
-        }))
-      );
+      }));
       
       console.log(`[TOPIC DEBUG] Successfully saved both messages to topic ${topicId} with database IDs ${userDbMessageId} and ${botDbMessageId}`);
     } catch (error) {
@@ -521,7 +495,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
         }
       };
       
-      updateMessages([...pendingMessagesRef.current, errorMessage]);
+      updateMessages(current => [...current, errorMessage]);
       return;
     }
     
@@ -536,7 +510,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
         isBot: true
       };
       
-      updateMessages([...pendingMessagesRef.current, connectingMessage]);
+      updateMessages(current => [...current, connectingMessage]);
       
       // Wait for connection and then send
       socket.once('connect', () => {
@@ -580,10 +554,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
     // Lock the persona using context
     setIsPersonaLocked(true);
     
-    // IMPORTANT FIX: Ensure the message is properly added to pendingMessagesRef before setting lastUserMessageIdRef
-    const updatedMessages = [...pendingMessagesRef.current, userMessage];
-    pendingMessagesRef.current = updatedMessages;
-    updateMessages(updatedMessages);
+    updateMessages(current => [...current, userMessage]);
     
     // Log the current state of messages for debugging
     console.log('[ID DEBUG] Current message IDs after adding user message:', 
@@ -630,12 +601,11 @@ export const useMessages = (socket: ChatSocket, user: any) => {
           
           // Update the UI message with its database ID for deletion capability
           const userMessageId = `user-${timestamp}-${randomId}`;
-          const updatedMessages = pendingMessagesRef.current.map(msg => 
-            msg.id === userMessageId 
+          updateMessages(current => current.map(msg =>
+            msg.id === userMessageId
               ? { ...msg, dbMessageId: userDbMessageId }
               : msg
-          );
-          updateMessages(updatedMessages);
+          ));
           
           // Log message IDs for debugging
           console.log('[ID DEBUG] User message UI ID:', userMessageId, 'Database ID:', userDbMessageId);
@@ -684,8 +654,7 @@ export const useMessages = (socket: ChatSocket, user: any) => {
     // from the persona at render time, so there is nothing to put here.
     lastMessageRef.current = null;
     lastUserMessageIdRef.current = null; // Reset the last user message ID reference
-    pendingMessagesRef.current = [];
-    setMessages([]);
+    updateMessages([]);
     setHasUserSentMessage(false);
 
     console.log(`[PERSONA DEBUG] New chat started with default persona: ${currentPersonaId}`);
