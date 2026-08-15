@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import db from '../ChatHistoryDB';
 import { DexieChatHistoryStore } from '../DexieChatHistoryStore';
 import { describeChatHistoryStoreContract } from './chatHistoryStoreContract';
@@ -20,6 +20,70 @@ describeChatHistoryStoreContract('DexieChatHistoryStore', async () => {
   });
 
   return store;
+});
+
+/**
+ * The raw-IndexedDB write is the last of three tiers `appendMessage` tries, and it
+ * used to return before the message was indexed. That leaves one unindexed message
+ * among indexed ones — the worst case for search, because `advancedSearch` only
+ * falls back to a content scan when the index answers with nothing at all.
+ */
+describe('DexieChatHistoryStore — a message written through the raw fallback', () => {
+  const USER = 'nguoi-dung@example.com';
+
+  beforeEach(async () => {
+    await db.transaction('rw', [db.topics, db.messages, db.wordIndex], async () => {
+      await db.topics.clear();
+      await db.messages.clear();
+      await db.wordIndex.clear();
+    });
+  });
+
+  it('is indexed like any other', async () => {
+    const store = new DexieChatHistoryStore();
+    await store.open();
+    const topicId = await store.createTopic({
+      userId: USER,
+      title: 'Châm cứu cơ bản',
+      createdAt: 1,
+      lastActive: 1,
+    });
+    await store.appendMessage(topicId, { timestamp: 10, role: 'user', content: 'huyệt đạo kinh lạc' });
+
+    // Force the Dexie tier to fail so the raw tier writes the next one.
+    vi.spyOn(db, 'safeMessagesAdd').mockRejectedValueOnce(new Error('transaction failed'));
+    const rawId = await store.appendMessage(topicId, {
+      timestamp: 20,
+      role: 'assistant',
+      content: 'bát quái càn khôn',
+    });
+
+    expect(await db.messages.get(rawId)).toBeDefined();
+    expect(await db.wordIndex.where('messageId').equals(rawId).count()).toBeGreaterThan(0);
+
+    const found = await store.searchMessages(USER, 'bát quái');
+    expect(found.map(hit => hit.message.id)).toEqual([rawId]);
+  });
+
+  // Not a guard against double-counting: `applyMessageToTopicCounters` patches from
+  // the topic snapshot it was handed, so applying it twice writes the same 1. What
+  // this pins is that a raw-path write is counted at all — the raw transaction
+  // updates the topic itself, which is why the normal counter step is skipped.
+  it('is counted against its topic exactly once', async () => {
+    const store = new DexieChatHistoryStore();
+    await store.open();
+    const topicId = await store.createTopic({
+      userId: USER,
+      title: 'Châm cứu cơ bản',
+      createdAt: 1,
+      lastActive: 1,
+    });
+
+    vi.spyOn(db, 'safeMessagesAdd').mockRejectedValueOnce(new Error('transaction failed'));
+    await store.appendMessage(topicId, { timestamp: 10, role: 'user', content: 'huyệt đạo' });
+
+    expect((await store.getTopic(topicId))?.messageCnt).toBe(1);
+  });
 });
 
 /**

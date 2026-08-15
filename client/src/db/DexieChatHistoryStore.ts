@@ -215,17 +215,24 @@ export class DexieChatHistoryStore implements ChatHistoryStore {
     };
 
     let messageId: number;
+    let viaRawFallback = false;
     try {
       messageId = await db.safeMessagesAdd(record);
     } catch (dexieError) {
       console.error('[STORE] Transactional add failed, falling back to raw IndexedDB:', dexieError);
       messageId = await this.rawAppendMessage(topicId, record);
-      // The raw path updates the topic in its own transaction; nothing more to do.
-      return messageId;
+      viaRawFallback = true;
     }
 
-    await this.applyMessageToTopicCounters(topic, record);
+    // Counters are the one thing the raw path already handled, in its own
+    // transaction. Applying them again would double-count.
+    if (!viaRawFallback) {
+      await this.applyMessageToTopicCounters(topic, record);
+    }
 
+    // Indexing is not: a message the raw path wrote is exactly as invisible to
+    // search as any other unindexed one, and worse than a wholly unindexed store,
+    // which at least falls back to a content scan.
     if (record.content) {
       try {
         await indexMessageContent(record.content, topicId, messageId);
