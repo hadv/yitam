@@ -161,24 +161,12 @@ export const PersonaProvider: React.FC<PersonaProviderProps> = ({ children }) =>
     }
     
     console.log(`[PERSONA CONTEXT] ABSOLUTE FORCE: Setting persona to ${id} regardless of lock state`);
-    
-    // Directly set state with React.useState setter to ensure it updates
+
+    // The caller is following a topic, not expressing a preference: showing an old
+    // conversation must not replace the persona the user picked for new chats.
+    setIsTopicChange(true);
     setCurrentPersonaId(id);
-    
-    // Log the change
-    console.log(`[PERSONA CONTEXT] ABSOLUTE FORCE: Changed from ${currentPersonaId} to ${id}`);
-    
-    // Set a verification timeout
-    setTimeout(() => {
-      if (currentPersonaId !== id) {
-        console.error(`[PERSONA CONTEXT] CRITICAL ERROR: Persona not updated correctly`);
-        // Try one more time
-        setCurrentPersonaId(id);
-      } else {
-        console.log(`[PERSONA CONTEXT] ABSOLUTE FORCE: Verification successful - persona is now ${id}`);
-      }
-    }, 50);
-  }, [currentPersonaId]);
+  }, []);
 
   // Function to explicitly save a persona as the default
   const saveDefaultPersona = useCallback((id: string) => {
@@ -233,114 +221,11 @@ export const PersonaProvider: React.FC<PersonaProviderProps> = ({ children }) =>
     }
   }, []);
 
-  // Patch indexedDB to ensure proper persona ID is set when creating topics
-  useEffect(() => {
-    const patchIndexedDB = () => {
-      // Store the original open method
-      const originalOpen = indexedDB.open;
-      
-      // Override the open method with proper typing
-      (indexedDB as any).open = function(name: string, version?: number) {
-        const request = originalOpen.call(this, name, version);
-        
-        request.addEventListener('success', function() {
-          // Only hook if this is the chat history database
-          if (name && name.includes('chat')) {
-            console.log(`[PERSONA CONTEXT] Database opened: ${name}`);
-            
-            // Hook transaction creation
-            const originalTransaction = request.result.transaction;
-            // Cast the function to avoid TypeScript errors with args
-            request.result.transaction = function(
-              storeNames: string | string[], 
-              mode?: IDBTransactionMode, 
-              options?: IDBTransactionOptions
-            ) {
-              // Use proper parameters to call original
-              const tx = originalTransaction.call(this, storeNames, mode, options);
-              
-              const storeNamesArray = Array.isArray(storeNames) ? storeNames : [storeNames];
-              if (storeNamesArray.includes('topics')) {
-                console.log('[PERSONA CONTEXT] Topics transaction created');
-                
-                // Hook objectStore access
-                const originalObjectStore = tx.objectStore;
-                tx.objectStore = function(storeName: string) {
-                  const store = originalObjectStore.call(this, storeName);
-                  
-                  if (storeName === 'topics') {
-                    // Hook the add and put methods
-                    const originalAdd = store.add;
-                    store.add = function(value: any, key?: IDBValidKey) {
-                      if (value && !value.personaId) {
-                        console.log(`[PERSONA CONTEXT] Setting personaId in topic add to: ${currentPersonaId}`);
-                        value.personaId = currentPersonaId;
-                      }
-                      return originalAdd.call(this, value, key);
-                    };
-                    
-                    const originalPut = store.put;
-                    store.put = function(value: any, key?: IDBValidKey) {
-                      if (value && !value.personaId) {
-                        console.log(`[PERSONA CONTEXT] Setting personaId in topic put to: ${currentPersonaId}`);
-                        value.personaId = currentPersonaId;
-                      }
-                      return originalPut.call(this, value, key);
-                    };
-                  }
-                  
-                  return store;
-                };
-              }
-              
-              return tx;
-            };
-          }
-        });
-        
-        return request;
-      };
-    };
-
-    // Patch fetch API to ensure persona ID is included in API requests
-    const patchFetch = () => {
-      const originalFetch = window.fetch;
-      window.fetch = function(resource: RequestInfo | URL, init?: RequestInit) {
-        // Check if this is a request that might create a topic
-        if (typeof resource === 'string' && 
-            (resource.includes('/api/topics') || resource.includes('/chat'))) {
-          
-          console.log(`[PERSONA CONTEXT] Intercepted fetch request to: ${resource}`);
-          
-          // If there's a request body, try to modify it
-          if (init && init.body && typeof init.body === 'string') {
-            try {
-              const body = JSON.parse(init.body);
-              
-              // If the request doesn't include a personaId, add it
-              if (!body.personaId) {
-                body.personaId = currentPersonaId;
-                console.log(`[PERSONA CONTEXT] Adding persona ID to fetch request: ${body.personaId}`);
-                
-                // Update the request with the modified body
-                init.body = JSON.stringify(body);
-              }
-            } catch (e) {
-              // Not JSON or other error, ignore
-            }
-          }
-        }
-        
-        return originalFetch.call(this, resource, init);
-      };
-    };
-
-    // Apply the patches
-    patchIndexedDB();
-    patchFetch();
-
-    // No cleanup needed as we want these patches to persist
-  }, [currentPersonaId]);
+  // This provider used to patch two globals here — `indexedDB.open`, to inject
+  // `personaId` into topic writes, and `window.fetch`, to inject it into request
+  // bodies. Both are gone. Topics now carry the persona explicitly from the code
+  // that creates them (see `utils/topicDraft.ts` and `useMessages`), and the chat
+  // request carries it as a field on the `chat-message` socket payload.
 
   // Context value
   const value: PersonaContextType = {

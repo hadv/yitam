@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { Topic } from '../../db';
+import { usePersona } from '../../contexts/PersonaContext';
+import { buildTopicDraft } from '../../utils/topicDraft';
 
 interface TopicEditorProps {
   userId: string;
@@ -21,6 +23,7 @@ const TailwindTopicEditor: React.FC<TopicEditorProps> = ({
   const [isPinned, setIsPinned] = useState(false);
   const [model, setModel] = useState('');
   const [error, setError] = useState('');
+  const { currentPersonaId } = usePersona();
 
   useEffect(() => {
     if (topicToEdit) {
@@ -47,32 +50,14 @@ const TailwindTopicEditor: React.FC<TopicEditorProps> = ({
     }
 
     try {
-      const now = Date.now();
-      
-      // Prepare topic object
-      const topicData: Topic = topicToEdit
-        ? {
-            ...topicToEdit,
-            title: title.trim(),
-            systemPrompt: systemPrompt.trim() || undefined,
-            pinnedState: isPinned,
-            model: model || undefined,
-            lastActive: now // Update lastActive when user edits topic information
-          }
-        : {
-            userId,
-            title: title.trim(),
-            createdAt: now,
-            lastActive: now,
-            systemPrompt: systemPrompt.trim() || undefined,
-            pinnedState: isPinned,
-            model: model || undefined,
-            messageCnt: 0,
-            userMessageCnt: 0,
-            assistantMessageCnt: 0,
-            totalTokens: 0
-          };
-      
+      const topicData: Topic = buildTopicDraft({
+        form: { title, systemPrompt, isPinned, model },
+        userId,
+        personaId: currentPersonaId,
+        topicToEdit,
+        now: Date.now()
+      });
+
       onSave(topicData);
     } catch (error) {
       console.error('Error saving topic:', error);

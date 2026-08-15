@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { Topic } from '../db';
 import { useChatHistory, useChatHistoryStore } from '../contexts/ChatHistoryContext';
+import { usePersona } from '../contexts/PersonaContext';
 import { config } from '../config';
 
 interface UseTopicManagementProps {
@@ -27,6 +28,7 @@ export const useTopicManagement = ({ userId }: UseTopicManagementProps): UseTopi
   const [error, setError] = useState<string | null>(null);
   const { isDBReady } = useChatHistory();
   const store = useChatHistoryStore();
+  const { currentPersonaId } = usePersona();
 
   /**
    * Load topics for the current user
@@ -81,19 +83,21 @@ export const useTopicManagement = ({ userId }: UseTopicManagementProps): UseTopi
         totalTokens: 0,
         model: config.model.default,
         systemPrompt: systemPrompt || '',
-        pinnedState: false
+        pinnedState: false,
+        // Bind the topic to the persona that was active when it was created
+        personaId: currentPersonaId
       });
-      
+
       // Reload topics to refresh the list
       await loadTopics();
-      
+
       return topicId;
     } catch (error) {
       console.error('Error creating topic:', error);
       setError('Failed to create new topic');
       return undefined;
     }
-  }, [userId, isDBReady, loadTopics, store]);
+  }, [userId, isDBReady, loadTopics, store, currentPersonaId]);
 
   /**
    * Update an existing topic
