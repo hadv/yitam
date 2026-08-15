@@ -25,47 +25,10 @@ const TailwindTopicSearch: React.FC<TailwindTopicSearchProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [searchInCurrentTopic, setSearchInCurrentTopic] = useState(false);
   const [selectedRole, setSelectedRole] = useState<'all' | 'user' | 'assistant'>('all');
-  const [isIndexing, setIsIndexing] = useState(false);
-  const [indexingComplete, setIndexingComplete] = useState(false);
 
-  // Check if indexing is needed and trigger indexing on first load
-  useEffect(() => {
-    const checkAndTriggerIndexing = async () => {
-      if (!userId) return;
-      
-      try {
-        // Check if messages are already indexed
-        const stats = await store.getSearchIndexStats();
-        console.log('[SEARCH] Current index stats:', stats);
-
-        // If we have no indexed messages, start indexing
-        if (stats.messagesCovered === 0) {
-          console.log('[SEARCH] No messages indexed, starting indexing process...');
-          setIsIndexing(true);
-
-          const success = await store.reindexUser(userId);
-
-          if (success) {
-            console.log('[SEARCH] Indexing completed successfully');
-          } else {
-            console.warn('[SEARCH] Indexing completed with some errors');
-          }
-
-          setIsIndexing(false);
-        } else {
-          console.log(`[SEARCH] Found ${stats.messagesCovered} messages already indexed`);
-        }
-      } catch (error) {
-        console.error('[SEARCH] Error checking or triggering indexing:', error);
-        setIsIndexing(false);
-      } finally {
-        // Search can proceed either way — the store falls back to a content scan
-        setIndexingComplete(true);
-      }
-    };
-
-    checkAndTriggerIndexing();
-  }, [userId, store]);
+  // Nothing here prepares the search index. The store repairs its own index on
+  // the first search, so a first search on a history written before indexing
+  // existed just takes a little longer — `isSearching` already covers that.
 
   // Highlight search terms in text
   const highlightText = (text: string, query: string): string => {
@@ -154,20 +117,6 @@ const TailwindTopicSearch: React.FC<TailwindTopicSearchProps> = ({
     <div className="w-full h-full flex flex-col">
       {/* Search input and filters */}
       <div className="mb-4">
-        {/* Show indexing status when relevant */}
-        {isIndexing && (
-          <div className="bg-blue-50 text-blue-700 p-3 rounded-md mb-4 flex items-center">
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-700 mr-2"></div>
-            <p className="text-sm">Đang tạo chỉ mục tìm kiếm... Quá trình này có thể mất vài phút.</p>
-          </div>
-        )}
-        
-        {indexingComplete && !isIndexing && searchResults.length === 0 && (
-          <div className="bg-green-50 text-green-700 p-3 rounded-md mb-4">
-            <p className="text-sm">Chỉ mục tìm kiếm đã sẵn sàng. Bạn có thể bắt đầu tìm kiếm tin nhắn.</p>
-          </div>
-        )}
-
         <div className="flex gap-2 mb-3">
           <div className="relative flex-1">
             <input
@@ -177,7 +126,6 @@ const TailwindTopicSearch: React.FC<TailwindTopicSearchProps> = ({
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleKeyDown}
               className="w-full py-2 px-4 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#5D4A38] focus:border-transparent"
-              disabled={isIndexing}
             />
             <div className="absolute inset-y-0 right-0 flex items-center pr-3">
               {isSearching ? (
@@ -194,25 +142,23 @@ const TailwindTopicSearch: React.FC<TailwindTopicSearchProps> = ({
         {/* Search filters */}
         <div className="flex flex-wrap gap-4 text-sm">
           {currentTopicId && (
-            <label className={`flex items-center space-x-2 ${isIndexing ? 'opacity-50' : ''}`}>
+            <label className="flex items-center space-x-2">
               <input
                 type="checkbox"
                 checked={searchInCurrentTopic}
                 onChange={() => setSearchInCurrentTopic(!searchInCurrentTopic)}
                 className="form-checkbox h-4 w-4 text-[#78A161] rounded focus:ring-[#78A161]"
-                disabled={isIndexing}
               />
               <span>Chỉ tìm trong cuộc trò chuyện hiện tại</span>
             </label>
           )}
           
-          <div className={`flex items-center space-x-2 ${isIndexing ? 'opacity-50' : ''}`}>
+          <div className="flex items-center space-x-2">
             <span>Vai trò:</span>
             <select
               value={selectedRole}
               onChange={(e) => setSelectedRole(e.target.value as 'all' | 'user' | 'assistant')}
               className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#5D4A38]"
-              disabled={isIndexing}
             >
               <option value="all">Tất cả</option>
               <option value="user">Người dùng</option>
@@ -264,10 +210,6 @@ const TailwindTopicSearch: React.FC<TailwindTopicSearchProps> = ({
               <div className="text-center py-8 text-gray-500">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#5D4A38] mx-auto mb-4"></div>
                 <p>Đang tìm kiếm...</p>
-              </div>
-            ) : isIndexing ? (
-              <div className="text-center py-8 text-gray-500">
-                <p>Vui lòng đợi quá trình tạo chỉ mục hoàn tất trước khi tìm kiếm</p>
               </div>
             ) : (
               <div className="text-center py-8 text-gray-500">

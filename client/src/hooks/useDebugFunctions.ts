@@ -6,8 +6,7 @@ import { useChatHistoryStore } from '../contexts/ChatHistoryContext';
 export const useDebugFunctions = (
   getCurrentPersonaId: () => string | undefined,
   absoluteForcePersona: (personaId: string) => void,
-  user: { email: string } | null,
-  currentTopicId: number | undefined
+  user: { email: string } | null
 ) => {
   const store = useChatHistoryStore();
 
@@ -85,26 +84,9 @@ export const useDebugFunctions = (
       window.dispatchEvent(new Event('storage:refreshTopics'));
     };
 
-    // Add search-related debug functions
-    window.reindexAllMessages = async (userId: string) => {
-      console.log(`[SEARCH DEBUG] Reindexing all messages for user ${userId}`);
-      return await store.reindexUser(userId);
-    };
-
-    window.reindexCurrentTopic = async () => {
-      if (!currentTopicId) {
-        console.warn('[SEARCH DEBUG] No current topic to reindex');
-        return false;
-      }
-      console.log(`[SEARCH DEBUG] Reindexing current topic ${currentTopicId}`);
-      return await store.reindexTopic(currentTopicId);
-    };
-
-    window.getSearchStats = async () => {
-      console.log('[SEARCH DEBUG] Getting search index statistics');
-      return await store.getSearchIndexStats();
-    };
-
+    // The index-poking helpers that used to live here (reindexAllMessages,
+    // reindexCurrentTopic, getSearchStats) are gone: the store keeps its own
+    // index in repair, and a different engine may not have one to inspect.
     window.searchMessages = async (query: string, filters = {}) => {
       if (!user || !user.email) {
         console.warn('[SEARCH DEBUG] No user to search for');
@@ -117,12 +99,9 @@ export const useDebugFunctions = (
     return () => {
       cleanup();
       delete window.triggerTopicListRefresh;
-      delete window.reindexAllMessages;
-      delete window.reindexCurrentTopic;
-      delete window.getSearchStats;
       delete window.searchMessages;
     };
-  }, [getCurrentPersonaId, absoluteForcePersona, user, currentTopicId, store]);
+  }, [getCurrentPersonaId, absoluteForcePersona, user, store]);
 };
 
 export default useDebugFunctions; 

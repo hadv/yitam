@@ -60,9 +60,6 @@ declare global {
     updateTopicMessageCount?: (topicId: number, count: number) => void;
     triggerTopicListRefresh?: () => void;
     // Add search debug functions
-    reindexAllMessages?: (userId: string) => Promise<boolean>;
-    reindexCurrentTopic?: () => Promise<boolean>;
-    getSearchStats?: () => Promise<any>;
     searchMessages?: (query: string, filters?: any) => Promise<any>;
     // Add storage management functions
     compressMessages?: (topicId?: number) => Promise<any>;
@@ -225,8 +222,7 @@ function TailwindApp() {
   useDebugFunctions(
     () => currentPersonaId,
     absoluteForcePersona,
-    user,
-    currentTopicId
+    user
   );
 
   // Cache debug panel keyboard shortcut (Ctrl+Shift+C)

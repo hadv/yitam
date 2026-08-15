@@ -23,7 +23,6 @@ import type {
   MessageHit,
   NewMessage,
   NewTopic,
-  SearchIndexStats,
   SearchMessagesOptions,
   StorageEstimate,
   StoreStatus,
@@ -48,6 +47,9 @@ const isDefined = (id: number | undefined): id is number => id !== undefined;
  * callers get the safe behaviour without having to know it exists.
  */
 export class DexieChatHistoryStore implements ChatHistoryStore {
+  /** Users whose index this instance has already checked. See `ensureUserIndexed`. */
+  private readonly indexedUsers = new Set<string>();
+
   // --- lifecycle -----------------------------------------------------------
 
   async open(): Promise<void> {
@@ -213,17 +215,24 @@ export class DexieChatHistoryStore implements ChatHistoryStore {
     };
 
     let messageId: number;
+    let viaRawFallback = false;
     try {
       messageId = await db.safeMessagesAdd(record);
     } catch (dexieError) {
       console.error('[STORE] Transactional add failed, falling back to raw IndexedDB:', dexieError);
       messageId = await this.rawAppendMessage(topicId, record);
-      // The raw path updates the topic in its own transaction; nothing more to do.
-      return messageId;
+      viaRawFallback = true;
     }
 
-    await this.applyMessageToTopicCounters(topic, record);
+    // Counters are the one thing the raw path already handled, in its own
+    // transaction. Applying them again would double-count.
+    if (!viaRawFallback) {
+      await this.applyMessageToTopicCounters(topic, record);
+    }
 
+    // Indexing is not: a message the raw path wrote is exactly as invisible to
+    // search as any other unindexed one, and worse than a wholly unindexed store,
+    // which at least falls back to a content scan.
     if (record.content) {
       try {
         await indexMessageContent(record.content, topicId, messageId);
@@ -290,21 +299,12 @@ export class DexieChatHistoryStore implements ChatHistoryStore {
 
   // --- search --------------------------------------------------------------
 
-  async searchTopics(userId: string, query: string): Promise<Topic[]> {
-    const trimmed = query.trim().toLowerCase();
-    if (!trimmed) {
-      return [];
-    }
-
-    const topics = await this.listTopics(userId);
-    return topics.filter(topic => topic.title.toLowerCase().includes(trimmed));
-  }
-
   async searchMessages(
     userId: string,
     query: string,
     opts: SearchMessagesOptions = {}
   ): Promise<MessageHit[]> {
+    await this.ensureUserIndexed(userId);
     return advancedSearch(query, userId, opts.filters ?? {}, opts.limit ?? 20);
   }
 
@@ -314,6 +314,8 @@ export class DexieChatHistoryStore implements ChatHistoryStore {
     if (words.length === 0) {
       return [];
     }
+
+    await this.ensureTopicIndexed(topicId);
 
     let matches: Message[] = [];
 
@@ -336,92 +338,62 @@ export class DexieChatHistoryStore implements ChatHistoryStore {
     return matches.sort((a, b) => b.timestamp - a.timestamp);
   }
 
-  async indexMessage(topicId: number, messageId: number, content: string): Promise<void> {
-    await indexMessageContent(content, topicId, messageId);
-  }
+  /**
+   * Bring a user's index up to date if it is missing.
+   *
+   * Messages written before the index existed — or by a build that failed to
+   * index them — are still found, because `advancedSearch` falls back to
+   * scanning content; they are found by reading every message the user owns,
+   * every time. Rebuilding once puts searches back on the index. The UI used to
+   * notice this and drive the rebuild itself; the store owns it now, so no
+   * caller has to know a word index exists.
+   *
+   * At most one attempt per instance: a rebuild that produces nothing (a user
+   * with only stop-word content, say) must not make every later search redo it.
+   */
+  private async ensureUserIndexed(userId: string): Promise<void> {
+    if (this.indexedUsers.has(userId)) return;
+    this.indexedUsers.add(userId);
 
-  async reindexTopic(topicId: number): Promise<boolean> {
-    return reindexTopic(topicId);
-  }
-
-  async reindexMessage(messageId: number): Promise<boolean> {
     try {
-      const message = await db.messages.get(messageId);
-      if (!message || !message.content || !message.topicId) {
-        console.warn(`[STORE] Message ${messageId} not found or missing content/topicId`);
-        return false;
-      }
+      const topicIds = (await db.topics.where('userId').equals(userId).toArray())
+        .map(topic => topic.id)
+        .filter(isDefined);
 
-      await db.wordIndex.where('messageId').equals(messageId).delete();
-      await indexMessageContent(message.content, message.topicId, messageId);
+      if (topicIds.length === 0) return;
 
-      return true;
-    } catch (error) {
-      console.error(`[STORE] Error reindexing message ${messageId}:`, error);
-      return false;
-    }
-  }
+      // Scoped to this user's topics, not the index as a whole: a second account
+      // in the same browser must not be judged indexed because the first one is.
+      const indexed = await db.wordIndex.where('topicId').anyOf(topicIds).first();
+      if (indexed) return;
 
-  async reindexUser(userId: string): Promise<boolean> {
-    try {
-      const topics = await db.topics.where('userId').equals(userId).toArray();
-      if (topics.length === 0) {
-        return true;
-      }
-
-      let successCount = 0;
-      for (const topic of topics) {
-        if (topic.id === undefined) continue;
+      for (const topicId of topicIds) {
         try {
-          if (await reindexTopic(topic.id)) {
-            successCount++;
-          }
+          await reindexTopic(topicId);
         } catch (error) {
-          console.error(`[STORE] Error reindexing topic ${topic.id}:`, error);
+          console.error(`[STORE] Error indexing topic ${topicId} for search:`, error);
         }
       }
-
-      return successCount === topics.length;
     } catch (error) {
-      console.error('[STORE] Error reindexing user messages:', error);
-      return false;
+      console.error('[STORE] Error preparing the search index:', error);
     }
   }
 
-  async isTopicIndexed(topicId: number): Promise<boolean> {
+  /** The same repair, scoped to one topic. */
+  private async ensureTopicIndexed(topicId: number): Promise<void> {
     try {
       const messageIds = (await db.messages.where('topicId').equals(topicId).toArray())
         .map(msg => msg.id)
         .filter(isDefined);
 
-      if (messageIds.length === 0) {
-        return true; // nothing to index
-      }
+      if (messageIds.length === 0) return;
 
-      const firstEntry = await db.wordIndex.where('messageId').anyOf(messageIds).first();
-      return !!firstEntry;
+      const indexed = await db.wordIndex.where('messageId').anyOf(messageIds).first();
+      if (indexed) return;
+
+      await reindexTopic(topicId);
     } catch (error) {
-      console.error(`[STORE] Error checking if topic ${topicId} is indexed:`, error);
-      return false;
-    }
-  }
-
-  async getSearchIndexStats(): Promise<SearchIndexStats> {
-    try {
-      const totalWords = await db.wordIndex.count();
-      const uniqueWords = await db.wordIndex.orderBy('word').uniqueKeys();
-      const topicIds = await db.wordIndex.orderBy('topicId').uniqueKeys();
-      const messageIds = await db.wordIndex.orderBy('messageId').uniqueKeys();
-
-      return {
-        totalWords,
-        uniqueWords: uniqueWords.length,
-        topicsCovered: topicIds.length,
-        messagesCovered: messageIds.length,
-      };
-    } catch (error) {
-      console.error('[STORE] Error getting search index stats:', error);
-      return { totalWords: 0, uniqueWords: 0, topicsCovered: 0, messagesCovered: 0 };
+      console.error(`[STORE] Error indexing topic ${topicId} for search:`, error);
     }
   }
 
