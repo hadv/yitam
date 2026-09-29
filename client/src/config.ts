@@ -14,6 +14,6 @@ export const config = {
     // for IndexedDB records only — the server decides which model actually
     // serves a request (ANTHROPIC_MODEL, see server/src/config.ts), so keep
     // this in step with the server default when that changes.
-    default: 'claude-sonnet-5'
+    default: 'claude-sonnet-5-5'
   }
 };

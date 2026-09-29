@@ -50,7 +50,7 @@ Format your response as JSON with the following structure:
     try {
       const response = await this.anthropic.messages.create({
         model: config.model.name,
-        // Whether to think is left to the model, as in the content safety
+        // Adaptive thinking at the default effort, as in the content safety
         // check. max_tokens covers thinking and the verdict together.
         max_tokens: 4000,
         system: this.MODERATION_SYSTEM_PROMPT,

@@ -294,11 +294,13 @@ export class ContentSafetyService {
     console.time('content-safety-check');
 
     const response = await this.aiClient.messages.create({
-      model: "claude-sonnet-5", // Use Sonnet for content safety
-      // Whether to think is left to the model. On ordinary input it declines,
-      // so this costs nothing in the common case; on a genuinely hard one — an
+      model: "claude-sonnet-5-5", // Use Sonnet for content safety
+      // Adaptive thinking at the default effort. On Sonnet 5.5 that means a
+      // short think before almost every verdict, ordinary input included, which
+      // adds a little latency to each check; on a genuinely hard one — an
       // obfuscated injection, a borderline medical question — the reasoning is
-      // worth having in a safety verdict. max_tokens covers thinking and the
+      // worth having in a safety verdict. (At effort 'low' it would skip
+      // thinking on most simple input.) max_tokens covers thinking and the
       // verdict together, and measured verdicts run 78-248 tokens, so the rest
       // is room for thinking. Unused headroom is not billed.
       max_tokens: 4000,

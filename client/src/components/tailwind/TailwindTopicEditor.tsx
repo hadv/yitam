@@ -118,7 +118,7 @@ const TailwindTopicEditor: React.FC<TopicEditorProps> = ({
             >
               <option value="">Mặc định</option>
               <option value="claude-opus-5">Claude Opus 5</option>
-              <option value="claude-sonnet-5">Claude Sonnet 5</option>
+              <option value="claude-sonnet-5-5">Claude Sonnet 5.5</option>
               <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
             </select>
           </div>

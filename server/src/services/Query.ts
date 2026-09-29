@@ -1,6 +1,7 @@
 import { Anthropic } from "@anthropic-ai/sdk";
 import { config } from '../config';
 import { getResponseText } from '../utils/anthropicResponse';
+import { ModelRefusalError } from '../utils/errors';
 import { SystemPrompts } from '../constants/SystemPrompts';
 import { availableDomains } from '../constants/Domains';
 import { getPersonaSystemPrompt } from '../constants/Personas';
@@ -456,6 +457,10 @@ export class Query {
       return;
     }
 
+    // Set when the model declines to answer, in the first reply or in the
+    // follow-up after tool calls. See ModelRefusalError.
+    let refusal: ModelRefusalError | null = null;
+
     try {
       const { searchQuery, domains } = await this._determineSearchQuery(query);
       const tools = this.tool.getTools();
@@ -506,7 +511,13 @@ export class Query {
               name: toolUse.name,
               input: toolUse.input
             };
+          } else if (chunk.type === 'message_delta' && chunk.delta.stop_reason === 'refusal') {
+            refusal = new ModelRefusalError(chunk.delta.stop_details?.category);
           } else if (chunk.type === 'message_stop') {
+            // A declined reply keeps neither its partial text nor the tool calls
+            // it had started.
+            if (refusal) break;
+
             // If we have collected text from the assistant, add it to history
             if (assistantResponse) {
               // For non-default personas, check if response needs persona prefix
@@ -565,7 +576,7 @@ export class Query {
                 // Update system prompt for follow-up based on persona
                 const personaFollowUpPrompt = getPersonaSystemPrompt(SystemPrompts.FOLLOW_UP, currentPersona);
 
-                while (retryCount <= maxRetries && !successfulCompletion) {
+                while (retryCount <= maxRetries && !successfulCompletion && !refusal) {
                   if (retryCount > 0) {
                     console.log(`Retrying follow-up response (attempt ${retryCount} of ${maxRetries})`);
                     // Reset current buffer for this attempt
@@ -623,6 +634,10 @@ export class Query {
                           }
                         } else if (followUpChunk.type === 'content_block_start' && followUpChunk.content_block.type === 'text') {
                           hasReceivedContent = true;
+                        } else if (followUpChunk.type === 'message_delta' && followUpChunk.delta.stop_reason === 'refusal') {
+                          // Not retried: a retry asks the same model the same thing.
+                          refusal = new ModelRefusalError(followUpChunk.delta.stop_details?.category);
+                          break;
                         } else if (followUpChunk.type === 'message_stop') {
                           // Message completion - send any remaining display content
                           if (displayBuffer.length > 0) {
@@ -691,8 +706,9 @@ export class Query {
                   }
                 }
 
-                // If we have a successful response, add it to conversation history
-                if (bestResponseBuffer) {
+                // If we have a successful response, add it to conversation history.
+                // A declined one is not kept, whole or in part.
+                if (bestResponseBuffer && !refusal) {
                   // For non-default personas, add persona prefix if needed
                   if (currentPersona.id !== 'yitam' && !bestResponseBuffer.startsWith(currentPersona.displayName)) {
                     bestResponseBuffer = `${currentPersona.displayName}: ${bestResponseBuffer}`;
@@ -720,7 +736,8 @@ export class Query {
                       });
 
                       const forcedRaw = getResponseText(forceResponse);
-                      if (forcedRaw !== undefined) {
+                      // A declined retry's partial text is not an answer; keep what we had.
+                      if (forcedRaw !== undefined && forceResponse.stop_reason !== 'refusal') {
                         let forcedText = forcedRaw.trim();
 
                         // For non-default personas, add persona prefix if needed
@@ -743,7 +760,7 @@ export class Query {
                 }
 
                 // If we have partial content but no successful completion, check if we can use the best response
-                if (!successfulCompletion && bestResponseBuffer.length > 0) {
+                if (!successfulCompletion && bestResponseBuffer.length > 0 && !refusal) {
                   console.log("Using best partial response after all retries");
 
                   // Apply a simple sentence completion heuristic if it was cut off mid-sentence
@@ -827,6 +844,10 @@ export class Query {
       const shouldContinue = await callback(JSON.stringify(errorMessage));
       if (!shouldContinue) return;
     }
+
+    // Thrown only now, past the catches above, which would otherwise turn it
+    // into a general error chunk. The socket handler ends the reply with it.
+    if (refusal) throw refusal;
   }
 
   /**

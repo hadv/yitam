@@ -10,7 +10,7 @@ import { MCPClient } from './MCPClient.js';
 import { config } from './config';
 import { sampleQuestions } from './data/SampleQuestions';
 import { contentSafetyService } from './services/ContentSafety';
-import { ContentSafetyError } from './utils/errors';
+import { ContentSafetyError, ModelRefusalError } from './utils/errors';
 import { LegalService } from './services/LegalService';
 import { handleLegalDocumentRequest } from './routes/legal';
 import { validateAccessCode } from './middleware/AccessControl';
@@ -250,6 +250,10 @@ const ERROR_MESSAGES = {
   prompt_injection: {
     en: 'I apologize, but I need to stop here as the response would contain restricted content. Is there something else I can help you with?',
     vi: 'Xin lỗi, tôi cần dừng lại vì câu trả lời sẽ chứa nội dung bị hạn chế. Tôi có thể giúp gì khác không?'
+  },
+  refusal: {
+    en: 'Sorry, I cannot answer this request. Please rephrase your question or ask about something else.',
+    vi: 'Xin lỗi, tôi không thể trả lời yêu cầu này. Bạn vui lòng diễn đạt lại câu hỏi hoặc hỏi về chủ đề khác.'
   },
   general_error: {
     en: 'Sorry, I encountered an error processing your request.',
@@ -609,7 +613,9 @@ io.on('connection', (socket: Socket) => {
           } else {
             // Send appropriate error message to client
             let errorMessage = ERROR_MESSAGES.general_error.vi;
-            if (err instanceof Error && err.message.includes('overloaded')) {
+            if (err instanceof ModelRefusalError) {
+              errorMessage = ERROR_MESSAGES.refusal.vi;
+            } else if (err instanceof Error && err.message.includes('overloaded')) {
               errorMessage = ERROR_MESSAGES.overloaded.vi;
             }
             
@@ -773,6 +779,9 @@ io.on('connection', (socket: Socket) => {
                   throw error;
                 }
               }
+            } else if (chunk.type === 'message_delta' && chunk.delta.stop_reason === 'refusal') {
+              // Ends the reply through the catch below; see ModelRefusalError.
+              throw new ModelRefusalError(chunk.delta.stop_details?.category);
             }
           }
           
@@ -822,7 +831,9 @@ io.on('connection', (socket: Socket) => {
             // branches answered an overloaded API differently, and which message
             // the user saw depended on whether MCP happened to be connected.
             let errorMessage = ERROR_MESSAGES.general_error.vi;
-            if (error instanceof Error && error.message.includes('overloaded')) {
+            if (error instanceof ModelRefusalError) {
+              errorMessage = ERROR_MESSAGES.refusal.vi;
+            } else if (error instanceof Error && error.message.includes('overloaded')) {
               errorMessage = ERROR_MESSAGES.overloaded.vi;
             }
 
