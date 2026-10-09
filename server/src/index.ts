@@ -907,18 +907,23 @@ Tiêu đề:`;
       try {
         console.log(`Sending title generation request to Claude API for topic ${data.topicId}`);
         const response = await anthropic.messages.create({
-          // Haiku 4.5: titling is short and mechanical, and Haiku leaves
-          // thinking off by default, so the small token limit stays sufficient.
-          model: "claude-haiku-4-5",
-          max_tokens: 100,
+          // Haiku 5.5 thinks by default, and thinking counts toward max_tokens,
+          // so a limit sized for the title alone can run out before any text.
+          // Titling is short and mechanical: at effort 'low' the model can skip
+          // thinking on it, and the headroom covers the times it doesn't.
+          // Unused headroom is not billed.
+          model: "claude-haiku-5-5",
+          max_tokens: 1024,
+          output_config: { effort: 'low' },
           messages: [
             { role: 'user', content: prompt }
           ],
         });
         
-        // Extract and clean up the generated title
+        // Extract and clean up the generated title. A declined response's
+        // partial text is not a title; it takes the fallback below.
         let title = "";
-        if (response.content && response.content.length > 0) {
+        if (response.content && response.content.length > 0 && response.stop_reason !== 'refusal') {
           title = (getResponseText(response) ?? '').trim();
         }
         

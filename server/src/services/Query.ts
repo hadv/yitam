@@ -114,10 +114,14 @@ export class Query {
 
       // Extract search query in all cases
       const extractionResponse = await this.anthropic.messages.create({
-        // Haiku 4.5: extraction is short and mechanical, and Haiku leaves
-        // thinking off by default, so the small token limit stays sufficient.
-        model: "claude-haiku-4-5",
-        max_tokens: 150,  // Small token limit is sufficient for extraction
+        // Haiku 5.5 thinks by default, and thinking counts toward max_tokens,
+        // so a limit sized for the query alone can run out before any text.
+        // Extraction is short and mechanical: at effort 'low' the model can
+        // skip thinking on it, and the headroom covers the times it doesn't.
+        // Unused headroom is not billed.
+        model: "claude-haiku-5-5",
+        max_tokens: 1024,
+        output_config: { effort: 'low' },
         system: SystemPrompts.SEARCH_EXTRACTION,
         messages: [{
           role: "user",
@@ -129,7 +133,8 @@ export class Query {
 
       let extractedText = query;
       const extractionText = getResponseText(extractionResponse);
-      if (extractionText !== undefined) {
+      // A declined extraction's partial text is not a query; search with the original.
+      if (extractionText !== undefined && extractionResponse.stop_reason !== 'refusal') {
         const text = extractionText.trim();
         if (text && text.length > 0) {
           console.log(`Original query: "${query.substring(0, 50)}..."`);
@@ -862,8 +867,10 @@ export class Query {
       const domainOptions = availableDomains.map(domain => `- ${domain}`).join('\n');
 
       const domainResponse = await this.anthropic.messages.create({
-        model: "claude-haiku-4-5",  // Use a smaller, faster model
-        max_tokens: 50,  // Small token limit for domain extraction
+        model: "claude-haiku-5-5",  // Use a smaller, faster model
+        // Room for thinking as well as the domain list; see _determineSearchQuery.
+        max_tokens: 1024,
+        output_config: { effort: 'low' },
         system: `You are a domain classification expert specialized in traditional Eastern medicine, philosophy, and spiritual practices. Your task is to identify the relevant knowledge domains that a query belongs to.
 Respond ONLY with a comma-separated list of domains (no explanation). Choose from these domains:
 ${domainOptions}
@@ -882,7 +889,8 @@ Example responses:
       console.timeEnd('domain-detection');
 
       const domainRaw = getResponseText(domainResponse);
-      if (domainRaw !== undefined) {
+      // A declined classification's partial text is not a domain list.
+      if (domainRaw !== undefined && domainResponse.stop_reason !== 'refusal') {
         const domainsText = domainRaw.trim();
         if (domainsText && domainsText.length > 0) {
           // Split on commas and clean up any extra spacing
