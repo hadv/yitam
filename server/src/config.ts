@@ -12,6 +12,7 @@ export const config = {
       'claude-opus-5': 10000,
       'claude-sonnet-5-5': 10000,
       'claude-sonnet-5': 10000,
+      'claude-haiku-5-5': 10000,
       'claude-haiku-4-5': 10000,
       'claude-sonnet-4-6': 10000,
       'claude-sonnet-4-5-20250929': 10000,

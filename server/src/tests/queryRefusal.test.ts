@@ -35,22 +35,27 @@ describe('Query.processQueryWithStreaming', () => {
   const QUERY = 'Châm cứu huyệt Hợp Cốc có tác dụng gì?';
 
   let conversation: Conversation;
+  let create: jest.Mock;
   let stream: jest.Mock;
+  let enrichToolArguments: jest.Mock;
   let query: Query;
 
   // Each call to messages.stream() plays the next script, in order.
   const setup = (...scripts: unknown[][]) => {
     conversation = new Conversation();
+    create = jest.fn().mockResolvedValue({ content: [{ type: 'text', text: 'đông y' }] });
     stream = jest.fn();
     for (const events of scripts) {
       stream.mockImplementationOnce(() => (async function* () { yield* events; })());
     }
 
+    // Receives the search query and domains the tool call is made with.
+    enrichToolArguments = jest.fn((_name: string, args: Record<string, unknown>) => ({ ...args }));
     const tool = {
       getTools: () => [
         { name: 'search', description: 'Tìm kiếm', input_schema: { type: 'object', properties: {} } },
       ],
-      enrichToolArguments: (_name: string, args: Record<string, unknown>) => ({ ...args }),
+      enrichToolArguments,
       formatToolCall: () => '<tool-call/>',
     } as unknown as Tool;
     const mcpServer = {
@@ -64,7 +69,7 @@ describe('Query.processQueryWithStreaming', () => {
     Object.assign(query as unknown as Record<string, unknown>, {
       anthropic: {
         messages: {
-          create: jest.fn().mockResolvedValue({ content: [{ type: 'text', text: 'đông y' }] }),
+          create,
           stream,
         },
       },
@@ -121,5 +126,20 @@ describe('Query.processQueryWithStreaming', () => {
     // stall or cut off; a retry would ask the same model the same thing.
     expect(stream).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(conversation.getConversationHistory())).not.toContain('Theo tài liệu');
+  });
+
+  it.each([
+    ['the extracted query and domains', 'end_turn', { searchQuery: 'đông y', domains: ['đông y'] }],
+    // A declined response's partial text is neither a search query nor a domain list.
+    ['the original query and no domains when extraction is declined', 'refusal', { searchQuery: QUERY, domains: [] }],
+  ])('searches with %s', async (_case, stopReason, searchInfo) => {
+    // Takes about 2s, like the follow-up test above.
+    setup([...toolCall, ...end('tool_use')], [...text('Hợp Cốc chủ trị đau đầu.'), ...end('end_turn')]);
+    // Answers both the search-query extraction and the domain detection.
+    create.mockResolvedValue({ content: [{ type: 'text', text: 'đông y' }], stop_reason: stopReason });
+
+    await query.processQueryWithStreaming(QUERY, jest.fn(() => true));
+
+    expect(enrichToolArguments).toHaveBeenCalledWith('search', expect.anything(), searchInfo);
   });
 });
