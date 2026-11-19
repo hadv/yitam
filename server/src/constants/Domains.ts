@@ -13,8 +13,8 @@ export const availableDomains = [
   'y quán đường',
   'ni hải hạ',
   'châm cứu',
-  'kinh phương',
-  'bản thảo',
+  'bài thuốc cổ phương',
+  'dược liệu',
   'âm dương ngũ hành',
   'dịch lý',
   'lão kinh',
@@ -47,9 +47,9 @@ export const domainKeywordMappings: Record<string, string[]> = {
   'y quán đường': ['y quán đường', 'quán đường', 'y học đường', 'phương chữa'],
   'ni hải hạ': ['ni hải hạ', 'nghê hải hạ', '倪海厦', '倪海廈', 'ni haixia', 'hán đường trung y', '汉唐中医', '漢唐中醫', 'nhân kỷ', '人纪', '人紀'],
   'châm cứu': ['châm cứu', '针灸', '針灸', 'châm cứu đại thành', '针灸大成', 'kinh huyệt', 'huyệt vị', 'huyệt đạo', 'cứu ngải', 'acupuncture', 'moxibustion'],
-  'kinh phương': ['kinh phương', '经方', '經方', 'thương hàn luận', '伤寒论', '傷寒論', 'kim quỹ yếu lược', 'kim quỹ', 'kim quĩ', '金匮要略', '金匱要略', 'trương trọng cảnh', '张仲景', '張仲景', 'lục kinh'],
+  'bài thuốc cổ phương': ['bài thuốc cổ phương', 'cổ phương', 'kinh phương', '经方', '經方', 'thương hàn luận', '伤寒论', '傷寒論', 'kim quỹ yếu lược', 'kim quỹ', 'kim quĩ', '金匮要略', '金匱要略', 'trương trọng cảnh', '张仲景', '張仲景', 'lục kinh'],
   // bare 'bản thảo' is left out on purpose: in everyday Vietnamese it also means 'draft/manuscript'
-  'bản thảo': ['thần nông bản thảo', 'bản thảo kinh', 'bản thảo cương mục', 'bản thảo học', '本草', '神农本草经', '神農本草經', '本草纲目', '本草綱目', 'vị thuốc', 'tính vị quy kinh'],
+  'dược liệu': ['dược liệu', 'thảo dược', 'thần nông bản thảo', 'bản thảo kinh', 'bản thảo cương mục', 'bản thảo học', '本草', '神农本草经', '神農本草經', '本草纲目', '本草綱目', 'vị thuốc', 'tính vị quy kinh'],
   
   // Philosophy and cosmology domains
   'âm dương ngũ hành': ['âm dương', 'ngũ hành', 'âm dương học', 'âm dương ngũ hành', 'can chi', 'thiên can', 'địa chi'],

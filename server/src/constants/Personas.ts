@@ -146,7 +146,7 @@ export const availablePersonas: Persona[] = [
     id: 'ni-hai-ha',
     name: 'ni_hai_ha',
     displayName: 'Ni Hải Hạ',
-    domains: ['ni hải hạ', 'châm cứu', 'kinh phương', 'bản thảo'],
+    domains: ['ni hải hạ', 'châm cứu', 'bài thuốc cổ phương', 'dược liệu'],
     voiceTone: {
       style: 'Direct, confident classical-formula (kinh phương) clinician-teacher',
       characteristics: [

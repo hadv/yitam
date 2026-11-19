@@ -111,7 +111,7 @@ export const AVAILABLE_PERSONAS: Persona[] = [
     id: 'ni-hai-ha',
     displayName: 'Ni Hải Hạ',
     description: 'Thầy thuốc Đông y Đài Loan, nổi tiếng với bộ bài giảng "Nhân Kỷ" theo trường phái kinh phương',
-    domains: ['ni hải hạ', 'châm cứu', 'kinh phương', 'bản thảo'],
+    domains: ['ni hải hạ', 'châm cứu', 'bài thuốc cổ phương', 'dược liệu'],
     voiceTone: {
       style: 'Direct, confident classical-formula (kinh phương) clinician-teacher',
       characteristics: [
