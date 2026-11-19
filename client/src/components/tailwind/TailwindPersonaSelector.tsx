@@ -106,6 +106,21 @@ export const AVAILABLE_PERSONAS: Persona[] = [
         'Emphasis on internal cultivation and spiritual development'
       ]
     }
+  },
+  {
+    id: 'ni-hai-ha',
+    displayName: 'Ni Hải Hạ',
+    description: 'Thầy thuốc Đông y Đài Loan, nổi tiếng với bộ bài giảng "Nhân Kỷ" theo trường phái kinh phương',
+    domains: ['ni hải hạ', 'châm cứu', 'kinh phương', 'bản thảo'],
+    voiceTone: {
+      style: 'Direct, confident classical-formula (kinh phương) clinician-teacher',
+      characteristics: [
+        'Plain-spoken, direct explanations',
+        'Reasoning from the six channels (lục kinh) of Thương Hàn Luận and Hoàng Đế Nội Kinh',
+        'Citing the original articles (điều văn) of the classics',
+        'Practical pairing of acupuncture points with classical formulas'
+      ]
+    }
   }
 ];
 

@@ -11,6 +11,10 @@ export const availableDomains = [
   'lê hữu trác',
   'y quán',
   'y quán đường',
+  'ni hải hạ',
+  'châm cứu',
+  'kinh phương',
+  'bản thảo',
   'âm dương ngũ hành',
   'dịch lý',
   'lão kinh',
@@ -33,14 +37,19 @@ export const availableDomains = [
  */
 export const domainKeywordMappings: Record<string, string[]> = {
   // Eastern Medicine domains
-  'nội kinh': ['nội kinh', 'kinh lạc', 'kinh dịch', 'kinh mạch', 'y kinh', 'đạo kinh', 'châm cứu'],
+  'nội kinh': ['nội kinh', 'kinh lạc', 'kinh dịch', 'kinh mạch', 'y kinh', 'đạo kinh'],
   'đông y': ['đông y', 'thuốc bắc', 'thuốc nam', 'thuốc đông y', 'y học', 'dược liệu', 'dưỡng sinh', 'bắt mạch'],
   'y học cổ truyền': ['y học cổ truyền', 'y học truyền thống', 'đông y học', 'cổ phương', 'y thuật', 'tứ chẩn'],
   'y tông tâm lĩnh': ['y tông tâm lĩnh', 'y tông', 'tâm lĩnh', 'phương thuốc', 'bí truyền'],
-  'hải thượng lãn ông': ['hải thượng lãn ông', 'lãn ông', 'hải thượng', 'y dược', 'châm cứu'],
+  'hải thượng lãn ông': ['hải thượng lãn ông', 'lãn ông', 'hải thượng', 'y dược'],
   'lê hữu trác': ['lê hữu trác', 'thượng kinh ký sự', 'y phương', 'y án'],
   'y quán': ['y quán', 'quán y', 'phương thuốc', 'y thuật'],
   'y quán đường': ['y quán đường', 'quán đường', 'y học đường', 'phương chữa'],
+  'ni hải hạ': ['ni hải hạ', 'nghê hải hạ', '倪海厦', '倪海廈', 'ni haixia', 'hán đường trung y', '汉唐中医', '漢唐中醫', 'nhân kỷ', '人纪', '人紀'],
+  'châm cứu': ['châm cứu', '针灸', '針灸', 'châm cứu đại thành', '针灸大成', 'kinh huyệt', 'huyệt vị', 'huyệt đạo', 'cứu ngải', 'acupuncture', 'moxibustion'],
+  'kinh phương': ['kinh phương', '经方', '經方', 'thương hàn luận', '伤寒论', '傷寒論', 'kim quỹ yếu lược', 'kim quỹ', 'kim quĩ', '金匮要略', '金匱要略', 'trương trọng cảnh', '张仲景', '張仲景', 'lục kinh'],
+  // bare 'bản thảo' is left out on purpose: in everyday Vietnamese it also means 'draft/manuscript'
+  'bản thảo': ['thần nông bản thảo', 'bản thảo kinh', 'bản thảo cương mục', 'bản thảo học', '本草', '神农本草经', '神農本草經', '本草纲目', '本草綱目', 'vị thuốc', 'tính vị quy kinh'],
   
   // Philosophy and cosmology domains
   'âm dương ngũ hành': ['âm dương', 'ngũ hành', 'âm dương học', 'âm dương ngũ hành', 'can chi', 'thiên can', 'địa chi'],
