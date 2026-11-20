@@ -238,12 +238,12 @@ export class Query {
         resultContent = `[Content safety check failed: ${safetyCheck.reason}]`;
       }
 
-      // Format the tool call as HTML
+      // Format the tool call as HTML; a tool that reports a failure (MCP isError) is shown as an error
       const formattedToolCall = this.tool.formatToolCall(
         toolName,
         enrichedArgs,
         resultContent,
-        false
+        toolResult.isError === true
       );
 
       return { toolResult, formattedToolCall };
